@@ -25,8 +25,10 @@ Usage
 
 from __future__ import annotations
 
+import io
 import logging
 import re
+import zipfile
 from datetime import timedelta
 from pathlib import Path
 from typing import Any
@@ -404,3 +406,133 @@ def export_all(
             results[fmt] = None
 
     return results
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Plain-text "most likely" transcript
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def export_plain_text(
+    consensus_md_path: Path,
+    stem: str,
+    include_low: bool = True,
+) -> Path:
+    """
+    Strip Chorus confidence markup from the consensus document and write a
+    clean plain-text transcript.
+
+    The body section (between ``## Consensus Transcript`` and the next ``---``)
+    is extracted, then confidence decorators are removed:
+
+    - MEDIUM (``==word==``) → ``word``
+    - LOW (``**~~word~~**[^…]``) → ``[word?]`` when *include_low* is True,
+      or omitted entirely when False
+    - HIGH words are already plain text — no change needed
+
+    Parameters
+    ----------
+    consensus_md_path : Path
+        Path to the consensus ``.md`` file.
+    stem : str
+        Base filename stem.
+    include_low : bool
+        When True, LOW-confidence words appear as ``[word?]``.
+        When False, they are omitted entirely.
+
+    Returns
+    -------
+    Path
+        Path to the written ``.txt`` file.
+    """
+    text = consensus_md_path.read_text(encoding="utf-8")
+
+    # Extract the transcript body between the heading and the next divider
+    match = re.search(
+        r"## Consensus Transcript\s*\n\n(.*?)(?=^---)",
+        text,
+        re.DOTALL | re.MULTILINE,
+    )
+    body = match.group(1).strip() if match else text
+
+    # MEDIUM: ==word== → word
+    body = re.sub(r"==([^=]+)==", r"\1", body)
+
+    # LOW: **~~word~~**[^…] → [word?] or omit
+    if include_low:
+        body = re.sub(r"\*\*~~([^~]+)~~\*\*\[.*?\]", r"[\1?]", body)
+    else:
+        body = re.sub(r"\*\*~~[^~]+~~\*\*\[.*?\]", "", body)
+
+    # Collapse multiple spaces left by omissions
+    body = re.sub(r" {2,}", " ", body).strip()
+
+    filename = (
+        f"{stem}_most_likely.txt" if include_low else f"{stem}_most_likely_clean.txt"
+    )
+    out_path = CONSENSUS_DIR / filename
+    out_path.write_text(body, encoding="utf-8")
+    logger.info("Plain-text export written → %s", out_path)
+    return out_path
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Download-all zip bundle
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def export_zip(
+    consensus_md_path: Path,
+    whisper_result: dict[str, Any],
+    stem: str,
+    include_formats: list[str] | None = None,
+) -> bytes:
+    """
+    Bundle all outputs for a recording into an in-memory zip archive.
+
+    Always includes:
+    - ``{stem}_consensus.md`` — annotated consensus document
+    - ``{stem}_most_likely.txt`` — plain transcript with LOW words in ``[brackets]``
+    - ``{stem}_most_likely_clean.txt`` — plain transcript with LOW words omitted
+
+    Optionally includes any formats from ``include_formats``
+    (``"pdf"``, ``"docx"``, ``"srt"``, ``"vtt"``).
+
+    Parameters
+    ----------
+    consensus_md_path : Path
+        Path to the consensus ``.md`` file.
+    whisper_result : dict
+        Whisper result dict (used for SRT/VTT timestamps if requested).
+    stem : str
+        Base filename stem.
+    include_formats : list[str], optional
+        Additional export formats to include.
+
+    Returns
+    -------
+    bytes
+        Raw zip archive bytes, ready for ``st.download_button``.
+    """
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        # Consensus markdown — always included
+        if consensus_md_path.exists():
+            zf.write(consensus_md_path, consensus_md_path.name)
+
+        # Additional format exports
+        if include_formats:
+            for _, path in export_all(
+                consensus_md_path, whisper_result, stem, include_formats
+            ).items():
+                if path and path.exists():
+                    zf.write(path, path.name)
+
+        # Both plain-text variants — always included
+        for include_low in (True, False):
+            plain = export_plain_text(consensus_md_path, stem, include_low=include_low)
+            if plain.exists():
+                zf.write(plain, plain.name)
+
+    buf.seek(0)
+    return buf.read()
