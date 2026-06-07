@@ -1,0 +1,61 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Chorus Engine — GPU-Accelerated Docker Compose Profile
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# Prerequisites
+# ─────────────────────────────────────────────────────────────────────────────
+# 1. NVIDIA GPU with CUDA Compute Capability ≥ 7.0 (Volta or newer).
+# 2. NVIDIA Container Toolkit installed on the host:
+#      https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html
+#    Quick install (Ubuntu):
+#      distribution=$(. /etc/os-release; echo $ID$VERSION_ID)
+#      curl -s -L https://nvidia.github.io/nvidia-docker/gpgkey | sudo apt-key add -
+#      curl -s -L https://nvidia.github.io/nvidia-docker/$distribution/nvidia-docker.list \
+#        | sudo tee /etc/apt/sources.list.d/nvidia-docker.list
+#      sudo apt-get update && sudo apt-get install -y nvidia-container-toolkit
+#      sudo systemctl restart docker
+# 3. Verify with: docker run --rm --gpus all nvidia/cuda:12.0-base nvidia-smi
+#
+# Usage
+# ─────────────────────────────────────────────────────────────────────────────
+#   docker-compose -f docker-compose.yml -f docker-compose.gpu.yml up --build
+#
+# This file is an *override* — it extends docker-compose.yml by adding GPU
+# resource reservations and switching the Whisper device to CUDA.
+# ─────────────────────────────────────────────────────────────────────────────
+
+version: "3.9"
+
+services:
+
+  chorus:
+    # Override the base image to use the CUDA-enabled build target
+    build:
+      context: .
+      dockerfile: Dockerfile.gpu
+      target: runtime-gpu
+
+    environment:
+      # Switch Whisper to GPU inference
+      WHISPER_DEVICE: "cuda"
+      # Larger models are practical on GPU — override as needed
+      WHISPER_MODEL:  "${WHISPER_MODEL:-small}"
+
+    deploy:
+      resources:
+        reservations:
+          memory: 2G
+          devices:
+            - driver: nvidia
+              count: 1          # Request 1 GPU; set to "all" for multi-GPU hosts
+              capabilities: [gpu]
+        limits:
+          memory: 8G            # GPU models require more host RAM for data staging
+
+    # GPU containers benefit from a longer startup window for CUDA initialisation
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 15s
+      retries: 5
+      start_period: 120s

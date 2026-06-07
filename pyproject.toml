@@ -1,0 +1,55 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "chorus-engine"
+version = "2.0.0"
+description = "Chorus — A containerised, multi-pass consensus audio transcription engine."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+  "black",
+  "ruff",
+  "isort",
+  "pre-commit",
+  "pytest",
+  "pytest-cov",
+  "detect-secrets",
+]
+
+# ── Black ─────────────────────────────────────────────────────────────────────
+[tool.black]
+line-length = 88
+target-version = ["py311"]
+
+# ── Ruff ──────────────────────────────────────────────────────────────────────
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "S", "B", "A", "C4", "PT"]
+ignore = [
+  "S101",   # allow assert in tests
+  "S603",   # subprocess calls are intentional in pipeline_runner
+  "S607",   # partial path in subprocess is intentional
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["S", "ANN"]
+
+# ── isort ─────────────────────────────────────────────────────────────────────
+[tool.isort]
+profile = "black"
+line_length = 88
+
+# ── pytest ────────────────────────────────────────────────────────────────────
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts   = "--cov=. --cov-report=term-missing --cov-omit=tests/*,ui/*"
+# Note: requires pytest-cov — install with: pip install pytest-cov

@@ -1,0 +1,106 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Chorus Engine — GPU Dockerfile (CUDA-enabled)
+# ─────────────────────────────────────────────────────────────────────────────
+# Uses the official NVIDIA CUDA base image so that PyTorch (used by Whisper
+# and pyannote.audio) can access the host GPU via the NVIDIA Container Toolkit.
+#
+# CUDA version: 12.1  |  cuDNN: 8  |  Ubuntu 22.04
+# Adjust the FROM tag to match your host driver version:
+#   https://hub.docker.com/r/nvidia/cuda/tags
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Stage 1: Builder ─────────────────────────────────────────────────────────
+FROM nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu22.04 AS builder-gpu
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        python3.11 \
+        python3.11-venv \
+        python3-pip \
+        build-essential \
+        git \
+        curl \
+        libsndfile1-dev \
+        ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
+# Symlink python3.11 as python3
+RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1
+
+# Create virtual environment
+RUN python3 -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+RUN pip install --upgrade pip wheel setuptools
+
+# Install PyTorch with CUDA 12.1 support first (must precede other packages)
+RUN pip install --no-cache-dir \
+    torch==2.2.0+cu121 \
+    torchaudio==2.2.0+cu121 \
+    --index-url https://download.pytorch.org/whl/cu121
+
+# Install remaining dependencies
+COPY requirements.txt /tmp/requirements.txt
+RUN pip install --no-cache-dir -r /tmp/requirements.txt
+
+# Install pyannote.audio for speaker diarisation
+RUN pip install --no-cache-dir pyannote.audio==3.1.1
+
+# Pre-download NLTK data
+RUN python3 -c "\
+import nltk; \
+nltk.download('punkt', quiet=True); \
+nltk.download('punkt_tab', quiet=True); \
+nltk.download('stopwords', quiet=True)"
+
+
+# ── Stage 2: Runtime ─────────────────────────────────────────────────────────
+FROM nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu22.04 AS runtime-gpu
+
+LABEL maintainer="Chorus Engine"
+LABEL description="Chorus — GPU-accelerated consensus transcription engine"
+LABEL version="1.0.0-gpu"
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        python3.11 \
+        ffmpeg \
+        libsndfile1 \
+        curl \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1
+
+COPY --from=builder-gpu /opt/venv /opt/venv
+COPY --from=builder-gpu /root/nltk_data /root/nltk_data
+
+ENV PATH="/opt/venv/bin:$PATH"
+
+WORKDIR /app
+COPY . /app/
+
+RUN mkdir -p /app/outputs/variants \
+             /app/outputs/transcripts \
+             /app/outputs/consensus \
+             /app/sample_audio
+
+# GPU-specific defaults
+ENV WHISPER_MODEL="small"
+ENV WHISPER_DEVICE="cuda"
+
+ENV STREAMLIT_SERVER_PORT=8501
+ENV STREAMLIT_SERVER_ADDRESS=0.0.0.0
+ENV STREAMLIT_BROWSER_GATHER_USAGE_STATS=false
+ENV STREAMLIT_SERVER_HEADLESS=true
+
+EXPOSE 8501
+
+HEALTHCHECK --interval=30s --timeout=15s --start-period=120s --retries=3 \
+    CMD curl -f http://localhost:8501/_stcore/health || exit 1
+
+CMD ["streamlit", "run", "ui/app.py", \
+     "--server.port=8501", \
+     "--server.address=0.0.0.0", \
+     "--server.headless=true"]

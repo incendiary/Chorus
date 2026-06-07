@@ -1,0 +1,69 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Chorus Engine — Pre-Commit Configuration
+# Baseline: incendiary/Bedrock (https://github.com/incendiary/Bedrock)
+# Three-layer secret scanning: pattern matching → verified detection → entropy
+# ─────────────────────────────────────────────────────────────────────────────
+
+repos:
+
+  # ── Layer 1: Gitleaks — fast pattern-matching secret scanner ─────────────
+  # Catches obvious secrets locally before they ever leave the machine.
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.27.2
+    hooks:
+      - id: gitleaks
+
+  # ── Layer 2: TruffleHog — verified credential detection ──────────────────
+  # Makes live API calls to confirm whether detected secrets are active.
+  - repo: https://github.com/trufflesecurity/trufflehog
+    rev: v3.95.2
+    hooks:
+      - id: trufflehog
+
+  # ── Layer 3: detect-secrets — entropy baseline ───────────────────────────
+  # Tracks high-entropy strings against a committed baseline.
+  # Regenerate after adding code: detect-secrets scan > .secrets.baseline
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        args: ["--baseline", ".secrets.baseline"]
+
+  # ── General hygiene hooks ─────────────────────────────────────────────────
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ["--maxkb=500"]
+      - id: no-commit-to-branch
+        args: ["--branch", "main"]
+      - id: check-ast               # Validates Python AST before commit
+      - id: debug-statements        # Blocks accidental pdb/breakpoint commits
+      - id: check-case-conflict     # Prevents case-insensitive filename collisions
+      - id: mixed-line-ending
+        args: ["--fix=lf"]
+
+  # ── Python code quality ───────────────────────────────────────────────────
+  - repo: https://github.com/psf/black
+    rev: 24.4.2
+    hooks:
+      - id: black
+        language_version: python3.11
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.4.7
+    hooks:
+      - id: ruff
+        args: ["--fix"]
+
+  - repo: https://github.com/PyCQA/isort
+    rev: 5.13.2
+    hooks:
+      - id: isort
+        args: ["--profile", "black"]
