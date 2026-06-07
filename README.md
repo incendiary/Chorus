@@ -37,7 +37,7 @@ This is the recommended approach. The Docker image encapsulates the Python envir
 
 1. **Clone the repository:**
    ```bash
-   git clone -b v1.0.1 https://github.com/incendiary/Chorus.git
+   git clone -b v1.1.0 https://github.com/incendiary/Chorus.git
    cd Chorus
    ```
 2. **Configure environment (optional):**
@@ -142,15 +142,15 @@ Pre-built images are published to [GitHub Container Registry](https://ghcr.io/in
 ### CPU
 
 ```bash
-docker pull ghcr.io/incendiary/chorus:v1.0.0
-docker run --rm -p 8501:8501 ghcr.io/incendiary/chorus:v1.0.0
+docker pull ghcr.io/incendiary/chorus:v1.1.0
+docker run --rm -p 8501:8501 ghcr.io/incendiary/chorus:v1.1.0
 ```
 
 ### GPU (NVIDIA CUDA)
 
 ```bash
-docker pull ghcr.io/incendiary/chorus:v1.0.0-gpu
-docker run --rm -p 8501:8501 --gpus all ghcr.io/incendiary/chorus:v1.0.0-gpu
+docker pull ghcr.io/incendiary/chorus:v1.1.0-gpu
+docker run --rm -p 8501:8501 --gpus all ghcr.io/incendiary/chorus:v1.1.0-gpu
 ```
 
 Access the UI at [http://localhost:8501](http://localhost:8501).
@@ -227,6 +227,13 @@ chorus-engine/
 ---
 
 ## Roadmap
+
+### Implemented Features (v1.1.0)
+- ✅ **Multi-File Upload:** Process multiple recordings in a single session; results appear in labelled expanders.
+- ✅ **Filename-Based Outputs:** All generated files (WAVs, transcripts, exports) are named after the original recording, not a temporary path.
+- ✅ **Download All:** A single zip per recording bundles the consensus Markdown, plain transcripts, and all selected export formats.
+- ✅ **Plain-Text Transcript:** "Most Likely" export strips confidence markup; a toggle controls whether LOW-confidence words are shown as `[word?]` or omitted entirely.
+- ✅ **Hardware-Aware Processing Mode:** Sequential vs. all-at-once toggle with a hardware recommendation derived from available RAM and CPU cores.
 
 ### Implemented Features (v1.0.0)
 - ✅ **Audio Cleaning Pipeline:** High-pass, Normalisation, Spectral Denoising.
