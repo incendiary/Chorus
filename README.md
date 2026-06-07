@@ -217,8 +217,10 @@ chorus-engine/
 │   └── app.py                # Streamlit dashboard
 ├── config.py                 # Central configuration and thresholds
 ├── pipeline_runner.py        # End-to-end CLI entry point
-├── Dockerfile                # Production-grade multi-stage build
-├── docker-compose.yml        # Service definitions and volumes
+├── Dockerfile                # CPU image (python:3.11-slim-bookworm)
+├── Dockerfile.gpu            # CUDA image (nvidia/cuda:12.1.1-cudnn8)
+├── docker-compose.yml        # CPU service definition
+├── docker-compose.gpu.yml    # GPU override (NVIDIA device reservations)
 └── requirements.txt          # Pinned Python dependencies
 ```
 
@@ -226,7 +228,7 @@ chorus-engine/
 
 ## Roadmap
 
-### Implemented Features (v2.0 Complete)
+### Implemented Features (v1.0.0)
 - ✅ **Audio Cleaning Pipeline:** High-pass, Normalisation, Spectral Denoising.
 - ✅ **Local Transcription:** Offline OpenAI Whisper integration.
 - ✅ **Consensus Alignment:** Word-level sliding window voting with NLTK fuzzy similarity.
