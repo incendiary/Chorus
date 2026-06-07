@@ -61,6 +61,79 @@ docker-compose down
 
 ---
 
+## GPU Acceleration
+
+### Linux — NVIDIA (Docker)
+
+Follow the prerequisites in `docker-compose.gpu.yml`, then:
+
+```bash
+docker-compose -f docker-compose.yml -f docker-compose.gpu.yml up --build
+```
+
+Requires NVIDIA Container Toolkit and a Volta (GTX 1070 Ti / RTX series) or newer GPU.
+
+---
+
+### Windows — NVIDIA (Docker Desktop + WSL2)
+
+The runtime command is identical to Linux, but the setup path is different. Docker Desktop on Windows uses a WSL2-based Linux VM to run containers, and GPU passthrough happens through that layer.
+
+**Prerequisites:**
+- Windows 10 (21H2 or later) or Windows 11
+- Docker Desktop for Windows with the **WSL2 backend** enabled (Settings → General → *Use the WSL2 based engine*)
+- NVIDIA driver **527.41 or later** installed on the **Windows host** — do not install CUDA inside WSL2, the host driver is all that is needed
+- NVIDIA Container Toolkit installed **inside WSL2** (not on Windows itself)
+
+**One-time WSL2 setup (run inside your WSL2 terminal, e.g. Ubuntu):**
+
+```bash
+distribution=$(. /etc/os-release; echo $ID$VERSION_ID)
+curl -fsSL https://nvidia.github.io/nvidia-docker/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-docker.gpg
+curl -sL "https://nvidia.github.io/nvidia-docker/${distribution}/nvidia-docker.list" \
+  | sed 's|deb |deb [signed-by=/usr/share/keyrings/nvidia-docker.gpg] |' \
+  | sudo tee /etc/apt/sources.list.d/nvidia-docker.list
+sudo apt-get update && sudo apt-get install -y nvidia-container-toolkit
+```
+
+Restart Docker Desktop after installing the toolkit.
+
+**Verify GPU passthrough:**
+
+```bash
+docker run --rm --gpus all nvidia/cuda:12.1.1-base-ubuntu22.04 nvidia-smi
+```
+
+You should see your GPU listed. If `nvidia-smi` fails, check that Docker Desktop is using the WSL2 backend and that your Windows NVIDIA driver is up to date.
+
+**Start Chorus with GPU:**
+
+```bash
+docker-compose -f docker-compose.yml -f docker-compose.gpu.yml up --build
+```
+
+---
+
+### Apple Silicon (macOS) — MPS
+
+**In Docker: CPU only.** Docker Desktop on macOS runs containers inside a Linux VM (Apple's Virtualization Framework). That VM has no access to the Metal GPU, so `WHISPER_DEVICE=mps` cannot work inside a container. There is no workaround — this is an architectural limitation of how Docker runs on macOS. The standard CPU image runs fine.
+
+**Native (bare-metal): MPS is fully supported.** If you run Chorus outside Docker on an Apple Silicon Mac, PyTorch's Metal backend gives a meaningful speedup over CPU. Set the device in your `.env`:
+
+```bash
+WHISPER_DEVICE=mps
+```
+
+Then run natively:
+
+```bash
+streamlit run ui/app.py
+```
+
+MPS performance is roughly 3–5× faster than CPU for the Whisper `base` and `small` models on M1/M2/M3/M4. The `large` model may exceed unified memory on 8 GB configurations — use `small` or `medium` in that case.
+
+---
+
 ## Native Installation (Bare-Metal)
 
 1. **Ensure FFmpeg is installed.**
