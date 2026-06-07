@@ -16,6 +16,25 @@ The **Chorus Engine** is a local, containerised Python application that automate
 
 ---
 
+## Decision-Making Philosophy
+
+Where a choice has meaningful trade-offs for the user — hardware constraints, personal workflow preferences, risk tolerance, or non-reversible actions — **do not decide unilaterally**. Present the options and make a recommendation, then let the user choose.
+
+**What a good recommendation looks like:**
+- Grounded in the user's actual environment (RAM, OS, GPU availability, repo state) rather than general best practice
+- Explains *why* one option is preferred in their specific context, not just that it is
+- Acknowledges when the recommendation is a default/safe choice rather than a definitive answer
+- Stays concise — one sentence of context, one sentence of recommendation, one sentence of trade-off
+
+**When to decide independently:**
+- Purely technical choices with no meaningful user-facing trade-off (e.g. which regex flavour, how to name an internal variable)
+- Reversible actions with obvious correct answers (e.g. fixing a lint error)
+- When the user has already expressed a clear preference
+
+If in doubt, surface the decision.
+
+---
+
 ## Development Rules
 
 When maintaining, refactoring, or extending this codebase, Claude Code must adhere strictly to the following rules:
