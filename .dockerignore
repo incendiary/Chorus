@@ -48,3 +48,7 @@ site/
 
 # macOS
 .DS_Store
+
+# Publish / test helper scripts (not needed inside the image)
+docker-publish.sh
+docker-test.sh

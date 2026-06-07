@@ -135,6 +135,30 @@ If Chorus is run natively on Apple Silicon and the MPS device fails to load (e.g
 
 ---
 
+## Deploy from GHCR
+
+Pre-built images are published to [GitHub Container Registry](https://ghcr.io/incendiary/chorus) on every tagged release. No local build step required.
+
+### CPU
+
+```bash
+docker pull ghcr.io/incendiary/chorus:v1.0.0
+docker run --rm -p 8501:8501 ghcr.io/incendiary/chorus:v1.0.0
+```
+
+### GPU (NVIDIA CUDA)
+
+```bash
+docker pull ghcr.io/incendiary/chorus:v1.0.0-gpu
+docker run --rm -p 8501:8501 --gpus all ghcr.io/incendiary/chorus:v1.0.0-gpu
+```
+
+Access the UI at [http://localhost:8501](http://localhost:8501).
+
+*See `docker-publish.sh` and `docker-test.sh` in the repo root for building, testing, and pushing images locally.*
+
+---
+
 ## Native Installation (Bare-Metal)
 
 1. **Ensure FFmpeg is installed.**
