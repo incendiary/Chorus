@@ -64,5 +64,4 @@ line_length = 88
 # ── pytest ────────────────────────────────────────────────────────────────────
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts   = "--cov=. --cov-report=term-missing --cov-omit=tests/*,ui/*"
-# Note: requires pytest-cov — install with: pip install pytest-cov
+addopts   = "--tb=short"
