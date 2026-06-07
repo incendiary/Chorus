@@ -1,0 +1,50 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# .dockerignore — Exclude files from the Docker build context
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Python artefacts
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Output directories (mounted as volumes at runtime)
+outputs/
+
+# Development and test artefacts
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+*.log
+
+# IDE configuration
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Git
+.git/
+.gitignore
+
+# Secrets
+.env
+
+# Documentation build artefacts
+docs/_build/
+site/
+
+# macOS
+.DS_Store

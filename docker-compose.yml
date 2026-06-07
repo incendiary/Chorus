@@ -1,0 +1,78 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Chorus Engine — Docker Compose Configuration
+# ─────────────────────────────────────────────────────────────────────────────
+# Usage:
+#   docker-compose up --build          # Build and start all services
+#   docker-compose up -d               # Start in detached (background) mode
+#   docker-compose down                # Stop and remove containers
+#   docker-compose down -v             # Stop and remove containers + volumes
+#
+# The Streamlit UI will be available at: http://localhost:8501
+# ─────────────────────────────────────────────────────────────────────────────
+
+version: "3.9"
+
+services:
+
+  # ── Chorus Application ─────────────────────────────────────────────────────
+  chorus:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    image: chorus-engine:latest
+    container_name: chorus-engine
+
+    ports:
+      - "8501:8501"       # Streamlit UI
+
+    environment:
+      # Whisper configuration
+      WHISPER_MODEL:    "${WHISPER_MODEL:-base}"
+      WHISPER_DEVICE:   "${WHISPER_DEVICE:-cpu}"
+      WHISPER_LANGUAGE: "${WHISPER_LANGUAGE:-}"
+
+      # Streamlit
+      STREAMLIT_SERVER_PORT:                  "8501"
+      STREAMLIT_SERVER_ADDRESS:               "0.0.0.0"
+      STREAMLIT_SERVER_HEADLESS:              "true"
+      STREAMLIT_BROWSER_GATHER_USAGE_STATS:   "false"
+
+    volumes:
+      # Persist Whisper model weights across container restarts
+      - whisper_cache:/root/.cache/whisper
+
+      # Persist pipeline outputs on the host for inspection
+      - ./outputs:/app/outputs
+
+      # Mount sample audio directory for easy test file access
+      - ./sample_audio:/app/sample_audio
+
+    restart: unless-stopped
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
+
+    # Resource limits — adjust for your hardware
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 1G
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+# ── Named Volumes ─────────────────────────────────────────────────────────────
+volumes:
+  whisper_cache:
+    name: chorus_whisper_cache
+    driver: local

@@ -1,0 +1,61 @@
+title = "Chorus Engine — Secret Scan Configuration"
+
+# Extend the default gitleaks ruleset with project-specific rules.
+# Baseline: incendiary/Bedrock (https://github.com/incendiary/Bedrock)
+[extend]
+useDefault = true
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Project-specific rules
+# ─────────────────────────────────────────────────────────────────────────────
+
+[[rules]]
+id          = "huggingface-token"
+description = "Hugging Face access token (required for pyannote.audio)"
+regex       = '''hf_[a-zA-Z0-9]{34,}'''
+tags        = ["secret", "ml", "huggingface"]
+
+[[rules]]
+id          = "openai-api-key"
+description = "OpenAI API key"
+regex       = '''sk-[a-zA-Z0-9]{32,}'''
+tags        = ["secret", "openai"]
+
+[[rules]]
+id          = "whisper-model-path-hardcoded"
+description = "Hardcoded absolute model cache path"
+regex       = '''/home/[a-zA-Z][a-zA-Z0-9_\-]+/\.cache/whisper'''
+tags        = ["path", "hardcoded"]
+
+[[rules]]
+id          = "internal-ip-rfc1918"
+description = "Non-standard RFC-1918 address"
+regex       = '''(10\.(?:2[0-4]\d|25[0-5]|[01]?\d\d?)\.(?:2[0-4]\d|25[0-5]|[01]?\d\d?)\.(?:2[0-4]\d|25[0-5]|[01]?\d\d?)|172\.(?:1[6-9]|2\d|3[01])\.(?:2[0-4]\d|25[0-5]|[01]?\d\d?)\.(?:2[0-4]\d|25[0-5]|[01]?\d\d?)|192\.168\.(?:2[0-4]\d|25[0-5]|[01]?\d\d?)\.(?:2[0-4]\d|25[0-5]|[01]?\d\d?))'''
+tags        = ["infrastructure"]
+
+[[rules]]
+id          = "local-abs-path"
+description = "Absolute local user path"
+regex       = '''(/Users/[a-zA-Z][a-zA-Z0-9_\-]+/|C:\\Users\\[a-zA-Z][a-zA-Z0-9_\-]+\\|/home/[a-zA-Z][a-zA-Z0-9_\-]+/)'''
+tags        = ["path"]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Allowlist
+# ─────────────────────────────────────────────────────────────────────────────
+
+[allowlist]
+# .secrets.baseline stores SHA-1 hashes of known false-positive strings;
+# these hashes have enough entropy to trigger generic-api-key rules.
+paths = [
+  ".secrets.baseline",
+  "README.md",
+  "CLAUDE.md",
+]
+regexes = [
+  # Common private network examples used in documentation
+  '''192\.168\.(1|0)\.(1|10|100|200)''',
+  '''10\.0\.0\.(0|1|24)''',
+  '''172\.16\.0\.(0|24)''',
+  # Docker Compose internal service hostnames
+  '''chorus:8501''',
+]

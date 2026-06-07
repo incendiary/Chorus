@@ -1,0 +1,152 @@
+# Chorus Engine
+
+**A multi-pass consensus audio transcription engine powered by OpenAI Whisper.**
+
+Chorus automates high-fidelity audio transcription by applying a multi-pass methodology. It ingests raw audio, generates distinct cleaned variants (high-pass, normalised, denoised), transcribes each independently, and synthesises the results into a single, confidence-weighted "consensus transcript".
+
+This approach dramatically reduces single-model hallucinations and improves word-error rates (WER) on challenging audio by mathematically voting on word-level alignment across multiple acoustic perspectives.
+
+---
+
+## Features
+
+- **Acoustic Pre-processing Pipeline:** Applies dynamic range normalisation, high-pass filtering, and spectral subtraction denoising via `librosa` and `scipy`.
+- **Local Transcription:** Fully offline transcription using OpenAI's `whisper` models. No audio data leaves your machine.
+- **Consensus Voting Logic:** A sliding-window alignment algorithm that compares transcripts word-for-word, grouping near-matches using NLTK fuzzy similarity.
+- **Confidence Highlighting:** The final output is an annotated Markdown document where words are highlighted based on inter-variant agreement.
+- **Streamlit Interface:** A clean, responsive web UI for uploading files, monitoring progress, and reviewing transcripts.
+- **Containerised:** Ready to deploy via Docker and `docker-compose`.
+
+---
+
+## Prerequisites
+
+If running via Docker, you only need:
+- [Docker](https://docs.docker.com/get-docker/)
+- [Docker Compose](https://docs.docker.com/compose/install/)
+
+If running natively (bare-metal), you require:
+- Python 3.11+
+- [FFmpeg](https://ffmpeg.org/download.html) (must be available on your system `PATH`)
+
+---
+
+## Installation & Usage (Docker)
+
+This is the recommended approach. The Docker image encapsulates the Python environment and FFmpeg dependencies.
+
+1. **Clone or extract the repository.**
+2. **Configure environment (optional):**
+   ```bash
+   cp .env.example .env
+   # Edit .env to change WHISPER_MODEL (default is "base")
+   ```
+3. **Build and start the application:**
+   ```bash
+   docker-compose up --build
+   ```
+4. **Access the UI:**
+   Open your browser and navigate to: [http://localhost:8501](http://localhost:8501)
+
+### Stopping the service
+```bash
+docker-compose down
+```
+
+*Note: The Whisper model weights are cached in a persistent Docker volume, so subsequent starts will be significantly faster.*
+
+---
+
+## Native Installation (Bare-Metal)
+
+1. **Ensure FFmpeg is installed.**
+   - macOS: `brew install ffmpeg`
+   - Ubuntu/Debian: `sudo apt install ffmpeg`
+   - Windows: Install via `winget` or download binaries.
+
+2. **Create a virtual environment:**
+   ```bash
+   python -m venv .venv
+   source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+   ```
+
+3. **Install dependencies:**
+   ```bash
+   pip install --upgrade pip
+   pip install -r requirements.txt
+   ```
+
+4. **Run the Streamlit UI:**
+   ```bash
+   streamlit run ui/app.py
+   ```
+
+---
+
+## Understanding the Output
+
+Chorus produces a final `.md` file in the `outputs/consensus/` directory. This file uses standard Markdown and extended highlighting syntax to indicate confidence levels:
+
+| Rendering | Confidence Tier | Meaning | Recommended Action |
+|-----------|-----------------|---------|--------------------|
+| Plain text | **HIGH** (≥ 75 %) | Word appears in 3 or 4 variants. | Accept — high agreement. |
+| `==highlighted==` | **MEDIUM** (50 %) | Word appears in exactly 2 variants. | Review — split consensus. |
+| **~~struck bold~~** | **LOW** (25 %) | Word appears in only 1 variant. | Flag — likely an artefact. |
+
+*Note: The exact threshold percentages are configurable in `config.py`.*
+
+---
+
+## Project Architecture
+
+```text
+chorus-engine/
+├── audio_processor/          # Stage 1: Audio cleaning pipeline
+│   ├── filters.py            # High-pass, norm, and denoise algorithms
+│   └── pipeline.py           # Orchestrates variant generation
+├── transcription_engine/     # Stage 2: Whisper integration
+│   ├── whisper_engine.py     # Local model wrapper and caching
+│   └── orchestrator.py       # Runs Whisper over all audio variants
+├── consensus_merger/         # Stage 3: Voting and alignment
+│   ├── alignment.py          # Word-level sliding window voting
+│   ├── renderer.py           # Markdown document generation
+│   └── merger.py             # Consensus orchestrator
+├── ui/                       # Stage 4: Web interface
+│   └── app.py                # Streamlit dashboard
+├── config.py                 # Central configuration and thresholds
+├── pipeline_runner.py        # End-to-end CLI entry point
+├── Dockerfile                # Production-grade multi-stage build
+├── docker-compose.yml        # Service definitions and volumes
+└── requirements.txt          # Pinned Python dependencies
+```
+
+---
+
+## Roadmap
+
+### Implemented Features (v2.0 Complete)
+- ✅ **Audio Cleaning Pipeline:** High-pass, Normalisation, Spectral Denoising.
+- ✅ **Local Transcription:** Offline OpenAI Whisper integration.
+- ✅ **Consensus Alignment:** Word-level sliding window voting with NLTK fuzzy similarity.
+- ✅ **Rich UI:** Interactive Streamlit dashboard.
+- ✅ **Speaker Diarisation:** `pyannote.audio` integration for multi-speaker identification.
+- ✅ **GPU Acceleration:** Pre-configured `docker-compose.gpu.yml` for NVIDIA CUDA hardware.
+- ✅ **Multi-Format Export:** Direct export to PDF, DOCX, SRT, and VTT formats.
+- ✅ **NLP Reconstruction:** spaCy-powered grammatical reconstruction for LOW-confidence tokens.
+- ✅ **Batch Processing:** Unattended CLI mode (`python -m batch_processor.batch_runner`) for processing entire directories.
+
+---
+
+## Autonomous Maintenance Handoff
+
+> **Note to Maintainers:** This codebase has been hardened and prepared for autonomous maintenance via Claude Code. It adheres to the security and tooling standards established by the [Bedrock](https://github.com/incendiary/Bedrock) repository.
+>
+> When initialising this repository:
+> 1. Run `./gh_init.sh <your-org> <repo-name>` to create the GitHub repository, enforce branch protection, and require signed commits.
+> 2. Open the project in Claude Code — the `CLAUDE.md` file will load automatically to enforce architectural rules, unit testing standards, and development guidelines.
+> 3. The CI pipeline (`.github/workflows/ci.yml`) enforces a strict three-layer secret scan (gitleaks + TruffleHog + detect-secrets) before any code is linted or tested.
+
+---
+
+**Author:** Manus AI
+**Licence:** MIT
