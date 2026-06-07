@@ -31,8 +31,28 @@ for _dir in (VARIANTS_DIR, TRANSCRIPTS_DIR, CONSENSUS_DIR):
 # "base" offers a strong balance between speed and accuracy for local use.
 WHISPER_MODEL = os.environ.get("WHISPER_MODEL", "base")
 
-# Device: "cpu" or "cuda" (auto-detected if not set)
-WHISPER_DEVICE = os.environ.get("WHISPER_DEVICE", "cpu")
+# Compute device for Whisper inference.
+# Explicit override: set WHISPER_DEVICE=cpu | cuda | mps in your environment.
+# If unset, the best available device is probed automatically:
+#   NVIDIA GPU (CUDA) → Apple Silicon GPU (MPS) → CPU
+
+
+def _detect_device() -> str:
+    """Return the best available compute device for PyTorch/Whisper."""
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            return "cuda"
+        if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+            return "mps"
+    except Exception:  # noqa: BLE001, S110
+        pass  # torch unavailable — fall back silently to cpu
+    return "cpu"
+
+
+_env_device = os.environ.get("WHISPER_DEVICE", "").strip().lower()
+WHISPER_DEVICE: str = _env_device if _env_device else _detect_device()
 
 # Language hint (None = auto-detect)
 WHISPER_LANGUAGE = os.environ.get("WHISPER_LANGUAGE", None)

@@ -28,13 +28,24 @@ _model: whisper.Whisper | None = None
 
 
 def _get_model() -> whisper.Whisper:
-    """Load (or return cached) Whisper model."""
+    """Load (or return cached) Whisper model, falling back to CPU on device errors."""
     global _model
     if _model is None:
         logger.info(
             "Loading Whisper model '%s' on device '%s'…", WHISPER_MODEL, WHISPER_DEVICE
         )
-        _model = whisper.load_model(WHISPER_MODEL, device=WHISPER_DEVICE)
+        try:
+            _model = whisper.load_model(WHISPER_MODEL, device=WHISPER_DEVICE)
+        except (RuntimeError, Exception) as exc:  # noqa: BLE001
+            if WHISPER_DEVICE != "cpu":
+                logger.warning(
+                    "Failed to load model on '%s' (%s) — falling back to CPU.",
+                    WHISPER_DEVICE,
+                    exc,
+                )
+                _model = whisper.load_model(WHISPER_MODEL, device="cpu")
+            else:
+                raise
         logger.info("Whisper model loaded.")
     return _model
 

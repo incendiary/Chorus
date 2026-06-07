@@ -116,21 +116,22 @@ docker-compose -f docker-compose.yml -f docker-compose.gpu.yml up --build
 
 ### Apple Silicon (macOS) — MPS
 
-**In Docker: CPU only.** Docker Desktop on macOS runs containers inside a Linux VM (Apple's Virtualization Framework). That VM has no access to the Metal GPU, so `WHISPER_DEVICE=mps` cannot work inside a container. There is no workaround — this is an architectural limitation of how Docker runs on macOS. The standard CPU image runs fine.
+**In Docker: CPU only.** Docker Desktop on macOS runs containers inside a Linux VM (Apple's Virtualization Framework). That VM has no access to the Metal GPU — `WHISPER_DEVICE=mps` cannot work inside a container. There is no workaround; this is an architectural limitation. The standard CPU image runs fine.
 
-**Native (bare-metal): MPS is fully supported.** If you run Chorus outside Docker on an Apple Silicon Mac, PyTorch's Metal backend gives a meaningful speedup over CPU. Set the device in your `.env`:
+**Native (bare-metal): MPS is fully supported and auto-detected.** On Apple Silicon Macs, Chorus probes for MPS at startup and selects it automatically — no `.env` change needed. PyTorch's Metal backend gives roughly 3–5× the speed of CPU inference for the `base` and `small` models.
 
-```bash
-WHISPER_DEVICE=mps
-```
-
-Then run natively:
+If you want to be explicit, or override to CPU for testing:
 
 ```bash
-streamlit run ui/app.py
+# .env
+WHISPER_DEVICE=mps   # force MPS (Apple Silicon native)
+WHISPER_DEVICE=cpu   # force CPU
+# leave blank to auto-detect (default)
 ```
 
-MPS performance is roughly 3–5× faster than CPU for the Whisper `base` and `small` models on M1/M2/M3/M4. The `large` model may exceed unified memory on 8 GB configurations — use `small` or `medium` in that case.
+> **Memory note:** The `large` model (~3 GB) may exceed unified memory on 8 GB M-series configurations. Use `WHISPER_MODEL=small` or `medium` on those machines.
+
+If Chorus is run natively on Apple Silicon and the MPS device fails to load (e.g. memory pressure), it automatically falls back to CPU and logs a warning — the transcription will still complete.
 
 ---
 
