@@ -37,7 +37,7 @@ This is the recommended approach. The Docker image encapsulates the Python envir
 
 1. **Clone the repository:**
    ```bash
-   git clone -b v1.0.0 https://github.com/incendiary/Chorus.git
+   git clone -b v1.0.1 https://github.com/incendiary/Chorus.git
    cd Chorus
    ```
 2. **Configure environment (optional):**
