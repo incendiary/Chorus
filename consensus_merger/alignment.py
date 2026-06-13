@@ -31,7 +31,7 @@ from dataclasses import dataclass, field
 import nltk
 from nltk.metrics.distance import edit_distance
 
-from config import CONSENSUS_THRESHOLD, SIMILARITY_THRESHOLD
+from config import ALIGNMENT_STRATEGY, CONSENSUS_THRESHOLD, SIMILARITY_THRESHOLD
 
 logger = logging.getLogger(__name__)
 
@@ -123,16 +123,13 @@ def _best_fuzzy_match(
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def align_transcripts(transcripts: dict[str, str]) -> list[WordVote]:
+def _align_positional(transcripts: dict[str, str]) -> list[WordVote]:
     """
-    Align multiple transcript strings and produce a word-level vote sequence.
+    Align multiple transcript strings using positional (index-based) comparison.
 
-    The algorithm uses a greedy positional union approach:
-      - All transcripts are tokenised and padded to the same length.
-      - At each position, a frequency count of all observed tokens is computed.
-      - Fuzzy matching groups near-identical tokens (e.g., "colour" vs "color").
-      - The most frequent token is elected as the canonical word.
-      - A WordVote is emitted with the appropriate confidence tier.
+    This is the legacy algorithm: fast but assumes all variants produce
+    similar word counts. Insertions/deletions in one variant will shift
+    all subsequent positions out of alignment.
 
     Parameters
     ----------
@@ -208,3 +205,41 @@ def align_transcripts(transcripts: dict[str, str]) -> list[WordVote]:
         sum(1 for v in votes if v.tier == "LOW"),
     )
     return votes
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Public dispatcher
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def align_transcripts(
+    transcripts: dict[str, str],
+    strategy: str | None = None,
+) -> list[WordVote]:
+    """
+    Align multiple transcript strings and produce a word-level vote sequence.
+
+    Dispatches to the appropriate alignment algorithm based on the *strategy*
+    parameter or the global ``ALIGNMENT_STRATEGY`` config value.
+
+    Parameters
+    ----------
+    transcripts : dict[str, str]
+        Mapping of variant key → plain-text transcript string.
+    strategy : str, optional
+        Override the alignment strategy: ``"sequence"`` (Needleman-Wunsch) or
+        ``"positional"`` (legacy index-based). Defaults to config value.
+
+    Returns
+    -------
+    list[WordVote]
+        Ordered list of WordVote objects representing the consensus sequence.
+    """
+    strategy = (strategy or ALIGNMENT_STRATEGY).strip().lower()
+
+    if strategy == "sequence":
+        from consensus_merger.sequence_alignment import align_transcripts_sequence
+
+        return align_transcripts_sequence(transcripts)
+
+    return _align_positional(transcripts)
