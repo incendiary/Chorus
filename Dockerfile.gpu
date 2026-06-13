@@ -74,24 +74,33 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1
 
 COPY --from=builder-gpu /opt/venv /opt/venv
-COPY --from=builder-gpu /root/nltk_data /root/nltk_data
 
 ENV PATH="/opt/venv/bin:$PATH"
 
 WORKDIR /app
+
+# Create a non-root user for running the application
+RUN useradd -m -r -s /bin/false chorus
+
 COPY . /app/
+
+# Copy NLTK data to a shared location
+COPY --from=builder-gpu /root/nltk_data /app/.nltk_data
+ENV NLTK_DATA=/app/.nltk_data
 
 RUN mkdir -p /app/outputs/variants \
              /app/outputs/transcripts \
              /app/outputs/consensus \
-             /app/sample_audio
+             /app/sample_audio \
+             /home/chorus/.cache/whisper \
+    && chown -R chorus:chorus /app /home/chorus
 
 # GPU-specific defaults
 ENV WHISPER_MODEL="small"
 ENV WHISPER_DEVICE="cuda"
 
 ENV STREAMLIT_SERVER_PORT=8501
-ENV STREAMLIT_SERVER_ADDRESS=0.0.0.0
+ENV STREAMLIT_SERVER_ADDRESS=127.0.0.1
 ENV STREAMLIT_BROWSER_GATHER_USAGE_STATS=false
 ENV STREAMLIT_SERVER_HEADLESS=true
 
@@ -100,7 +109,10 @@ EXPOSE 8501
 HEALTHCHECK --interval=30s --timeout=15s --start-period=120s --retries=3 \
     CMD curl -f http://localhost:8501/_stcore/health || exit 1
 
+# Run as non-root user
+USER chorus
+
 CMD ["streamlit", "run", "ui/app.py", \
      "--server.port=8501", \
-     "--server.address=0.0.0.0", \
+     "--server.address=127.0.0.1", \
      "--server.headless=true"]

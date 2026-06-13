@@ -58,22 +58,30 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Copy virtual environment from builder stage
 COPY --from=builder /opt/venv /opt/venv
-COPY --from=builder /root/nltk_data /root/nltk_data
 
 # Set PATH to use the venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# ── Application setup ────────────────────────────────────────────────────────
+# ── Application setup ────────────────────────────────────────────────────────────
 WORKDIR /app
+
+# Create a non-root user for running the application
+RUN useradd -m -r -s /bin/false chorus
 
 # Copy application source
 COPY . /app/
 
-# Create output directories
+# Copy NLTK data to a shared location
+COPY --from=builder /root/nltk_data /app/.nltk_data
+ENV NLTK_DATA=/app/.nltk_data
+
+# Create output directories and set ownership
 RUN mkdir -p /app/outputs/variants \
              /app/outputs/transcripts \
              /app/outputs/consensus \
-             /app/sample_audio
+             /app/sample_audio \
+             /home/chorus/.cache/whisper \
+    && chown -R chorus:chorus /app /home/chorus
 
 # ── Whisper model cache ───────────────────────────────────────────────────────
 # The model is downloaded on first run and cached in ~/.cache/whisper.
