@@ -46,9 +46,7 @@ logger = logging.getLogger(__name__)
 # Configuration
 # ─────────────────────────────────────────────────────────────────────────────
 
-HF_TOKEN: str | None = os.environ.get("HUGGINGFACE_TOKEN") or getattr(
-    __import__("config"), "DIARISATION_HF_TOKEN", None
-)
+HF_TOKEN: str | None = os.environ.get("HUGGINGFACE_TOKEN")
 
 # Minimum speaker-turn duration to retain (seconds)
 MIN_SEGMENT_DURATION: float = 0.5

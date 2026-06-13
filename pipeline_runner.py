@@ -49,6 +49,8 @@ def _sanitise_stem(raw: str) -> str:
 def run_pipeline(
     audio_path: str | Path,
     language: str | None = None,
+    enable_nlp: bool = False,
+    enable_diarisation: bool = False,
     progress_callback: Callable[[str, float], None] | None = None,
 ) -> dict[str, Path]:
     """
@@ -61,6 +63,10 @@ def run_pipeline(
     language : str, optional
         BCP-47 language code hint for Whisper (e.g., ``"en"``).
         If ``None``, Whisper auto-detects the language.
+    enable_nlp : bool
+        If True, run spaCy NLP reconstruction on LOW-confidence tokens.
+    enable_diarisation : bool
+        If True, run pyannote speaker diarisation.
     progress_callback : callable, optional
         Called as ``progress_callback(stage_label, fraction_complete)``
         at key milestones.  Fraction is in [0.0, 1.0].
@@ -126,10 +132,7 @@ def run_pipeline(
     votes = align_transcripts(text_map)
 
     # ── Optional: NLP Reconstruction ─────────────────────────────────────────
-    # If the user enables NLP reconstruction via environment variable
-    import os
-
-    if os.environ.get("ENABLE_NLP_RECONSTRUCTION", "false").lower() == "true":
+    if enable_nlp:
         _progress("Running spaCy NLP reconstruction…", 0.90)
         from nlp_reconstructor.reconstructor import reconstruct_low_tokens
 
@@ -140,7 +143,7 @@ def run_pipeline(
 
     # ── Optional: Speaker Diarisation ────────────────────────────────────────
     diarised_path = None
-    if os.environ.get("ENABLE_DIARISATION", "false").lower() == "true":
+    if enable_diarisation:
         _progress("Running speaker diarisation…", 0.97)
         try:
             from diarisation.diariser import (
@@ -152,8 +155,8 @@ def run_pipeline(
             speaker_segs = diarise(variant_paths["original"])
             labelled = label_transcript(speaker_segs, transcripts["original"])
             diarised_path = render_diarised_md(labelled, stem)
-        except Exception as e:
-            logger.warning(f"Diarisation failed: {e}")
+        except Exception as exc:
+            logger.warning("Diarisation failed: %s", exc)
 
     _progress("Pipeline complete.", 1.00)
 

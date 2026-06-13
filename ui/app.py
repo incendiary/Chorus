@@ -292,8 +292,6 @@ if uploaded_files:
 
     if run_btn:
         os.environ["WHISPER_MODEL"] = model_choice
-        os.environ["ENABLE_NLP_RECONSTRUCTION"] = str(enable_nlp).lower()
-        os.environ["ENABLE_DIARISATION"] = str(enable_diarisation).lower()
 
         formats_to_export = [
             fmt
@@ -338,6 +336,8 @@ if uploaded_files:
             results = run_pipeline(
                 audio_path=tmp_path,
                 language=language,
+                enable_nlp=enable_nlp,
+                enable_diarisation=enable_diarisation,
                 progress_callback=_progress,
             )
             return results, tmp_path, original_stem
