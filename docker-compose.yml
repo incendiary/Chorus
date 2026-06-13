@@ -40,7 +40,7 @@ services:
 
     volumes:
       # Persist Whisper model weights across container restarts
-      - whisper_cache:/root/.cache/whisper
+      - whisper_cache:/home/chorus/.cache/whisper
 
       # Persist pipeline outputs on the host for inspection
       - ./outputs:/app/outputs
