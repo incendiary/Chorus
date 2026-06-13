@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import sys
 import tempfile
 from pathlib import Path
@@ -39,6 +40,17 @@ from export_engine.exporter import (  # noqa: E402
 from pipeline_runner import run_pipeline  # noqa: E402
 
 logger = logging.getLogger(__name__)
+
+# Safe filename pattern — only alphanumeric, hyphens, and underscores retained
+_SAFE_STEM_RE = re.compile(r"[^a-zA-Z0-9_-]")
+
+
+def _sanitise_stem(raw_name: str) -> str:
+    """Sanitise a user-supplied filename stem to safe filesystem characters."""
+    stem = Path(raw_name).stem
+    sanitised = _SAFE_STEM_RE.sub("_", stem).strip("_")
+    return sanitised or "upload"
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Page configuration
@@ -306,10 +318,15 @@ if uploaded_files:
 
             Returns (results, tmp_path, original_stem).
             """
-            original_stem = Path(uf.name).stem
-            suffix = Path(uf.name).suffix
-            tmp_path = Path(tempfile.gettempdir()) / f"{original_stem}{suffix}"
-            tmp_path.write_bytes(uf.read())
+            original_stem = _sanitise_stem(uf.name)
+            suffix = Path(uf.name).suffix.lower()
+            # Secure temp file: unique path, exclusive creation, no race condition
+            tmp_fd = tempfile.NamedTemporaryFile(
+                suffix=suffix, prefix=f"{original_stem}_", delete=False
+            )
+            tmp_path = Path(tmp_fd.name)
+            tmp_fd.write(uf.read())
+            tmp_fd.close()
 
             def _progress(label: str, frac: float) -> None:
                 progress_slot.progress(min(frac, 1.0), text=label)
@@ -464,6 +481,7 @@ if uploaded_files:
                     log_expander = st.expander("📋 Live log", expanded=False)
                     log_lines: list[str] = []
 
+                    tmp_path: Path | None = None
                     try:
                         results, tmp_path, original_stem = _run_one_file(
                             uf, progress_bar, status_text, log_lines, log_expander
@@ -477,8 +495,8 @@ if uploaded_files:
                         st.error(f"Pipeline failed: {exc}")
                         logger.exception("Pipeline error for %s", uf.name)
                     finally:
-                        tmp_path = Path(tempfile.gettempdir()) / uf.name
-                        tmp_path.unlink(missing_ok=True)
+                        if tmp_path is not None:
+                            tmp_path.unlink(missing_ok=True)
 
         else:
             # Process all files first, collect results
@@ -495,6 +513,7 @@ if uploaded_files:
                 log_expander = st.expander(f"📋 Live log — {uf.name}", expanded=False)
                 log_lines = []
 
+                tmp_path: Path | None = None
                 try:
                     results, tmp_path, original_stem = _run_one_file(
                         uf, progress_bar, status_text, log_lines, log_expander
@@ -504,8 +523,8 @@ if uploaded_files:
                     st.error(f"Pipeline failed for {uf.name}: {exc}")
                     logger.exception("Pipeline error for %s", uf.name)
                 finally:
-                    tmp_path = Path(tempfile.gettempdir()) / uf.name
-                    tmp_path.unlink(missing_ok=True)
+                    if tmp_path is not None:
+                        tmp_path.unlink(missing_ok=True)
 
             overall.progress(1.0, text=f"✅ All {len(uploaded_files)} files complete!")
 

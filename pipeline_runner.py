@@ -15,6 +15,7 @@ called programmatically by the Streamlit UI.
 from __future__ import annotations
 
 import logging
+import re
 import sys
 import time
 from collections.abc import Callable
@@ -29,6 +30,15 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
 )
 logger = logging.getLogger("chorus.pipeline")
+
+# Safe filename pattern — only alphanumeric, hyphens, and underscores retained
+_SAFE_STEM_RE = re.compile(r"[^a-zA-Z0-9_-]")
+
+
+def _sanitise_stem(raw: str) -> str:
+    """Sanitise a filename stem to safe filesystem characters."""
+    sanitised = _SAFE_STEM_RE.sub("_", raw).strip("_")
+    return sanitised or "audio"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -70,7 +80,7 @@ def run_pipeline(
         If *audio_path* does not exist.
     """
     audio_path = Path(audio_path)
-    stem = audio_path.stem
+    stem = _sanitise_stem(audio_path.stem)
     t_start = time.perf_counter()
 
     def _progress(label: str, frac: float) -> None:
