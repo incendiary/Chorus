@@ -25,9 +25,6 @@ stub so the rest of the pipeline continues uninterrupted.
 
 Set the token via the environment variable:
     HUGGINGFACE_TOKEN=hf_xxxxxxxxxxxx
-
-Or via config.py:
-    DIARISATION_HF_TOKEN = "hf_xxxxxxxxxxxx"
 """
 
 from __future__ import annotations
