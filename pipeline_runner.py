@@ -142,6 +142,18 @@ def run_pipeline(
     consensus_path = render_consensus(votes, stem, transcripts)
     _progress("Consensus document generated.", 0.95)
 
+    # ── AI Context Pack (always generated) ───────────────────────────────────
+    _progress("Generating AI context pack…", 0.96)
+    from export_engine.ai_context import generate_ai_context_pack
+
+    ai_context_path = generate_ai_context_pack(
+        votes=votes,
+        stem=stem,
+        transcripts_meta=transcripts,
+        elapsed_seconds=round(time.perf_counter() - t_start, 2),
+        alignment_strategy=alignment_strategy,
+    )
+
     # ── Optional: Speaker Diarisation ────────────────────────────────────────
     diarised_path = None
     speaker_labels: list[str] = []
@@ -164,6 +176,17 @@ def run_pipeline(
             speaker_map = load_speaker_names(stem)
 
             diarised_path = render_diarised_md(labelled, stem, speaker_map=speaker_map)
+
+            # Update AI context pack with speaker information
+            ai_context_path = generate_ai_context_pack(
+                votes=votes,
+                stem=stem,
+                transcripts_meta=transcripts,
+                elapsed_seconds=round(time.perf_counter() - t_start, 2),
+                alignment_strategy=alignment_strategy,
+                speaker_labels=speaker_labels,
+                speaker_names=speaker_map,
+            )
         except Exception as exc:
             logger.warning("Diarisation failed: %s", exc)
 
@@ -176,6 +199,7 @@ def run_pipeline(
         "variant_paths": variant_paths,
         "transcripts": transcripts,
         "consensus_path": consensus_path,
+        "ai_context_path": ai_context_path,
         "diarised_path": diarised_path,
         "speaker_labels": speaker_labels,
         "elapsed_seconds": elapsed,
