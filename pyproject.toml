@@ -49,8 +49,6 @@ target-version = "py311"
 select = ["E", "F", "W", "I", "N", "UP", "S", "B", "A", "C4", "PT"]
 ignore = [
   "S101",   # allow assert in tests
-  "S603",   # subprocess calls are intentional in pipeline_runner
-  "S607",   # partial path in subprocess is intentional
 ]
 
 [tool.ruff.lint.per-file-ignores]
