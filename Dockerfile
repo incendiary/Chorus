@@ -84,7 +84,7 @@ ENV WHISPER_DEVICE="cpu"
 
 # ── Streamlit configuration ───────────────────────────────────────────────────
 ENV STREAMLIT_SERVER_PORT=8501
-ENV STREAMLIT_SERVER_ADDRESS=0.0.0.0
+ENV STREAMLIT_SERVER_ADDRESS=127.0.0.1
 ENV STREAMLIT_BROWSER_GATHER_USAGE_STATS=false
 ENV STREAMLIT_SERVER_HEADLESS=true
 
@@ -97,5 +97,5 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
 # Default command: launch the Streamlit UI
 CMD ["streamlit", "run", "ui/app.py", \
      "--server.port=8501", \
-     "--server.address=0.0.0.0", \
+     "--server.address=127.0.0.1", \
      "--server.headless=true"]
