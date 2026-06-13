@@ -144,18 +144,26 @@ def run_pipeline(
 
     # ── Optional: Speaker Diarisation ────────────────────────────────────────
     diarised_path = None
+    speaker_labels: list[str] = []
     if enable_diarisation:
         _progress("Running speaker diarisation…", 0.97)
         try:
             from diarisation.diariser import (
                 diarise,
+                get_unique_speakers,
                 label_transcript,
+                load_speaker_names,
                 render_diarised_md,
             )
 
             speaker_segs = diarise(variant_paths["original"])
             labelled = label_transcript(speaker_segs, transcripts["original"])
-            diarised_path = render_diarised_md(labelled, stem)
+            speaker_labels = get_unique_speakers(labelled)
+
+            # Load any previously saved speaker names for this stem
+            speaker_map = load_speaker_names(stem)
+
+            diarised_path = render_diarised_md(labelled, stem, speaker_map=speaker_map)
         except Exception as exc:
             logger.warning("Diarisation failed: %s", exc)
 
@@ -169,6 +177,7 @@ def run_pipeline(
         "transcripts": transcripts,
         "consensus_path": consensus_path,
         "diarised_path": diarised_path,
+        "speaker_labels": speaker_labels,
         "elapsed_seconds": elapsed,
     }
 

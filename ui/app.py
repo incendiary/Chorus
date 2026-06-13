@@ -542,6 +542,60 @@ if uploaded_files:
             # Speaker diarisation
             if results.get("diarised_path") and results["diarised_path"].exists():
                 st.markdown("##### 🗣️ Speaker Diarisation")
+
+                # ── Editable speaker name table ───────────────────────────────
+                speaker_labels = results.get("speaker_labels", [])
+                if speaker_labels:
+                    from diarisation.diariser import (
+                        load_speaker_names,
+                        save_speaker_names,
+                    )
+
+                    # Load existing names (previously saved or empty)
+                    existing_names = load_speaker_names(original_stem)
+
+                    st.markdown(
+                        "**Speaker Names** — assign human-readable names to "
+                        "each speaker. Names are saved and will be re-used on "
+                        "reprocess."
+                    )
+                    name_cols = st.columns([1, 2])
+                    with name_cols[0]:
+                        st.markdown("**Label**")
+                    with name_cols[1]:
+                        st.markdown("**Name**")
+
+                    updated_names: dict[str, str] = {}
+                    for spk in speaker_labels:
+                        row_cols = st.columns([1, 2])
+                        with row_cols[0]:
+                            st.code(spk, language=None)
+                        with row_cols[1]:
+                            name_val = st.text_input(
+                                f"Name for {spk}",
+                                value=existing_names.get(spk, ""),
+                                placeholder=f"e.g. Interviewer, Guest…",
+                                label_visibility="collapsed",
+                                key=f"spk_name_{spk}_{original_stem}",
+                            )
+                            if name_val.strip():
+                                updated_names[spk] = name_val.strip()
+
+                    # Save button
+                    if st.button(
+                        "💾 Save Speaker Names",
+                        key=f"save_spk_{original_stem}",
+                        help="Saves names to a sidecar JSON file. They will be "
+                        "automatically loaded next time you process this file.",
+                    ):
+                        save_speaker_names(original_stem, updated_names)
+                        st.success(
+                            f"Saved {len(updated_names)} speaker name(s) → "
+                            f"`{original_stem}_speakers.json`"
+                        )
+                        st.rerun()
+
+                # ── Diarised transcript preview ───────────────────────────────
                 diar_text = results["diarised_path"].read_text(encoding="utf-8")
                 with st.expander("Preview Diarised Transcript"):
                     st.markdown(diar_text)
