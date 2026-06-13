@@ -22,6 +22,7 @@ import os
 import re
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 import streamlit as st
@@ -31,7 +32,12 @@ _ROOT = Path(__file__).resolve().parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from config import VARIANT_LABELS, WHISPER_MODEL  # noqa: E402
+from config import (  # noqa: E402
+    ALIGNMENT_STRATEGY,
+    NOISE_FLOOR_MODE,
+    VARIANT_LABELS,
+    WHISPER_MODEL,
+)
 from export_engine.exporter import (  # noqa: E402
     export_all,
     export_plain_text,
@@ -155,7 +161,8 @@ def _hw_recommendation() -> tuple[str, str]:
 with st.sidebar:
     st.header("⚙️ Configuration")
 
-    st.subheader("Whisper Model")
+    # ── Model & Device ────────────────────────────────────────────────────────
+    st.subheader("Model & Device")
     model_choice = st.selectbox(
         "Model size",
         options=["tiny", "base", "small", "medium"],
@@ -163,6 +170,19 @@ with st.sidebar:
         help="Larger models are more accurate but slower. 'base' is recommended for local CPU use.",  # noqa: E501
     )
 
+    # Warn if model changed and is already loaded
+    if model_choice != WHISPER_MODEL:
+        st.warning(
+            "⚠️ Model changed — restart required to load the new model.",
+            icon="⚠️",
+        )
+
+    # Show detected compute device
+    from config import WHISPER_DEVICE  # noqa: E402
+    device_icons = {"cuda": "🟢 CUDA (GPU)", "mps": "🟠 MPS (Apple Silicon)", "cpu": "⚪ CPU"}
+    st.caption(f"**Device:** {device_icons.get(WHISPER_DEVICE, WHISPER_DEVICE)}")
+
+    # ── Language ──────────────────────────────────────────────────────────────
     st.subheader("Language")
     lang_input = st.text_input(
         "Language code (optional)",
@@ -172,13 +192,43 @@ with st.sidebar:
     )
     language = lang_input.strip() or None
 
-    st.subheader("Variants")
+    # ── Processing Strategy ───────────────────────────────────────────────────
+    st.subheader("Processing Strategy")
+    alignment_choice = st.selectbox(
+        "Alignment algorithm",
+        options=["sequence", "positional"],
+        index=0 if ALIGNMENT_STRATEGY == "sequence" else 1,
+        format_func=lambda x: "Sequence alignment (accurate)" if x == "sequence" else "Positional (fast, legacy)",
+        help=(
+            "**Sequence (Needleman-Wunsch):** Handles word insertions and deletions "
+            "across variants. More accurate on noisy audio.\n\n"
+            "**Positional (legacy):** Compares word-by-word at each index. "
+            "Fast but sensitive to length differences between variants."
+        ),
+    )
+
+    # ── Audio Cleaning ────────────────────────────────────────────────────────
+    st.subheader("Audio Cleaning")
+    noise_mode_choice = st.selectbox(
+        "Noise floor detection",
+        options=["vad", "fixed"],
+        index=0 if NOISE_FLOOR_MODE == "vad" else 1,
+        format_func=lambda x: "Auto (VAD)" if x == "vad" else "First 0.5 s (legacy)",
+        help=(
+            "**Auto (VAD):** Detects the quietest segment via energy analysis. "
+            "Best when audio starts with speech.\n\n"
+            "**First 0.5 s:** Assumes the first half-second is silence. "
+            "Use if you know your recordings have a silent intro."
+        ),
+    )
+
     st.info(
-        f"Chorus always produces **{len(VARIANT_LABELS)} variants**:\n\n"
+        f"Chorus produces **{len(VARIANT_LABELS)} variants**:\n\n"
         + "\n".join(f"- **{k}**: {v}" for k, v in VARIANT_LABELS.items()),
         icon="ℹ️",
     )
 
+    # ── Advanced Features ─────────────────────────────────────────────────────
     st.subheader("Advanced Features")
     enable_nlp = st.checkbox(
         "🧠 NLP Reconstruction",
@@ -188,11 +238,13 @@ with st.sidebar:
         "🗣️ Speaker Diarisation",
         help="Identify multiple speakers (requires HUGGINGFACE_TOKEN).",
     )
+    st.caption("ℹ️ Word-level timestamps are always enabled for precise subtitles.")
 
+    # ── Export Formats ────────────────────────────────────────────────────────
     st.subheader("Export Formats")
     export_pdf = st.checkbox("PDF Document", value=False)
     export_docx = st.checkbox("Word Document (.docx)", value=False)
-    export_srt = st.checkbox("Subtitles (.srt)", value=False)
+    export_srt = st.checkbox("Subtitles (.srt) — word-level", value=False)
 
     st.divider()
     st.markdown("**Confidence Thresholds**")
@@ -245,23 +297,32 @@ if uploaded_files:
     rec_mode, rec_reason = _hw_recommendation()
 
     if len(uploaded_files) > 1:
-        mode_choice = st.radio(
-            "Processing mode",
-            options=[
-                "Sequential — results appear per file",
-                "All at once — results shown at end",
-            ],
-            index=0 if rec_mode.startswith("Sequential") else 1,
-            horizontal=True,
-            help=(
-                "**Sequential:** each file is fully processed and its results shown "
-                "before the next file starts. Lower peak memory — best for longer "
-                "recordings or machines with less RAM.\n\n"
-                "**All at once:** all files are processed back-to-back before any "
-                "results are displayed. Processing is still single-threaded; the only "
-                "difference is when results appear."
-            ),
-        )
+        # Auto-switch to batch view for 3+ files
+        if len(uploaded_files) >= 3:
+            mode_choice = "All at once — results shown at end"
+            st.info(
+                f"📁 **Batch mode** — {len(uploaded_files)} files detected. "
+                "All files will be processed before results are displayed.",
+                icon="📁",
+            )
+        else:
+            mode_choice = st.radio(
+                "Processing mode",
+                options=[
+                    "Sequential — results appear per file",
+                    "All at once — results shown at end",
+                ],
+                index=0 if rec_mode.startswith("Sequential") else 1,
+                horizontal=True,
+                help=(
+                    "**Sequential:** each file is fully processed and its results shown "
+                    "before the next file starts. Lower peak memory — best for longer "
+                    "recordings or machines with less RAM.\n\n"
+                    "**All at once:** all files are processed back-to-back before any "
+                    "results are displayed. Processing is still single-threaded; the only "
+                    "difference is when results appear."
+                ),
+            )
         st.caption(rec_reason)
         sequential = mode_choice.startswith("Sequential")
     else:
@@ -292,6 +353,7 @@ if uploaded_files:
 
     if run_btn:
         os.environ["WHISPER_MODEL"] = model_choice
+        os.environ["NOISE_FLOOR_MODE"] = noise_mode_choice
 
         formats_to_export = [
             fmt
@@ -338,6 +400,7 @@ if uploaded_files:
                 language=language,
                 enable_nlp=enable_nlp,
                 enable_diarisation=enable_diarisation,
+                alignment_strategy=alignment_choice,
                 progress_callback=_progress,
             )
             return results, tmp_path, original_stem
@@ -353,7 +416,11 @@ if uploaded_files:
             consensus_path = results["consensus_path"]
             consensus_text = consensus_path.read_text(encoding="utf-8")
 
-            # Metrics
+            # ── Processing time ───────────────────────────────────────────────
+            elapsed = results.get("elapsed_seconds", 0)
+            st.caption(f"⏱️ Processed in **{elapsed} s**")
+
+            # ── Metrics row ───────────────────────────────────────────────────
             m1, m2, m3, m4 = st.columns(4)
             for col, (key, meta) in zip(
                 [m1, m2, m3, m4], transcripts.items(), strict=False
@@ -361,9 +428,51 @@ if uploaded_files:
                 wc = len(meta.get("text", "").split())
                 col.metric(VARIANT_LABELS.get(key, key), f"{wc} words")
 
-            # Consensus document preview
+            # ── Confidence Visualisation ──────────────────────────────────────
+            st.markdown("#### 🎯 Confidence Overview")
+            # Parse confidence stats from consensus document
+            import re as _re
+            high_m = _re.search(r"HIGH\s*\|\s*(\d+)", consensus_text)
+            med_m = _re.search(r"MEDIUM\s*\|\s*(\d+)", consensus_text)
+            low_m = _re.search(r"LOW\s*\|\s*(\d+)", consensus_text)
+            n_high = int(high_m.group(1)) if high_m else 0
+            n_med = int(med_m.group(1)) if med_m else 0
+            n_low = int(low_m.group(1)) if low_m else 0
+            total_w = n_high + n_med + n_low or 1
+
+            # Confidence bar
+            bar_cols = st.columns([n_high or 1, n_med or 1, n_low or 1])
+            with bar_cols[0]:
+                st.markdown(
+                    f'<div style="background:#d4edda;padding:8px;border-radius:4px;text-align:center">'
+                    f'<b>🟢 HIGH</b><br>{n_high} ({n_high*100//total_w}%)</div>',
+                    unsafe_allow_html=True,
+                )
+            with bar_cols[1]:
+                st.markdown(
+                    f'<div style="background:#fff3cd;padding:8px;border-radius:4px;text-align:center">'
+                    f'<b>🟡 MED</b><br>{n_med} ({n_med*100//total_w}%)</div>',
+                    unsafe_allow_html=True,
+                )
+            with bar_cols[2]:
+                st.markdown(
+                    f'<div style="background:#f8d7da;padding:8px;border-radius:4px;text-align:center">'
+                    f'<b>🔴 LOW</b><br>{n_low} ({n_low*100//total_w}%)</div>',
+                    unsafe_allow_html=True,
+                )
+
+            # ── Consensus document preview ────────────────────────────────────
             st.markdown("#### 📄 Consensus Transcript")
-            st.markdown(consensus_text, unsafe_allow_html=False)
+            view_mode = st.toggle(
+                "Show raw Markdown",
+                value=False,
+                key=f"raw_md_{original_stem}",
+                help="Toggle between rendered view and raw Markdown source.",
+            )
+            if view_mode:
+                st.code(consensus_text, language="markdown")
+            else:
+                st.markdown(consensus_text, unsafe_allow_html=False)
 
             # ── Download buttons ──────────────────────────────────────────────
             dl_cols = st.columns(3)
