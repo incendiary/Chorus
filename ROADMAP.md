@@ -38,7 +38,7 @@ Tracked improvements identified during the June 2026 repository assessment.
 
 ## Future Enhancements
 
-- [ ] **Parallel transcription for multi-GPU setups** — currently variants are transcribed sequentially, which is optimal for single-GPU but leaves headroom on multi-GPU or high-core-count CPU machines.
+- [x] **Parallel transcription for multi-GPU setups** (v2.0.7) — variants are now transcribed with configurable parallelism and device-aware assignment, including multi-CUDA-device round-robin scheduling.
 
 - [ ] **Version sync across all release channels** — ensure pyproject.toml, README.md, git tags, and ROADMAP completions stay in sync. ✓ Added comprehensive version sync tests in v2.0.6+.
 

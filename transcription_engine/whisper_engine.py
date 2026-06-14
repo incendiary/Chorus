@@ -2,8 +2,9 @@
 transcription_engine/whisper_engine.py — Whisper model wrapper.
 
 Provides a thin, reusable wrapper around OpenAI's `whisper` Python package
-for offline, local transcription.  The model is loaded once and cached as a
-module-level singleton to avoid repeated disk I/O across multiple calls.
+for offline, local transcription. Models are cached per device so parallel
+transcription can target different compute backends (for example cuda:0,
+cuda:1) without repeated load overhead.
 
 Model selection is controlled via config.WHISPER_MODEL (default: "base").
 The "base" model (~145 MB) provides an excellent trade-off between speed
@@ -14,6 +15,7 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -23,31 +25,38 @@ from config import TRANSCRIPTS_DIR, WHISPER_DEVICE, WHISPER_LANGUAGE, WHISPER_MO
 
 logger = logging.getLogger(__name__)
 
-# Module-level model cache — loaded on first call to transcribe()
-_model: whisper.Whisper | None = None
+# Module-level model cache, keyed by device string (e.g., "cpu", "cuda:0").
+_models: dict[str, whisper.Whisper] = {}
+_model_lock = threading.Lock()
 
 
-def _get_model() -> whisper.Whisper:
-    """Load (or return cached) Whisper model, falling back to CPU on device errors."""
-    global _model
-    if _model is None:
+def _get_model(device: str | None = None) -> tuple[whisper.Whisper, str]:
+    """Load (or return cached) Whisper model on the requested device."""
+    requested_device = device or WHISPER_DEVICE
+
+    with _model_lock:
+        if requested_device in _models:
+            return _models[requested_device], requested_device
+
         logger.info(
-            "Loading Whisper model '%s' on device '%s'…", WHISPER_MODEL, WHISPER_DEVICE
+            "Loading Whisper model '%s' on device '%s'…", WHISPER_MODEL, requested_device
         )
         try:
-            _model = whisper.load_model(WHISPER_MODEL, device=WHISPER_DEVICE)
+            model = whisper.load_model(WHISPER_MODEL, device=requested_device)
+            _models[requested_device] = model
+            logger.info("Whisper model loaded on %s.", requested_device)
+            return model, requested_device
         except (RuntimeError, Exception) as exc:  # noqa: BLE001
-            if WHISPER_DEVICE != "cpu":
+            if requested_device != "cpu":
                 logger.warning(
                     "Failed to load model on '%s' (%s) — falling back to CPU.",
-                    WHISPER_DEVICE,
+                    requested_device,
                     exc,
                 )
-                _model = whisper.load_model(WHISPER_MODEL, device="cpu")
-            else:
-                raise
-        logger.info("Whisper model loaded.")
-    return _model
+                if "cpu" not in _models:
+                    _models["cpu"] = whisper.load_model(WHISPER_MODEL, device="cpu")
+                return _models["cpu"], "cpu"
+            raise
 
 
 def transcribe(
@@ -55,6 +64,7 @@ def transcribe(
     variant_key: str,
     stem: str,
     language: str | None = None,
+    device: str | None = None,
 ) -> dict[str, Any]:
     """
     Transcribe a single audio file and persist the result as JSON.
@@ -76,6 +86,9 @@ def transcribe(
         Base filename stem used for output naming.
     language : str, optional
         BCP-47 language code hint.  If None, Whisper auto-detects.
+    device : str, optional
+        Device override (e.g. ``"cuda:0"``). If None, ``config.WHISPER_DEVICE``
+        is used.
 
     Returns
     -------
@@ -91,7 +104,7 @@ def transcribe(
     if not audio_path.exists():
         raise FileNotFoundError(f"Audio variant not found: {audio_path}")
 
-    model = _get_model()
+    model, active_device = _get_model(device=device)
     lang = language or WHISPER_LANGUAGE
 
     logger.info("Transcribing variant '%s': %s", variant_key, audio_path.name)
@@ -108,6 +121,7 @@ def transcribe(
     # Augment result with metadata
     result["variant"] = variant_key
     result["model"] = WHISPER_MODEL
+    result["device"] = active_device
 
     # Persist to TRANSCRIPTS_DIR/<stem>_<variant>.json
     out_path = TRANSCRIPTS_DIR / f"{stem}_{variant_key}.json"
@@ -119,7 +133,7 @@ def transcribe(
 
 
 def unload_model() -> None:
-    """Release the cached model from memory (useful for testing)."""
-    global _model
-    _model = None
-    logger.info("Whisper model unloaded from cache.")
+    """Release all cached models from memory (useful for testing)."""
+    with _model_lock:
+        _models.clear()
+    logger.info("Whisper model cache cleared.")
