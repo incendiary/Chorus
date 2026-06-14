@@ -69,6 +69,11 @@ jobs:
     needs: lint
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Version consistency check (non-blocking release warning mode)
+        run: bash tests/version_consistency_test.sh
 
       - name: Set up Python 3.11
         uses: actions/setup-python@v5

@@ -120,3 +120,20 @@ jobs:
             --title "Chorus ${TAG}" \
             --generate-notes \
             --verify-tag
+
+  # ── Post-release Consistency Check ─────────────────────────────────────────
+  # Runs strict version/release/documentation consistency checks once release
+  # publication has completed.
+  post-release-consistency:
+    name: Post-release Consistency
+    runs-on: ubuntu-latest
+    needs: github-release
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Strict version consistency check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash tests/version_consistency_test.sh --ci
