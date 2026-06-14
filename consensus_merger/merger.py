@@ -16,15 +16,54 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from consensus_merger.alignment import align_transcripts
+from consensus_merger.alignment import WordVote, align_transcripts
 from consensus_merger.renderer import render_consensus
 
 logger = logging.getLogger(__name__)
 
 
+def _extract_non_empty_text_map(transcripts: dict[str, dict[str, Any]]) -> dict[str, str]:
+    """Extract non-empty text values from Whisper result payloads."""
+    if not transcripts:
+        raise ValueError("No transcripts provided to merge.")
+
+    text_map: dict[str, str] = {
+        key: result.get("text", "").strip() for key, result in transcripts.items()
+    }
+
+    non_empty = {k: v for k, v in text_map.items() if v}
+    if not non_empty:
+        raise ValueError("All transcripts are empty — nothing to merge.")
+
+    return non_empty
+
+
+def merge_transcripts_with_votes(
+    transcripts: dict[str, dict[str, Any]],
+    stem: str,
+    strategy: str | None = None,
+    enable_nlp: bool = False,
+) -> tuple[Path, list[WordVote]]:
+    """Run consensus alignment/render and return both output path and votes."""
+    non_empty = _extract_non_empty_text_map(transcripts)
+
+    logger.info("Merging %d transcript variants for stem '%s'.", len(non_empty), stem)
+
+    votes = align_transcripts(non_empty, strategy=strategy)
+
+    if enable_nlp:
+        from nlp_reconstructor.reconstructor import reconstruct_low_tokens
+
+        votes = reconstruct_low_tokens(votes)
+
+    out_path = render_consensus(votes, stem, transcripts)
+    return out_path, votes
+
+
 def merge_transcripts(
     transcripts: dict[str, dict[str, Any]],
     stem: str,
+    strategy: str | None = None,
 ) -> Path:
     """
     Merge multiple Whisper transcript results into a single consensus document.
@@ -47,24 +86,10 @@ def merge_transcripts(
     ValueError
         If *transcripts* is empty or contains no usable text.
     """
-    if not transcripts:
-        raise ValueError("No transcripts provided to merge.")
-
-    # Extract plain-text bodies
-    text_map: dict[str, str] = {
-        key: result.get("text", "").strip() for key, result in transcripts.items()
-    }
-
-    non_empty = {k: v for k, v in text_map.items() if v}
-    if not non_empty:
-        raise ValueError("All transcripts are empty — nothing to merge.")
-
-    logger.info("Merging %d transcript variants for stem '%s'.", len(non_empty), stem)
-
-    # Align and vote
-    votes = align_transcripts(non_empty)
-
-    # Render to Markdown
-    out_path = render_consensus(votes, stem, transcripts)
-
+    out_path, _votes = merge_transcripts_with_votes(
+        transcripts=transcripts,
+        stem=stem,
+        strategy=strategy,
+        enable_nlp=False,
+    )
     return out_path

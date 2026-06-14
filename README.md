@@ -42,7 +42,7 @@ This is the recommended approach. The Docker image encapsulates the Python envir
 
 1. **Clone the repository:**
    ```bash
-   git clone -b v2.0.1 https://github.com/incendiary/Chorus.git
+   git clone -b v2.0.2 https://github.com/incendiary/Chorus.git
    cd Chorus
    ```
 2. **Configure environment (optional):**
@@ -147,15 +147,15 @@ Pre-built images are published to [GitHub Container Registry](https://ghcr.io/in
 ### CPU
 
 ```bash
-docker pull ghcr.io/incendiary/chorus:v2.0.1
-docker run --rm -p 8501:8501 ghcr.io/incendiary/chorus:v2.0.1
+docker pull ghcr.io/incendiary/chorus:v2.0.2
+docker run --rm -p 8501:8501 ghcr.io/incendiary/chorus:v2.0.2
 ```
 
 ### GPU (NVIDIA CUDA)
 
 ```bash
-docker pull ghcr.io/incendiary/chorus:v2.0.1-gpu
-docker run --rm -p 8501:8501 --gpus all ghcr.io/incendiary/chorus:v2.0.1-gpu
+docker pull ghcr.io/incendiary/chorus:v2.0.2-gpu
+docker run --rm -p 8501:8501 --gpus all ghcr.io/incendiary/chorus:v2.0.2-gpu
 ```
 
 Access the UI at [http://localhost:8501](http://localhost:8501).
@@ -248,7 +248,7 @@ chorus-engine/
 
 ## Roadmap
 
-### Implemented Features (v2.0.1)
+### Implemented Features (v2.0.2)
 - ✅ **Sequence Alignment (Needleman-Wunsch):** Banded NW algorithm handles word insertions and deletions across variants. Configurable via `ALIGNMENT_STRATEGY` env var. Fast-path for identical sequences.
 - ✅ **Word-Level Timestamps:** Always-on per-word timing from Whisper. SRT/VTT exports group words into ≤6-word cues with precise start/end times.
 - ✅ **Memory-Optimised Pipeline:** Eager `del` of processed arrays after disk writes. Reduces peak memory for long recordings.
