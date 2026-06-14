@@ -142,21 +142,21 @@ _theme = THEME_PRESETS.get(_theme_name, THEME_PRESETS["Ocean Professional"])
 # ─────────────────────────────────────────────────────────────────────────────
 
 st.markdown(
-    f"""
+    """
 <style>
     :root {
-        --chorus-primary: {_theme['primary']};
-        --chorus-surface: {_theme['surface']};
-        --chorus-border: {_theme['border']};
-        --chorus-header-a: {_theme['header_a']};
-        --chorus-header-b: {_theme['header_b']};
-        --chorus-header-c: {_theme['header_c']};
-        --chorus-high-bg: {_theme['high_bg']};
-        --chorus-high-fg: {_theme['high_fg']};
-        --chorus-med-bg: {_theme['med_bg']};
-        --chorus-med-fg: {_theme['med_fg']};
-        --chorus-low-bg: {_theme['low_bg']};
-        --chorus-low-fg: {_theme['low_fg']};
+        --chorus-primary: __CHORUS_PRIMARY__;
+        --chorus-surface: __CHORUS_SURFACE__;
+        --chorus-border: __CHORUS_BORDER__;
+        --chorus-header-a: __CHORUS_HEADER_A__;
+        --chorus-header-b: __CHORUS_HEADER_B__;
+        --chorus-header-c: __CHORUS_HEADER_C__;
+        --chorus-high-bg: __CHORUS_HIGH_BG__;
+        --chorus-high-fg: __CHORUS_HIGH_FG__;
+        --chorus-med-bg: __CHORUS_MED_BG__;
+        --chorus-med-fg: __CHORUS_MED_FG__;
+        --chorus-low-bg: __CHORUS_LOW_BG__;
+        --chorus-low-fg: __CHORUS_LOW_FG__;
     }
 
     .chorus-header {
@@ -204,8 +204,43 @@ st.markdown(
         color: #4a4a4a;
         margin-top: 0.4rem;
     }
+
+    .chorus-run-status {
+        background: var(--chorus-surface);
+        border: 1px solid var(--chorus-border);
+        border-radius: 8px;
+        padding: 0.9rem 1rem;
+        margin: 0.75rem 0 1rem;
+    }
+
+    @media (max-width: 900px) {
+        .chorus-header {
+            padding: 1.25rem 1rem;
+            border-radius: 10px;
+        }
+
+        .chorus-header h1 {
+            font-size: 1.7rem;
+        }
+
+        .chorus-header p {
+            font-size: 0.9rem;
+        }
+    }
 </style>
-""",
+"""
+    .replace("__CHORUS_PRIMARY__", _theme["primary"])
+    .replace("__CHORUS_SURFACE__", _theme["surface"])
+    .replace("__CHORUS_BORDER__", _theme["border"])
+    .replace("__CHORUS_HEADER_A__", _theme["header_a"])
+    .replace("__CHORUS_HEADER_B__", _theme["header_b"])
+    .replace("__CHORUS_HEADER_C__", _theme["header_c"])
+    .replace("__CHORUS_HIGH_BG__", _theme["high_bg"])
+    .replace("__CHORUS_HIGH_FG__", _theme["high_fg"])
+    .replace("__CHORUS_MED_BG__", _theme["med_bg"])
+    .replace("__CHORUS_MED_FG__", _theme["med_fg"])
+    .replace("__CHORUS_LOW_BG__", _theme["low_bg"])
+    .replace("__CHORUS_LOW_FG__", _theme["low_fg"]),
     unsafe_allow_html=True,
 )
 
@@ -361,6 +396,46 @@ def _render_processing_error(file_name: str, exc: Exception, allow_retry: bool =
         key=f"retry_seq_{sanitise_stem(Path(file_name).stem, fallback='upload')}",
     ):
         st.rerun()
+
+
+def _render_run_status(
+    *,
+    container: object,
+    total_files: int,
+    completed_files: int,
+    failed_files: int,
+    start_time: float,
+    current_file: str | None = None,
+) -> None:
+    """Render a compact batch status panel with throughput and ETA guidance."""
+    processed = completed_files + failed_files
+    elapsed = max(time.time() - start_time, 0.001)
+    progress = (processed / total_files) if total_files else 0.0
+
+    rate_per_sec = processed / elapsed if processed else 0.0
+    eta_seconds = int((total_files - processed) / rate_per_sec) if rate_per_sec > 0 else None
+
+    with container.container():
+        st.markdown('<div class="chorus-run-status">', unsafe_allow_html=True)
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Processed", f"{processed}/{total_files}")
+        c2.metric("Completed", completed_files)
+        c3.metric("Failed", failed_files)
+        c4.metric("Elapsed", f"{int(elapsed)} s")
+
+        progress_text = (
+            f"Processing {current_file}…"
+            if current_file
+            else f"Batch progress: {processed}/{total_files} files"
+        )
+        st.progress(progress, text=progress_text)
+
+        if eta_seconds is not None and processed < total_files:
+            st.caption(f"Estimated time remaining: ~{eta_seconds} s (updates as files complete).")
+        elif processed == total_files:
+            st.caption("Batch complete. Review results and download outputs below.")
+
+        st.markdown("</div>", unsafe_allow_html=True)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -783,7 +858,7 @@ if uploaded_files:
                             name_val = st.text_input(
                                 f"Name for {spk}",
                                 value=existing_names.get(spk, ""),
-                                placeholder=f"e.g. Interviewer, Guest…",
+                                placeholder="e.g. Interviewer, Guest…",
                                 label_visibility="collapsed",
                                 key=f"spk_name_{spk}_{original_stem}",
                             )
@@ -863,10 +938,30 @@ if uploaded_files:
 
         st.divider()
         st.subheader("3 · Results")
+        run_started_at = time.time()
+        run_status_slot = st.empty()
+        completed_files = 0
+        failed_files = 0
+
+        _render_run_status(
+            container=run_status_slot,
+            total_files=len(uploaded_files),
+            completed_files=completed_files,
+            failed_files=failed_files,
+            start_time=run_started_at,
+        )
 
         if sequential:
             # Process and render each file as it completes
             for uf in uploaded_files:
+                _render_run_status(
+                    container=run_status_slot,
+                    total_files=len(uploaded_files),
+                    completed_files=completed_files,
+                    failed_files=failed_files,
+                    start_time=run_started_at,
+                    current_file=uf.name,
+                )
                 with st.expander(f"📄 {uf.name}", expanded=True):
                     progress_bar = st.progress(0.0, text="Initialising…")
                     status_text = st.empty()
@@ -878,17 +973,27 @@ if uploaded_files:
                         results, tmp_path, original_stem = _run_one_file(
                             uf, progress_bar, status_text, log_lines, log_expander
                         )
+                        completed_files += 1
                         progress_bar.progress(1.0, text="✅ Complete!")
                         status_text.success(
                             f"Completed in **{results['elapsed_seconds']} s**"
                         )
                         _render_file_results(uf.name, results, tmp_path, original_stem)
                     except Exception as exc:
+                        failed_files += 1
                         _render_processing_error(uf.name, exc, allow_retry=True)
                         logger.exception("Pipeline error for %s", uf.name)
                     finally:
                         if tmp_path is not None:
                             tmp_path.unlink(missing_ok=True)
+
+                _render_run_status(
+                    container=run_status_slot,
+                    total_files=len(uploaded_files),
+                    completed_files=completed_files,
+                    failed_files=failed_files,
+                    start_time=run_started_at,
+                )
 
         else:
             # Process all files first, collect results
@@ -896,6 +1001,14 @@ if uploaded_files:
             overall = st.progress(0.0, text="Starting…")
 
             for idx, uf in enumerate(uploaded_files):
+                _render_run_status(
+                    container=run_status_slot,
+                    total_files=len(uploaded_files),
+                    completed_files=completed_files,
+                    failed_files=failed_files,
+                    start_time=run_started_at,
+                    current_file=uf.name,
+                )
                 overall.progress(
                     idx / len(uploaded_files),
                     text=f"Processing {uf.name} ({idx + 1}/{len(uploaded_files)})…",
@@ -911,12 +1024,22 @@ if uploaded_files:
                         uf, progress_bar, status_text, log_lines, log_expander
                     )
                     all_results.append((uf, results, tmp_path, original_stem))
+                    completed_files += 1
                 except Exception as exc:
+                    failed_files += 1
                     _render_processing_error(uf.name, exc)
                     logger.exception("Pipeline error for %s", uf.name)
                 finally:
                     if tmp_path is not None:
                         tmp_path.unlink(missing_ok=True)
+
+                _render_run_status(
+                    container=run_status_slot,
+                    total_files=len(uploaded_files),
+                    completed_files=completed_files,
+                    failed_files=failed_files,
+                    start_time=run_started_at,
+                )
 
             overall.progress(1.0, text=f"✅ All {len(uploaded_files)} files complete!")
 
