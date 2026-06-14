@@ -60,7 +60,7 @@ def process_audio(input_path: str | Path) -> dict[str, Path]:
 
     logger.info("Loading audio: %s", input_path)
     audio, sr = librosa.load(str(input_path), sr=TARGET_SAMPLE_RATE, mono=True)
-    logger.info("Loaded %.2f s @ %d Hz", len(audio) / sr, sr)
+    logger.info("Loaded %.2f s @ %d Hz (%.1f MB)", len(audio) / sr, sr, audio.nbytes / 1e6)
 
     stem = input_path.stem
 
@@ -85,6 +85,13 @@ def process_audio(input_path: str | Path) -> dict[str, Path]:
         sf.write(str(out_path), processed, sr, subtype="PCM_16")
         output_paths[key] = out_path
         logger.info("Saved variant '%s' → %s", key, out_path)
+
+        # Release processed array immediately after writing to disk
+        del processed
+
+    # Release source audio — all variants are now on disk
+    del audio
+    logger.info("Audio arrays released — variants persisted to disk.")
 
     return output_paths
 
