@@ -213,6 +213,29 @@ st.markdown(
         margin: 0.75rem 0 1rem;
     }
 
+    .chorus-action-bar {
+        position: sticky;
+        top: 0.5rem;
+        z-index: 20;
+        background: rgba(255, 255, 255, 0.95);
+        border: 1px solid var(--chorus-border);
+        border-left: 4px solid var(--chorus-primary);
+        border-radius: 8px;
+        padding: 0.6rem 0.8rem;
+        margin: 0.5rem 0 0.9rem;
+        backdrop-filter: blur(2px);
+    }
+
+    .chorus-action-bar a {
+        color: var(--chorus-primary);
+        font-weight: 600;
+        text-decoration: none;
+    }
+
+    .chorus-action-bar a:hover {
+        text-decoration: underline;
+    }
+
     @media (max-width: 900px) {
         .chorus-header {
             padding: 1.25rem 1rem;
@@ -470,10 +493,19 @@ def _render_result_navigation(file_names: list[str]) -> None:
     if len(file_names) < 3:
         return
 
-    st.markdown("#### Quick Navigation")
-    st.caption("Jump directly to a file section using the links below.")
-    links = " · ".join(f"[{name}](#{sanitise_stem(Path(name).stem, fallback='upload')})" for name in file_names)
-    st.markdown(links)
+    anchors = [
+        (name, sanitise_stem(Path(name).stem, fallback="upload")) for name in file_names
+    ]
+    links = " · ".join(f"[{name}](#{anchor})" for name, anchor in anchors)
+    st.markdown(
+        (
+            '<div class="chorus-action-bar">'
+            '<b>Quick Navigation:</b> '
+            f"{links}"
+            "</div>"
+        ),
+        unsafe_allow_html=True,
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
