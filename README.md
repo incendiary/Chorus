@@ -10,11 +10,16 @@ This approach dramatically reduces single-model hallucinations and improves word
 
 ## Features
 
-- **Acoustic Pre-processing Pipeline:** Applies dynamic range normalisation, high-pass filtering, and spectral subtraction denoising via `librosa` and `scipy`.
-- **Local Transcription:** Fully offline transcription using OpenAI's `whisper` models. No audio data leaves your machine.
-- **Consensus Voting Logic:** A sliding-window alignment algorithm that compares transcripts word-for-word, grouping near-matches using NLTK fuzzy similarity.
+- **Acoustic Pre-processing Pipeline:** Applies dynamic range normalisation, high-pass filtering, and spectral subtraction denoising via `librosa` and `scipy`. Supports VAD-based noise floor detection.
+- **Local Transcription:** Fully offline transcription using OpenAI's `whisper` models. No audio data leaves your machine. Word-level timestamps always enabled.
+- **Dual Alignment Strategies:** Choose between Needleman-Wunsch sequence alignment (handles insertions/deletions) or legacy positional alignment (fast, word-by-word).
+- **Consensus Voting Logic:** Multi-variant alignment that compares transcripts word-for-word, grouping near-matches using NLTK fuzzy similarity.
 - **Confidence Highlighting:** The final output is an annotated Markdown document where words are highlighted based on inter-variant agreement.
-- **Streamlit Interface:** A clean, responsive web UI for uploading files, monitoring progress, and reviewing transcripts.
+- **AI Context Pack:** Machine-generated structured document for LLM consumption — includes methodology, confidence data, uncertainty annotations, and usage guidance.
+- **Speaker Diarisation:** `pyannote.audio` integration for multi-speaker identification with persistent editable speaker names.
+- **Word-Level Subtitles:** SRT/VTT exports use per-word timestamps for precise subtitle synchronisation.
+- **Memory-Optimised Pipeline:** Eager disk writes and prompt memory release for processing long recordings.
+- **Streamlit Interface:** A clean, responsive web UI with confidence visualisation, strategy selectors, batch auto-switch, and processing time display.
 - **Containerised:** Ready to deploy via Docker and `docker-compose`.
 
 ---
@@ -37,7 +42,7 @@ This is the recommended approach. The Docker image encapsulates the Python envir
 
 1. **Clone the repository:**
    ```bash
-   git clone -b v1.1.0 https://github.com/incendiary/Chorus.git
+   git clone -b v2.0.0 https://github.com/incendiary/Chorus.git
    cd Chorus
    ```
 2. **Configure environment (optional):**
@@ -142,15 +147,15 @@ Pre-built images are published to [GitHub Container Registry](https://ghcr.io/in
 ### CPU
 
 ```bash
-docker pull ghcr.io/incendiary/chorus:v1.1.0
-docker run --rm -p 8501:8501 ghcr.io/incendiary/chorus:v1.1.0
+docker pull ghcr.io/incendiary/chorus:v2.0.0
+docker run --rm -p 8501:8501 ghcr.io/incendiary/chorus:v2.0.0
 ```
 
 ### GPU (NVIDIA CUDA)
 
 ```bash
-docker pull ghcr.io/incendiary/chorus:v1.1.0-gpu
-docker run --rm -p 8501:8501 --gpus all ghcr.io/incendiary/chorus:v1.1.0-gpu
+docker pull ghcr.io/incendiary/chorus:v2.0.0-gpu
+docker run --rm -p 8501:8501 --gpus all ghcr.io/incendiary/chorus:v2.0.0-gpu
 ```
 
 Access the UI at [http://localhost:8501](http://localhost:8501).
@@ -204,17 +209,32 @@ Chorus produces a final `.md` file in the `outputs/consensus/` directory. This f
 ```text
 chorus-engine/
 ├── audio_processor/          # Stage 1: Audio cleaning pipeline
-│   ├── filters.py            # High-pass, norm, and denoise algorithms
-│   └── pipeline.py           # Orchestrates variant generation
+│   ├── filters.py            # High-pass, norm, denoise (VAD + fixed modes)
+│   └── pipeline.py           # Orchestrates variant generation (memory-optimised)
 ├── transcription_engine/     # Stage 2: Whisper integration
-│   ├── whisper_engine.py     # Local model wrapper and caching
+│   ├── whisper_engine.py     # Local model wrapper (word-level timestamps)
 │   └── orchestrator.py       # Runs Whisper over all audio variants
 ├── consensus_merger/         # Stage 3: Voting and alignment
-│   ├── alignment.py          # Word-level sliding window voting
+│   ├── alignment.py          # Strategy dispatcher (positional + sequence)
+│   ├── sequence_alignment.py # Needleman-Wunsch word-level alignment
 │   ├── renderer.py           # Markdown document generation
 │   └── merger.py             # Consensus orchestrator
+├── diarisation/              # Speaker identification
+│   └── diariser.py           # pyannote integration + speaker name persistence
+├── export_engine/            # Multi-format export
+│   ├── exporter.py           # PDF, DOCX, SRT, VTT, ZIP, plain text
+│   └── ai_context.py         # AI/LLM context pack generator
+├── nlp_reconstructor/        # NLP post-processing
+│   └── reconstructor.py      # spaCy grammatical reconstruction
 ├── ui/                       # Stage 4: Web interface
-│   └── app.py                # Streamlit dashboard
+│   └── app.py                # Streamlit dashboard (confidence vis, batch mode)
+├── tests/                    # Test suite (120+ tests)
+│   ├── test_integration.py   # Full pipeline integration tests
+│   ├── test_alignment.py     # Positional alignment tests
+│   ├── test_sequence_alignment.py  # Needleman-Wunsch tests
+│   ├── test_speaker_names.py # Speaker persistence tests
+│   ├── test_ai_context.py    # AI context pack tests
+│   └── ...                   # Audio processor, exporter, merger, reconstructor
 ├── config.py                 # Central configuration and thresholds
 ├── pipeline_runner.py        # End-to-end CLI entry point
 ├── Dockerfile                # CPU image (python:3.11-slim-bookworm)
@@ -228,12 +248,23 @@ chorus-engine/
 
 ## Roadmap
 
+### Implemented Features (v2.0.0)
+- ✅ **Sequence Alignment (Needleman-Wunsch):** Banded NW algorithm handles word insertions and deletions across variants. Configurable via `ALIGNMENT_STRATEGY` env var. Fast-path for identical sequences.
+- ✅ **Word-Level Timestamps:** Always-on per-word timing from Whisper. SRT/VTT exports group words into ≤6-word cues with precise start/end times.
+- ✅ **Memory-Optimised Pipeline:** Eager `del` of processed arrays after disk writes. Reduces peak memory for long recordings.
+- ✅ **VAD Noise Floor Detection:** Energy-based silence detection (auto mode) as alternative to fixed first-0.5s assumption. Configurable via `NOISE_FLOOR_MODE`.
+- ✅ **UI Overhaul:** Alignment strategy selector, noise mode selector, device indicator, model change warning, confidence bar visualisation (HIGH/MED/LOW), raw Markdown toggle, batch auto-switch for 3+ files, processing time display.
+- ✅ **Speaker Name Persistence:** Editable speaker name table in UI. Names saved to `{stem}_speakers.json` sidecar and auto-loaded on reprocess. Included in zip exports.
+- ✅ **AI Context Pack:** Generates `{stem}_ai_context.md` — a structured document for LLM consumption with methodology, confidence stats, clean transcript, uncertainty annotations, and usage guidance.
+- ✅ **Integration Tests:** Full pipeline tests with synthetic audio and mocked transcription (20 tests). Total test suite: 120+ tests.
+
 ### Implemented Features (v1.1.0)
 - ✅ **Multi-File Upload:** Process multiple recordings in a single session; results appear in labelled expanders.
 - ✅ **Filename-Based Outputs:** All generated files (WAVs, transcripts, exports) are named after the original recording, not a temporary path.
 - ✅ **Download All:** A single zip per recording bundles the consensus Markdown, plain transcripts, and all selected export formats.
 - ✅ **Plain-Text Transcript:** "Most Likely" export strips confidence markup; a toggle controls whether LOW-confidence words are shown as `[word?]` or omitted entirely.
 - ✅ **Hardware-Aware Processing Mode:** Sequential vs. all-at-once toggle with a hardware recommendation derived from available RAM and CPU cores.
+- ✅ **Security Hardening (v1.0.1–v1.0.5):** Localhost binding, dependency pinning, no-new-privileges, read-only filesystem, non-root user, secret rotation, sanitised filenames.
 
 ### Implemented Features (v1.0.0)
 - ✅ **Audio Cleaning Pipeline:** High-pass, Normalisation, Spectral Denoising.
