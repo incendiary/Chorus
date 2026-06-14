@@ -174,6 +174,107 @@ def _hw_recommendation() -> tuple[str, str]:
     )
 
 
+def _render_preflight_summary(
+    file_count: int,
+    model_choice: str,
+    alignment_choice: str,
+    noise_mode_choice: str,
+    enable_nlp: bool,
+    enable_diarisation: bool,
+) -> None:
+    """Render run preflight summary with informed-choice guidance."""
+    selected_features = []
+    if enable_nlp:
+        selected_features.append("NLP reconstruction")
+    if enable_diarisation:
+        selected_features.append("speaker diarisation")
+    feature_text = ", ".join(selected_features) if selected_features else "none"
+
+    runtime_hint = (
+        "longer runs expected due to max-accuracy configuration"
+        if model_choice in {"medium", "small"} or enable_nlp or enable_diarisation
+        else "balanced runtime expected"
+    )
+
+    st.markdown(
+        (
+            '<div class="chorus-preflight">'
+            f"<b>Preflight:</b> {file_count} file{'s' if file_count > 1 else ''}, "
+            f"model <b>{model_choice}</b>, alignment <b>{alignment_choice}</b>, "
+            f"noise mode <b>{noise_mode_choice}</b>, advanced features: <b>{feature_text}</b>.<br>"
+            f"Expected profile: <b>{runtime_hint}</b>. "
+            "Tip: use smaller batches if you need faster feedback cycles."
+            "</div>"
+        ),
+        unsafe_allow_html=True,
+    )
+
+
+def _render_confidence_overview(consensus_text: str) -> None:
+    """Render confidence bars, metrics, and interpretation guidance."""
+    import re as _re
+
+    high_m = _re.search(r"HIGH\s*\|\s*(\d+)", consensus_text)
+    med_m = _re.search(r"MEDIUM\s*\|\s*(\d+)", consensus_text)
+    low_m = _re.search(r"LOW\s*\|\s*(\d+)", consensus_text)
+    n_high = int(high_m.group(1)) if high_m else 0
+    n_med = int(med_m.group(1)) if med_m else 0
+    n_low = int(low_m.group(1)) if low_m else 0
+    total_w = n_high + n_med + n_low or 1
+
+    bar_cols = st.columns([n_high or 1, n_med or 1, n_low or 1])
+    with bar_cols[0]:
+        st.markdown(
+            f'<div style="background:#d4edda;padding:8px;border-radius:4px;text-align:center">'
+            f'<b>🟢 HIGH</b><br>{n_high} ({n_high*100//total_w}%)</div>',
+            unsafe_allow_html=True,
+        )
+    with bar_cols[1]:
+        st.markdown(
+            f'<div style="background:#fff3cd;padding:8px;border-radius:4px;text-align:center">'
+            f'<b>🟡 MED</b><br>{n_med} ({n_med*100//total_w}%)</div>',
+            unsafe_allow_html=True,
+        )
+    with bar_cols[2]:
+        st.markdown(
+            f'<div style="background:#f8d7da;padding:8px;border-radius:4px;text-align:center">'
+            f'<b>🔴 LOW</b><br>{n_low} ({n_low*100//total_w}%)</div>',
+            unsafe_allow_html=True,
+        )
+
+    c1, c2, c3 = st.columns(3)
+    c1.metric("High confidence words", n_high)
+    c2.metric("Medium confidence words", n_med)
+    c3.metric("Low confidence words", n_low)
+    st.markdown(
+        '<div class="chorus-confidence-note">'
+        "High confidence terms generally reflect strong cross-variant agreement. "
+        "Review medium confidence carefully. Validate low confidence terms against source audio."
+        "</div>",
+        unsafe_allow_html=True,
+    )
+
+
+def _render_processing_error(file_name: str, exc: Exception, allow_retry: bool = False) -> None:
+    """Render consistent actionable processing error guidance."""
+    st.error(
+        f"Processing failed for {file_name}. Review guidance below and retry when ready."
+    )
+    st.markdown(
+        "- Confirm audio file integrity and supported format\n"
+        "- Try a smaller model or disable advanced features\n"
+        "- Re-run this file alone to isolate the issue"
+    )
+    with st.expander(f"Technical details — {file_name}"):
+        st.code(str(exc))
+
+    if allow_retry and st.button(
+        "Retry this file",
+        key=f"retry_seq_{sanitise_stem(Path(file_name).stem, fallback='upload')}",
+    ):
+        st.rerun()
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Sidebar — Configuration
 # ─────────────────────────────────────────────────────────────────────────────
@@ -364,32 +465,19 @@ if uploaded_files:
     # ── Run button ────────────────────────────────────────────────────────────
     n = len(uploaded_files)
 
-    # Preflight summary helps users understand trade-offs before long runs.
-    selected_features = []
-    if enable_nlp:
-        selected_features.append("NLP reconstruction")
-    if enable_diarisation:
-        selected_features.append("speaker diarisation")
-    feature_text = ", ".join(selected_features) if selected_features else "none"
-
-    runtime_hint = (
-        "longer runs expected due to max-accuracy configuration"
-        if model_choice in {"medium", "small"} or enable_nlp or enable_diarisation
-        else "balanced runtime expected"
+    _render_preflight_summary(
+        file_count=n,
+        model_choice=model_choice,
+        alignment_choice=alignment_choice,
+        noise_mode_choice=noise_mode_choice,
+        enable_nlp=enable_nlp,
+        enable_diarisation=enable_diarisation,
     )
-
-    st.markdown(
-        (
-            '<div class="chorus-preflight">'
-            f"<b>Preflight:</b> {n} file{'s' if n > 1 else ''}, model <b>{model_choice}</b>, "
-            f"alignment <b>{alignment_choice}</b>, noise mode <b>{noise_mode_choice}</b>, "
-            f"advanced features: <b>{feature_text}</b>.<br>"
-            f"Expected profile: <b>{runtime_hint}</b>. "
-            "Tip: use smaller batches if you need faster feedback cycles."
-            "</div>"
-        ),
-        unsafe_allow_html=True,
-    )
+    if n > 10:
+        st.warning(
+            "Large batch detected. For easier troubleshooting, consider processing in smaller groups of 5-10 files.",
+            icon="⚠️",
+        )
 
     col_btn, col_status = st.columns([1, 3])
     with col_btn:
@@ -478,48 +566,7 @@ if uploaded_files:
 
             # ── Confidence Visualisation ──────────────────────────────────────
             st.markdown("#### 🎯 Confidence Overview")
-            # Parse confidence stats from consensus document
-            import re as _re
-            high_m = _re.search(r"HIGH\s*\|\s*(\d+)", consensus_text)
-            med_m = _re.search(r"MEDIUM\s*\|\s*(\d+)", consensus_text)
-            low_m = _re.search(r"LOW\s*\|\s*(\d+)", consensus_text)
-            n_high = int(high_m.group(1)) if high_m else 0
-            n_med = int(med_m.group(1)) if med_m else 0
-            n_low = int(low_m.group(1)) if low_m else 0
-            total_w = n_high + n_med + n_low or 1
-
-            # Confidence bar
-            bar_cols = st.columns([n_high or 1, n_med or 1, n_low or 1])
-            with bar_cols[0]:
-                st.markdown(
-                    f'<div style="background:#d4edda;padding:8px;border-radius:4px;text-align:center">'
-                    f'<b>🟢 HIGH</b><br>{n_high} ({n_high*100//total_w}%)</div>',
-                    unsafe_allow_html=True,
-                )
-
-            c1, c2, c3 = st.columns(3)
-            c1.metric("High confidence words", n_high)
-            c2.metric("Medium confidence words", n_med)
-            c3.metric("Low confidence words", n_low)
-            st.markdown(
-                '<div class="chorus-confidence-note">'
-                "High confidence terms generally reflect strong cross-variant agreement. "
-                "Review medium confidence carefully. Validate low confidence terms against source audio."
-                "</div>",
-                unsafe_allow_html=True,
-            )
-            with bar_cols[1]:
-                st.markdown(
-                    f'<div style="background:#fff3cd;padding:8px;border-radius:4px;text-align:center">'
-                    f'<b>🟡 MED</b><br>{n_med} ({n_med*100//total_w}%)</div>',
-                    unsafe_allow_html=True,
-                )
-            with bar_cols[2]:
-                st.markdown(
-                    f'<div style="background:#f8d7da;padding:8px;border-radius:4px;text-align:center">'
-                    f'<b>🔴 LOW</b><br>{n_low} ({n_low*100//total_w}%)</div>',
-                    unsafe_allow_html=True,
-                )
+            _render_confidence_overview(consensus_text)
 
             # ── Consensus document preview ────────────────────────────────────
             st.markdown("#### 📄 Consensus Transcript")
@@ -734,21 +781,7 @@ if uploaded_files:
                         )
                         _render_file_results(uf.name, results, tmp_path, original_stem)
                     except Exception as exc:
-                        st.error(
-                            "Processing failed for this file. Review the guidance below and retry."
-                        )
-                        st.markdown(
-                            "- Confirm audio file integrity and supported format\n"
-                            "- Try a smaller model or disable advanced features\n"
-                            "- Re-run this file alone to isolate the issue"
-                        )
-                        with st.expander("Technical details"):
-                            st.code(str(exc))
-                        if st.button(
-                            "Retry this file",
-                            key=f"retry_seq_{sanitise_stem(Path(uf.name).stem, fallback='upload')}",
-                        ):
-                            st.rerun()
+                        _render_processing_error(uf.name, exc, allow_retry=True)
                         logger.exception("Pipeline error for %s", uf.name)
                     finally:
                         if tmp_path is not None:
@@ -776,11 +809,7 @@ if uploaded_files:
                     )
                     all_results.append((uf, results, tmp_path, original_stem))
                 except Exception as exc:
-                    st.error(
-                        f"Processing failed for {uf.name}. You can continue with other files and retry later."
-                    )
-                    with st.expander(f"Technical details — {uf.name}"):
-                        st.code(str(exc))
+                    _render_processing_error(uf.name, exc)
                     logger.exception("Pipeline error for %s", uf.name)
                 finally:
                     if tmp_path is not None:
