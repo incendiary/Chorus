@@ -272,6 +272,61 @@ Use [ROADMAP.md](ROADMAP.md) as the source of truth for:
 
 ---
 
+## Detailed Execution Plan
+
+This section captures the active delivery framework for Chorus so decisions stay aligned across product, engineering, quality, and release operations.
+
+### Planning Framework
+
+Chorus uses a three-layer workflow inspired by the Karpathy operating model:
+
+1. Spec layer: define outcomes, scope, constraints, and success criteria before implementation.
+2. Verify layer: validate claims with tests, repository checks, and UX walkthroughs.
+3. Environment layer: persist reusable decisions, conventions, and guardrails for future sessions.
+
+### Product Priorities
+
+1. Accuracy and confidence clarity for batch processing workflows.
+2. Informed-user controls: every major option should explain trade-offs and likely impact.
+3. Production-grade UX for enterprise/internal users, desktop-first.
+4. Operational trust: predictable releases, synced docs, and explicit roadmap traceability.
+
+### Delivery Phases
+
+1. Alignment and discovery
+   - Interview stakeholders on user profiles, critical workflows, non-goals, and acceptance criteria.
+   - Map key user journeys and high-risk failure points.
+
+2. Targeted implementation
+   - Deliver high-impact, reviewable changes in small PRs.
+   - Preserve existing functionality; avoid speculative rewrites.
+
+3. Verification and hardening
+   - Run focused tests first, then full test suite.
+   - Validate docs, versioning, git tags, and roadmap metadata consistency.
+
+4. Release hygiene
+   - Merge through atomic PRs.
+   - Tag releases and keep README, pyproject version, and roadmap status in sync.
+
+### Quality Gates
+
+A change is complete only when all of the following are true:
+
+1. Functionality is preserved and tests pass.
+2. User-facing copy is clear and reflects current behaviour.
+3. Version references and release tags are consistent.
+4. Completed work is reflected in [ROADMAP.md](ROADMAP.md).
+
+### Current Focus Areas
+
+1. UX clarity for batch consensus processing and confidence interpretation.
+2. Better progress/error feedback to reduce support questions.
+3. Continued modularisation and consistency in UI patterns.
+4. Maintain strict release/documentation sync enforced by tests.
+
+---
+
 ## Autonomous Maintenance Handoff
 
 > **Note to Maintainers:** This codebase has been hardened and prepared for autonomous maintenance via Claude Code. It adheres to the security and tooling standards established by the [Bedrock](https://github.com/incendiary/Bedrock) repository.

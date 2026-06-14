@@ -65,6 +65,12 @@ st.set_page_config(
 st.markdown(
     """
 <style>
+    :root {
+        --chorus-primary: #0f3460;
+        --chorus-surface: #f8f9fa;
+        --chorus-border: #dee2e6;
+    }
+
     .chorus-header {
         background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
         padding: 2rem 2.5rem;
@@ -85,6 +91,31 @@ st.markdown(
     .stProgress > div > div > div { background-color: #0f3460; }
     .metric-card { background:#f8f9fa; border-radius:8px; padding:1rem;
                    text-align:center; border:1px solid #dee2e6; }
+
+    /* Improve keyboard navigation discoverability */
+    button:focus-visible,
+    input:focus-visible,
+    select:focus-visible,
+    textarea:focus-visible,
+    [tabindex]:focus-visible {
+        outline: 2px solid var(--chorus-primary) !important;
+        outline-offset: 2px !important;
+    }
+
+    .chorus-preflight {
+        background: var(--chorus-surface);
+        border: 1px solid var(--chorus-border);
+        border-left: 4px solid var(--chorus-primary);
+        padding: 0.9rem 1rem;
+        border-radius: 8px;
+        margin: 0.5rem 0 1rem;
+    }
+
+    .chorus-confidence-note {
+        font-size: 0.9rem;
+        color: #4a4a4a;
+        margin-top: 0.4rem;
+    }
 </style>
 """,
     unsafe_allow_html=True,
@@ -332,6 +363,34 @@ if uploaded_files:
 
     # ── Run button ────────────────────────────────────────────────────────────
     n = len(uploaded_files)
+
+    # Preflight summary helps users understand trade-offs before long runs.
+    selected_features = []
+    if enable_nlp:
+        selected_features.append("NLP reconstruction")
+    if enable_diarisation:
+        selected_features.append("speaker diarisation")
+    feature_text = ", ".join(selected_features) if selected_features else "none"
+
+    runtime_hint = (
+        "longer runs expected due to max-accuracy configuration"
+        if model_choice in {"medium", "small"} or enable_nlp or enable_diarisation
+        else "balanced runtime expected"
+    )
+
+    st.markdown(
+        (
+            '<div class="chorus-preflight">'
+            f"<b>Preflight:</b> {n} file{'s' if n > 1 else ''}, model <b>{model_choice}</b>, "
+            f"alignment <b>{alignment_choice}</b>, noise mode <b>{noise_mode_choice}</b>, "
+            f"advanced features: <b>{feature_text}</b>.<br>"
+            f"Expected profile: <b>{runtime_hint}</b>. "
+            "Tip: use smaller batches if you need faster feedback cycles."
+            "</div>"
+        ),
+        unsafe_allow_html=True,
+    )
+
     col_btn, col_status = st.columns([1, 3])
     with col_btn:
         run_btn = st.button(
@@ -437,6 +496,18 @@ if uploaded_files:
                     f'<b>🟢 HIGH</b><br>{n_high} ({n_high*100//total_w}%)</div>',
                     unsafe_allow_html=True,
                 )
+
+            c1, c2, c3 = st.columns(3)
+            c1.metric("High confidence words", n_high)
+            c2.metric("Medium confidence words", n_med)
+            c3.metric("Low confidence words", n_low)
+            st.markdown(
+                '<div class="chorus-confidence-note">'
+                "High confidence terms generally reflect strong cross-variant agreement. "
+                "Review medium confidence carefully. Validate low confidence terms against source audio."
+                "</div>",
+                unsafe_allow_html=True,
+            )
             with bar_cols[1]:
                 st.markdown(
                     f'<div style="background:#fff3cd;padding:8px;border-radius:4px;text-align:center">'
@@ -464,45 +535,44 @@ if uploaded_files:
                 st.markdown(consensus_text, unsafe_allow_html=False)
 
             # ── Download buttons ──────────────────────────────────────────────
-            dl_cols = st.columns(3)
+            # Stacked download controls remain readable across desktop and narrow layouts.
+            st.download_button(
+                label="⬇️ Download Consensus Markdown (.md)",
+                data=consensus_text,
+                file_name=consensus_path.name,
+                mime="text/markdown",
+                type="primary",
+                key=f"dl_md_{original_stem}",
+                use_container_width=True,
+            )
 
-            with dl_cols[0]:
-                st.download_button(
-                    label="⬇️ Consensus (.md)",
-                    data=consensus_text,
-                    file_name=consensus_path.name,
-                    mime="text/markdown",
-                    type="primary",
-                    key=f"dl_md_{original_stem}",
-                )
+            plain_path = export_plain_text(
+                consensus_path, original_stem, include_low=show_low
+            )
+            st.download_button(
+                label="⬇️ Download Most Likely Transcript (.txt)",
+                data=plain_path.read_text(encoding="utf-8"),
+                file_name=plain_path.name,
+                mime="text/plain",
+                key=f"dl_txt_{original_stem}",
+                use_container_width=True,
+            )
 
-            with dl_cols[1]:
-                plain_path = export_plain_text(
-                    consensus_path, original_stem, include_low=show_low
+            with st.spinner("Building archive with selected outputs…"):
+                zip_bytes = export_zip(
+                    consensus_path,
+                    transcripts["original"],
+                    original_stem,
+                    include_formats=formats_to_export or None,
                 )
-                st.download_button(
-                    label="⬇️ Most Likely (.txt)",
-                    data=plain_path.read_text(encoding="utf-8"),
-                    file_name=plain_path.name,
-                    mime="text/plain",
-                    key=f"dl_txt_{original_stem}",
-                )
-
-            with dl_cols[2]:
-                with st.spinner("Building zip…"):
-                    zip_bytes = export_zip(
-                        consensus_path,
-                        transcripts["original"],
-                        original_stem,
-                        include_formats=formats_to_export or None,
-                    )
-                st.download_button(
-                    label="⬇️ Download All (.zip)",
-                    data=zip_bytes,
-                    file_name=f"{original_stem}_chorus_all.zip",
-                    mime="application/zip",
-                    key=f"dl_zip_{original_stem}",
-                )
+            st.download_button(
+                label="⬇️ Download Full Output Archive (.zip)",
+                data=zip_bytes,
+                file_name=f"{original_stem}_chorus_all.zip",
+                mime="application/zip",
+                key=f"dl_zip_{original_stem}",
+                use_container_width=True,
+            )
 
             # Additional format exports
             if formats_to_export:
@@ -664,7 +734,21 @@ if uploaded_files:
                         )
                         _render_file_results(uf.name, results, tmp_path, original_stem)
                     except Exception as exc:
-                        st.error(f"Pipeline failed: {exc}")
+                        st.error(
+                            "Processing failed for this file. Review the guidance below and retry."
+                        )
+                        st.markdown(
+                            "- Confirm audio file integrity and supported format\n"
+                            "- Try a smaller model or disable advanced features\n"
+                            "- Re-run this file alone to isolate the issue"
+                        )
+                        with st.expander("Technical details"):
+                            st.code(str(exc))
+                        if st.button(
+                            "Retry this file",
+                            key=f"retry_seq_{sanitise_stem(Path(uf.name).stem, fallback='upload')}",
+                        ):
+                            st.rerun()
                         logger.exception("Pipeline error for %s", uf.name)
                     finally:
                         if tmp_path is not None:
@@ -692,7 +776,11 @@ if uploaded_files:
                     )
                     all_results.append((uf, results, tmp_path, original_stem))
                 except Exception as exc:
-                    st.error(f"Pipeline failed for {uf.name}: {exc}")
+                    st.error(
+                        f"Processing failed for {uf.name}. You can continue with other files and retry later."
+                    )
+                    with st.expander(f"Technical details — {uf.name}"):
+                        st.code(str(exc))
                     logger.exception("Pipeline error for %s", uf.name)
                 finally:
                     if tmp_path is not None:
