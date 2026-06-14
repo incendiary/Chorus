@@ -108,28 +108,17 @@ def run_pipeline(
     # ── Stage 3: Consensus Merge ─────────────────────────────────────────────
     _progress("Running consensus analysis…", 0.85)
 
-    # Extract plain-text bodies
-    text_map = {
-        k: v.get("text", "").strip()
-        for k, v in transcripts.items()
-        if v.get("text", "").strip()
-    }
-    if not text_map:
-        raise ValueError("All transcripts are empty.")
+    from consensus_merger.merger import merge_transcripts_with_votes
 
-    from consensus_merger.alignment import align_transcripts
-    from consensus_merger.renderer import render_consensus
-
-    votes = align_transcripts(text_map, strategy=alignment_strategy)
-
-    # ── Optional: NLP Reconstruction ─────────────────────────────────────────
     if enable_nlp:
         _progress("Running spaCy NLP reconstruction…", 0.90)
-        from nlp_reconstructor.reconstructor import reconstruct_low_tokens
 
-        votes = reconstruct_low_tokens(votes)
-
-    consensus_path = render_consensus(votes, stem, transcripts)
+    consensus_path, votes = merge_transcripts_with_votes(
+        transcripts=transcripts,
+        stem=stem,
+        strategy=alignment_strategy,
+        enable_nlp=enable_nlp,
+    )
     _progress("Consensus document generated.", 0.95)
 
     # ── AI Context Pack (always generated) ───────────────────────────────────
