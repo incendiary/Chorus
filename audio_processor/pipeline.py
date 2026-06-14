@@ -59,7 +59,11 @@ def process_audio(input_path: str | Path) -> dict[str, Path]:
         raise FileNotFoundError(f"Audio file not found: {input_path}")
 
     logger.info("Loading audio: %s", input_path)
-    audio, sr = librosa.load(str(input_path), sr=TARGET_SAMPLE_RATE, mono=True)
+    try:
+        audio, sr = librosa.load(str(input_path), sr=TARGET_SAMPLE_RATE, mono=True)
+    except Exception as exc:  # noqa: BLE001
+        raise RuntimeError(f"Failed to decode audio file: {input_path}") from exc
+
     logger.info("Loaded %.2f s @ %d Hz (%.1f MB)", len(audio) / sr, sr, audio.nbytes / 1e6)
 
     stem = input_path.stem

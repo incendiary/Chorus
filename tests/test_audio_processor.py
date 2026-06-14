@@ -138,12 +138,12 @@ class TestPipeline:
         with pytest.raises(FileNotFoundError):
             process_audio(tmp_path / "nonexistent.wav")
 
-    def test_unsupported_extension_raises(self, tmp_path):
-        """A file with an unrecognised extension that cannot be decoded should raise."""
+    def test_unsupported_extension_raises_runtime_error(self, tmp_path):
+        """A file that cannot be decoded should raise RuntimeError."""
         bad_file = tmp_path / "bad.xyz"
         bad_file.write_bytes(b"not audio data")
 
         from audio_processor.pipeline import process_audio
 
-        with pytest.raises(Exception):  # noqa: B017, PT011
+        with pytest.raises(RuntimeError, match="Failed to decode audio file"):
             process_audio(bad_file)
