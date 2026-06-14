@@ -261,6 +261,51 @@ class TestFullPipeline:
             assert Path(path).exists()
 
 
+class TestOptionalPipelineFeatures:
+    """Test optional NLP and diarisation pipeline paths."""
+
+    @pytest.mark.usefixtures("_patch_transcription", "_patch_consensus_dir")
+    def test_pipeline_with_nlp_enabled(self, synthetic_audio, _patch_consensus_dir):
+        """NLP reconstruction path should execute when enabled."""
+        from pipeline_runner import run_pipeline
+
+        with patch(
+            "nlp_reconstructor.reconstructor.reconstruct_low_tokens",
+            side_effect=lambda votes: votes,
+        ) as mock_reconstruct:
+            results = run_pipeline(
+                audio_path=synthetic_audio,
+                language="en",
+                enable_nlp=True,
+            )
+
+        assert results["consensus_path"].exists()
+        mock_reconstruct.assert_called_once()
+
+    @pytest.mark.usefixtures("_patch_transcription", "_patch_consensus_dir")
+    def test_pipeline_with_diarisation_enabled(self, synthetic_audio, _patch_consensus_dir):
+        """Diarisation path should produce diarised output and speaker labels."""
+        from diarisation.diariser import SpeakerSegment
+        from pipeline_runner import run_pipeline
+
+        fake_segments = [
+            SpeakerSegment(speaker="SPEAKER_00", start=0.0, end=2.0),
+            SpeakerSegment(speaker="SPEAKER_01", start=2.0, end=4.0),
+        ]
+
+        with patch("diarisation.diariser.diarise", return_value=fake_segments):
+            results = run_pipeline(
+                audio_path=synthetic_audio,
+                language="en",
+                enable_diarisation=True,
+            )
+
+        assert results["diarised_path"] is not None
+        assert results["diarised_path"].exists()
+        assert results["speaker_labels"]
+        assert all(label.startswith("SPEAKER_") for label in results["speaker_labels"])
+
+
 class TestAlignmentStrategies:
     """Test that both alignment strategies work end-to-end."""
 
@@ -464,6 +509,16 @@ class TestErrorHandling:
 
         with pytest.raises(FileNotFoundError):
             run_pipeline(audio_path="/nonexistent/audio.wav")
+
+    def test_corrupt_audio_raises_runtime_error(self, tmp_path):
+        """Unreadable audio payloads should raise a decode RuntimeError."""
+        from pipeline_runner import run_pipeline
+
+        bad_audio = tmp_path / "corrupt.wav"
+        bad_audio.write_bytes(b"this is not a valid wav payload")
+
+        with pytest.raises(RuntimeError, match="Failed to decode audio file"):
+            run_pipeline(audio_path=bad_audio)
 
     @pytest.mark.usefixtures("_patch_transcription", "_patch_consensus_dir")
     def test_progress_callback_invoked(self, synthetic_audio, _patch_consensus_dir):

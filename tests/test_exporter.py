@@ -9,6 +9,8 @@ Covers:
 
 from __future__ import annotations
 
+import re
+
 from export_engine.exporter import (
     _seconds_to_srt_ts,
     _seconds_to_vtt_ts,
@@ -71,16 +73,20 @@ class TestSRTExport:
         result = export_srt(_mock_whisper_result(), stem="test_srt_ext")
         assert result.suffix == ".srt"
 
-    def test_srt_contains_sequence_numbers(self):
+    def test_srt_has_valid_cue_structure(self):
         result = export_srt(_mock_whisper_result(), stem="test_srt_seq")
-        content = result.read_text(encoding="utf-8")
-        assert "1" in content
-        assert "2" in content
+        content = result.read_text(encoding="utf-8").strip()
 
-    def test_srt_contains_timestamp_arrow(self):
-        result = export_srt(_mock_whisper_result(), stem="test_srt_arrow")
-        content = result.read_text(encoding="utf-8")
-        assert "-->" in content
+        cues = [block.splitlines() for block in content.split("\n\n") if block.strip()]
+        assert len(cues) == 2
+
+        ts_pattern = re.compile(
+            r"^\d{2}:\d{2}:\d{2},\d{3} --> \d{2}:\d{2}:\d{2},\d{3}$"
+        )
+        for idx, cue in enumerate(cues, start=1):
+            assert cue[0] == str(idx)
+            assert ts_pattern.match(cue[1])
+            assert cue[2].strip()
 
     def test_srt_empty_segments_produces_empty_file(self):
         result = export_srt({"segments": []}, stem="test_srt_empty")
@@ -103,14 +109,23 @@ class TestVTTExport:
         content = result.read_text(encoding="utf-8")
         assert content.startswith("WEBVTT")
 
-    def test_vtt_uses_period_millisecond_separator(self):
+    def test_vtt_has_valid_header_and_cue_structure(self):
         result = export_vtt(_mock_whisper_result(), stem="test_vtt_period")
         content = result.read_text(encoding="utf-8")
-        # Every timestamp line should use '.' not ','
-        ts_lines = [ln for ln in content.splitlines() if "-->" in ln]
-        assert ts_lines, "No timestamp lines found in VTT output"
+
+        lines = content.splitlines()
+        assert lines[0] == "WEBVTT"
+
+        ts_pattern = re.compile(
+            r"^\d{2}:\d{2}:\d{2}\.\d{3} --> \d{2}:\d{2}:\d{2}\.\d{3}$"
+        )
+        ts_lines = [ln for ln in lines if "-->" in ln]
+        assert len(ts_lines) == 2
         for line in ts_lines:
+            assert ts_pattern.match(line)
             assert "," not in line
+
+        assert "\n\n" in content, "VTT cues should be separated by blank lines"
 
     def test_vtt_contains_transcript_text(self):
         result = export_vtt(_mock_whisper_result(), stem="test_vtt_text")
