@@ -29,6 +29,7 @@ Set the token via the environment variable:
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 from dataclasses import dataclass
@@ -321,3 +322,108 @@ def render_diarised_md(
     out_path.write_text("\n".join(lines), encoding="utf-8")
     logger.info("Diarised transcript written → %s", out_path)
     return out_path
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Speaker name persistence
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _speaker_names_path(stem: str) -> Path:
+    """Return the path to the speaker names sidecar JSON for *stem*."""
+    return CONSENSUS_DIR / f"{stem}_speakers.json"
+
+
+def load_speaker_names(stem: str) -> dict[str, str]:
+    """
+    Load a previously saved speaker name mapping for *stem*.
+
+    The mapping is stored as a JSON file alongside the consensus outputs:
+    ``outputs/consensus/{stem}_speakers.json``
+
+    Parameters
+    ----------
+    stem : str
+        Base filename stem.
+
+    Returns
+    -------
+    dict[str, str]
+        Mapping of diarisation label (``"SPEAKER_00"``) → human-readable name.
+        Returns an empty dict if no sidecar file exists or is unreadable.
+    """
+    path = _speaker_names_path(stem)
+    if not path.exists():
+        return {}
+
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            logger.warning("Speaker names file has unexpected format: %s", path)
+            return {}
+        # Ensure all values are strings
+        return {str(k): str(v) for k, v in data.items()}
+    except (json.JSONDecodeError, OSError) as exc:
+        logger.warning("Could not read speaker names from %s: %s", path, exc)
+        return {}
+
+
+def save_speaker_names(stem: str, speaker_map: dict[str, str]) -> Path:
+    """
+    Save a speaker name mapping to the sidecar JSON file.
+
+    Only entries where the user has provided a non-empty custom name are
+    persisted.  Entries mapping to the original label (e.g.,
+    ``"SPEAKER_00" → "SPEAKER_00"``) are excluded to keep the file clean.
+
+    Parameters
+    ----------
+    stem : str
+        Base filename stem.
+    speaker_map : dict[str, str]
+        Mapping of diarisation label → human-readable name.
+
+    Returns
+    -------
+    Path
+        Path to the written JSON file.
+    """
+    # Filter out identity mappings and empty names
+    cleaned = {
+        k: v.strip()
+        for k, v in speaker_map.items()
+        if v.strip() and v.strip() != k
+    }
+
+    path = _speaker_names_path(stem)
+    CONSENSUS_DIR.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(cleaned, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    logger.info("Speaker names saved → %s (%d entries)", path, len(cleaned))
+    return path
+
+
+def get_unique_speakers(labelled: list[LabelledSegment]) -> list[str]:
+    """
+    Extract the unique speaker labels from a labelled transcript, in order
+    of first appearance.
+
+    Parameters
+    ----------
+    labelled : list[LabelledSegment]
+        Output of ``label_transcript()``.
+
+    Returns
+    -------
+    list[str]
+        Unique speaker labels in order of first appearance.
+    """
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for seg in labelled:
+        if seg.speaker not in seen:
+            seen.add(seg.speaker)
+            ordered.append(seg.speaker)
+    return ordered

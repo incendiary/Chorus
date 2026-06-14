@@ -570,6 +570,16 @@ def export_zip(
         if consensus_md_path.exists():
             zf.write(consensus_md_path, consensus_md_path.name)
 
+        # Speaker names sidecar — included if it exists
+        speaker_names_path = CONSENSUS_DIR / f"{stem}_speakers.json"
+        if speaker_names_path.exists():
+            zf.write(speaker_names_path, speaker_names_path.name)
+
+        # Diarised transcript — included if it exists
+        diarised_path = CONSENSUS_DIR / f"{stem}_diarised.md"
+        if diarised_path.exists():
+            zf.write(diarised_path, diarised_path.name)
+
         # Additional format exports
         if include_formats:
             for _, path in export_all(
