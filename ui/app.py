@@ -438,6 +438,33 @@ def _render_run_status(
         st.markdown("</div>", unsafe_allow_html=True)
 
 
+def _render_batch_outcome_summary(
+    *,
+    total_files: int,
+    completed_files: int,
+    failed_files: int,
+    duration_seconds: float,
+) -> None:
+    """Render concise outcomes guidance after a batch run completes."""
+    st.markdown("#### Run Summary")
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Total", total_files)
+    c2.metric("Completed", completed_files)
+    c3.metric("Failed", failed_files)
+    c4.metric("Duration", f"{int(duration_seconds)} s")
+
+    if failed_files == 0:
+        st.success(
+            "All files completed successfully. Review confidence sections below, then download archives.",
+            icon="✅",
+        )
+    else:
+        st.warning(
+            "Some files failed. Check technical details in the affected sections, then retry failed files in smaller batches.",
+            icon="⚠️",
+        )
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Sidebar — Configuration
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1044,10 +1071,25 @@ if uploaded_files:
             overall.progress(1.0, text=f"✅ All {len(uploaded_files)} files complete!")
 
             # Now render all results
+            _render_batch_outcome_summary(
+                total_files=len(uploaded_files),
+                completed_files=completed_files,
+                failed_files=failed_files,
+                duration_seconds=time.time() - run_started_at,
+            )
+
             for uf, results, tmp_path, original_stem in all_results:
                 with st.expander(f"📄 {uf.name}", expanded=True):
                     st.success(f"Completed in **{results['elapsed_seconds']} s**")
                     _render_file_results(uf.name, results, tmp_path, original_stem)
+
+        if sequential and len(uploaded_files) > 1:
+            _render_batch_outcome_summary(
+                total_files=len(uploaded_files),
+                completed_files=completed_files,
+                failed_files=failed_files,
+                duration_seconds=time.time() - run_started_at,
+            )
 
 else:
     st.info("Upload one or more audio files above to begin.", icon="👆")
