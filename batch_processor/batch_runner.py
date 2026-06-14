@@ -39,7 +39,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
-from config import CONSENSUS_DIR
+from config import CONSENSUS_DIR, ensure_output_dirs
 
 logger = logging.getLogger(__name__)
 
@@ -267,6 +267,8 @@ def run_batch(
 
 def _write_batch_report(results: list[BatchResult]) -> Path:
     """Write a Markdown summary of the batch run."""
+    ensure_output_dirs()
+
     now = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
     total = len(results)
     success = sum(1 for r in results if r.success)

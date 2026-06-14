@@ -21,6 +21,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from audio_processor.pipeline import process_audio
+from config import ensure_output_dirs
 from transcription_engine.orchestrator import run_transcription_pass
 from utils import sanitise_stem
 
@@ -77,6 +78,7 @@ def run_pipeline(
         If *audio_path* does not exist.
     """
     audio_path = Path(audio_path)
+    ensure_output_dirs()
     stem = sanitise_stem(audio_path.stem, fallback="audio")
     t_start = time.perf_counter()
 
