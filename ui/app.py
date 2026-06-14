@@ -465,6 +465,17 @@ def _render_batch_outcome_summary(
         )
 
 
+def _render_result_navigation(file_names: list[str]) -> None:
+    """Render quick links to each file section for large result sets."""
+    if len(file_names) < 3:
+        return
+
+    st.markdown("#### Quick Navigation")
+    st.caption("Jump directly to a file section using the links below.")
+    links = " · ".join(f"[{name}](#{sanitise_stem(Path(name).stem, fallback='upload')})" for name in file_names)
+    st.markdown(links)
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Sidebar — Configuration
 # ─────────────────────────────────────────────────────────────────────────────
@@ -979,8 +990,12 @@ if uploaded_files:
         )
 
         if sequential:
+            _render_result_navigation([str(uf.name) for uf in uploaded_files])
+
             # Process and render each file as it completes
             for uf in uploaded_files:
+                section_anchor = sanitise_stem(Path(uf.name).stem, fallback="upload")
+                st.markdown(f'<div id="{section_anchor}"></div>', unsafe_allow_html=True)
                 _render_run_status(
                     container=run_status_slot,
                     total_files=len(uploaded_files),
@@ -1023,6 +1038,8 @@ if uploaded_files:
                 )
 
         else:
+            _render_result_navigation([str(uf.name) for uf in uploaded_files])
+
             # Process all files first, collect results
             all_results: list[tuple[object, dict, Path, str]] = []
             overall = st.progress(0.0, text="Starting…")
@@ -1079,6 +1096,8 @@ if uploaded_files:
             )
 
             for uf, results, tmp_path, original_stem in all_results:
+                section_anchor = sanitise_stem(Path(uf.name).stem, fallback="upload")
+                st.markdown(f'<div id="{section_anchor}"></div>', unsafe_allow_html=True)
                 with st.expander(f"📄 {uf.name}", expanded=True):
                     st.success(f"Completed in **{results['elapsed_seconds']} s**")
                     _render_file_results(uf.name, results, tmp_path, original_stem)
