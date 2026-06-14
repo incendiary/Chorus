@@ -100,6 +100,9 @@ def transcribe(
     if lang:
         decode_options["language"] = lang
 
+    # Always enable word-level timestamps for richer export options
+    decode_options["word_timestamps"] = True
+
     result = model.transcribe(str(audio_path), **decode_options)
 
     # Augment result with metadata

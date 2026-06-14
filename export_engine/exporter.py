@@ -285,31 +285,63 @@ def export_docx(consensus_md_path: Path, stem: str) -> Path:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def export_srt(whisper_result: dict[str, Any], stem: str) -> Path:
+def _extract_word_timestamps(whisper_result: dict[str, Any]) -> list[dict[str, Any]]:
+    """Extract word-level timestamps from Whisper result if available."""
+    words: list[dict[str, Any]] = []
+    for seg in whisper_result.get("segments", []):
+        seg_words = seg.get("words", [])
+        for w in seg_words:
+            if "start" in w and "end" in w and "word" in w:
+                words.append(w)
+    return words
+
+
+def export_srt(
+    whisper_result: dict[str, Any], stem: str, word_level: bool = True
+) -> Path:
     """
-    Export Whisper segment data as a SubRip (.srt) subtitle file.
+    Export Whisper data as a SubRip (.srt) subtitle file.
+
+    When *word_level* is True and word timestamps are available, each subtitle
+    cue contains a single word with precise timing. Otherwise, falls back to
+    segment-level subtitles.
 
     Parameters
     ----------
     whisper_result : dict
-        Whisper result dict containing a ``"segments"`` list with
-        ``start``, ``end``, and ``text`` keys per segment.
+        Whisper result dict containing ``"segments"`` (and optionally
+        word-level timestamps within each segment).
     stem : str
         Base filename stem.
+    word_level : bool
+        If True, use per-word timestamps when available.
 
     Returns
     -------
     Path
         Path to the written ``.srt`` file.
     """
-    segments = whisper_result.get("segments", [])
     lines: list[str] = []
 
-    for idx, seg in enumerate(segments, start=1):
-        start_ts = _seconds_to_srt_ts(seg["start"])
-        end_ts = _seconds_to_srt_ts(seg["end"])
-        text = _strip_md_markup(seg["text"].strip())
-        lines += [str(idx), f"{start_ts} --> {end_ts}", text, ""]
+    word_ts = _extract_word_timestamps(whisper_result) if word_level else []
+
+    if word_ts:
+        # Word-level SRT: group words into short cues (max 6 words per cue)
+        max_words_per_cue = 6
+        for cue_idx in range(0, len(word_ts), max_words_per_cue):
+            chunk = word_ts[cue_idx : cue_idx + max_words_per_cue]
+            start_ts = _seconds_to_srt_ts(chunk[0]["start"])
+            end_ts = _seconds_to_srt_ts(chunk[-1]["end"])
+            text = " ".join(w["word"].strip() for w in chunk)
+            idx = cue_idx // max_words_per_cue + 1
+            lines += [str(idx), f"{start_ts} --> {end_ts}", text, ""]
+    else:
+        # Segment-level fallback
+        for idx, seg in enumerate(whisper_result.get("segments", []), start=1):
+            start_ts = _seconds_to_srt_ts(seg["start"])
+            end_ts = _seconds_to_srt_ts(seg["end"])
+            text = _strip_md_markup(seg["text"].strip())
+            lines += [str(idx), f"{start_ts} --> {end_ts}", text, ""]
 
     out_path = CONSENSUS_DIR / f"{stem}_consensus.srt"
     out_path.write_text("\n".join(lines), encoding="utf-8")
@@ -322,9 +354,14 @@ def export_srt(whisper_result: dict[str, Any], stem: str) -> Path:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def export_vtt(whisper_result: dict[str, Any], stem: str) -> Path:
+def export_vtt(
+    whisper_result: dict[str, Any], stem: str, word_level: bool = True
+) -> Path:
     """
-    Export Whisper segment data as a WebVTT (.vtt) subtitle file.
+    Export Whisper data as a WebVTT (.vtt) subtitle file.
+
+    When *word_level* is True and word timestamps are available, each cue
+    contains a small group of words with precise timing.
 
     Parameters
     ----------
@@ -332,20 +369,33 @@ def export_vtt(whisper_result: dict[str, Any], stem: str) -> Path:
         Whisper result dict.
     stem : str
         Base filename stem.
+    word_level : bool
+        If True, use per-word timestamps when available.
 
     Returns
     -------
     Path
         Path to the written ``.vtt`` file.
     """
-    segments = whisper_result.get("segments", [])
     lines: list[str] = ["WEBVTT", ""]
 
-    for idx, seg in enumerate(segments, start=1):
-        start_ts = _seconds_to_vtt_ts(seg["start"])
-        end_ts = _seconds_to_vtt_ts(seg["end"])
-        text = _strip_md_markup(seg["text"].strip())
-        lines += [f"{idx}", f"{start_ts} --> {end_ts}", text, ""]
+    word_ts = _extract_word_timestamps(whisper_result) if word_level else []
+
+    if word_ts:
+        max_words_per_cue = 6
+        for cue_idx in range(0, len(word_ts), max_words_per_cue):
+            chunk = word_ts[cue_idx : cue_idx + max_words_per_cue]
+            start_ts = _seconds_to_vtt_ts(chunk[0]["start"])
+            end_ts = _seconds_to_vtt_ts(chunk[-1]["end"])
+            text = " ".join(w["word"].strip() for w in chunk)
+            idx = cue_idx // max_words_per_cue + 1
+            lines += [f"{idx}", f"{start_ts} --> {end_ts}", text, ""]
+    else:
+        for idx, seg in enumerate(whisper_result.get("segments", []), start=1):
+            start_ts = _seconds_to_vtt_ts(seg["start"])
+            end_ts = _seconds_to_vtt_ts(seg["end"])
+            text = _strip_md_markup(seg["text"].strip())
+            lines += [f"{idx}", f"{start_ts} --> {end_ts}", text, ""]
 
     out_path = CONSENSUS_DIR / f"{stem}_consensus.vtt"
     out_path.write_text("\n".join(lines), encoding="utf-8")
