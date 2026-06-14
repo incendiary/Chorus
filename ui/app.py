@@ -488,14 +488,12 @@ def _render_batch_outcome_summary(
         )
 
 
-def _render_result_navigation(file_names: list[str]) -> None:
+def _render_result_navigation(file_names: list[str], file_anchors: dict[str, str]) -> None:
     """Render quick links to each file section for large result sets."""
     if len(file_names) < 3:
         return
 
-    anchors = [
-        (name, sanitise_stem(Path(name).stem, fallback="upload")) for name in file_names
-    ]
+    anchors = [(name, file_anchors[name]) for name in file_names]
     links = " · ".join(f"[{name}](#{anchor})" for name, anchor in anchors)
     st.markdown(
         (
@@ -506,6 +504,18 @@ def _render_result_navigation(file_names: list[str]) -> None:
         ),
         unsafe_allow_html=True,
     )
+
+
+def _build_file_anchors(file_names: list[str]) -> dict[str, str]:
+    """Return deterministic unique anchors keyed by file name."""
+    anchors: dict[str, str] = {}
+    counts: dict[str, int] = {}
+    for name in file_names:
+        base = sanitise_stem(Path(name).stem, fallback="upload")
+        counts[base] = counts.get(base, 0) + 1
+        suffix = f"-{counts[base]}" if counts[base] > 1 else ""
+        anchors[name] = f"{base}{suffix}"
+    return anchors
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1022,11 +1032,13 @@ if uploaded_files:
         )
 
         if sequential:
-            _render_result_navigation([str(uf.name) for uf in uploaded_files])
+            file_names = [str(uf.name) for uf in uploaded_files]
+            file_anchors = _build_file_anchors(file_names)
+            _render_result_navigation(file_names, file_anchors)
 
             # Process and render each file as it completes
             for uf in uploaded_files:
-                section_anchor = sanitise_stem(Path(uf.name).stem, fallback="upload")
+                section_anchor = file_anchors[str(uf.name)]
                 st.markdown(f'<div id="{section_anchor}"></div>', unsafe_allow_html=True)
                 _render_run_status(
                     container=run_status_slot,
@@ -1070,7 +1082,9 @@ if uploaded_files:
                 )
 
         else:
-            _render_result_navigation([str(uf.name) for uf in uploaded_files])
+            file_names = [str(uf.name) for uf in uploaded_files]
+            file_anchors = _build_file_anchors(file_names)
+            _render_result_navigation(file_names, file_anchors)
 
             # Process all files first, collect results
             all_results: list[tuple[object, dict, Path, str]] = []
@@ -1128,7 +1142,7 @@ if uploaded_files:
             )
 
             for uf, results, tmp_path, original_stem in all_results:
-                section_anchor = sanitise_stem(Path(uf.name).stem, fallback="upload")
+                section_anchor = file_anchors[str(uf.name)]
                 st.markdown(f'<div id="{section_anchor}"></div>', unsafe_allow_html=True)
                 with st.expander(f"📄 {uf.name}", expanded=True):
                     st.success(f"Completed in **{results['elapsed_seconds']} s**")
