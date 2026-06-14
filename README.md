@@ -18,6 +18,7 @@ This approach dramatically reduces single-model hallucinations and improves word
 - **AI Context Pack:** Machine-generated structured document for LLM consumption — includes methodology, confidence data, uncertainty annotations, and usage guidance.
 - **Speaker Diarisation:** `pyannote.audio` integration for multi-speaker identification with persistent editable speaker names.
 - **Word-Level Subtitles:** SRT/VTT exports use per-word timestamps for precise subtitle synchronisation.
+- **Parallel Transcription Orchestration:** Configurable worker pool (`TRANSCRIPTION_PARALLELISM`) with device-aware assignment, including multi-CUDA-device round-robin support.
 - **Memory-Optimised Pipeline:** Eager disk writes and prompt memory release for processing long recordings.
 - **Streamlit Interface:** A clean, responsive web UI with confidence visualisation, strategy selectors, batch auto-switch, and processing time display.
 - **Containerised:** Ready to deploy via Docker and `docker-compose`.
@@ -45,7 +46,7 @@ This is the recommended approach. The Docker image encapsulates the Python envir
 1. **Clone the repository:**
 
    ```bash
-   git clone -b v2.0.6 https://github.com/incendiary/Chorus.git
+   git clone -b v2.0.7 https://github.com/incendiary/Chorus.git
    cd Chorus
    ```
 
@@ -157,15 +158,15 @@ Pre-built images are published to [GitHub Container Registry](https://ghcr.io/in
 ### CPU
 
 ```bash
-docker pull ghcr.io/incendiary/chorus:v2.0.6
-docker run --rm -p 8501:8501 ghcr.io/incendiary/chorus:v2.0.6
+docker pull ghcr.io/incendiary/chorus:v2.0.7
+docker run --rm -p 8501:8501 ghcr.io/incendiary/chorus:v2.0.7
 ```
 
 ### GPU (NVIDIA CUDA)
 
 ```bash
-docker pull ghcr.io/incendiary/chorus:v2.0.6-gpu
-docker run --rm -p 8501:8501 --gpus all ghcr.io/incendiary/chorus:v2.0.6-gpu
+docker pull ghcr.io/incendiary/chorus:v2.0.7-gpu
+docker run --rm -p 8501:8501 --gpus all ghcr.io/incendiary/chorus:v2.0.7-gpu
 ```
 
 Access the UI at [http://localhost:8501](http://localhost:8501).

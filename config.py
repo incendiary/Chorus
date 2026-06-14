@@ -60,6 +60,12 @@ WHISPER_DEVICE: str = _env_device if _env_device else _detect_device()
 # Language hint (None = auto-detect)
 WHISPER_LANGUAGE = os.environ.get("WHISPER_LANGUAGE", None)
 
+# Transcription concurrency for variant passes.
+# Accepted values:
+#   - "auto" (default): choose sensible parallelism per device/capacity
+#   - integer string (e.g. "1", "2", "4")
+TRANSCRIPTION_PARALLELISM = os.environ.get("TRANSCRIPTION_PARALLELISM", "auto")
+
 # ─────────────────────────────────────────────
 # Audio Processing Configuration
 # ─────────────────────────────────────────────
