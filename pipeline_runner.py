@@ -51,6 +51,7 @@ def run_pipeline(
     language: str | None = None,
     enable_nlp: bool = False,
     enable_diarisation: bool = False,
+    alignment_strategy: str | None = None,
     progress_callback: Callable[[str, float], None] | None = None,
 ) -> dict[str, Path]:
     """
@@ -129,7 +130,7 @@ def run_pipeline(
     from consensus_merger.alignment import align_transcripts
     from consensus_merger.renderer import render_consensus
 
-    votes = align_transcripts(text_map)
+    votes = align_transcripts(text_map, strategy=alignment_strategy)
 
     # ── Optional: NLP Reconstruction ─────────────────────────────────────────
     if enable_nlp:
