@@ -607,6 +607,26 @@ if uploaded_files:
                     key=f"dl_diar_{original_stem}",
                 )
 
+            # AI Context Pack
+            ai_ctx_path = results.get("ai_context_path")
+            if ai_ctx_path and ai_ctx_path.exists():
+                st.markdown("##### 🤖 AI Context Pack")
+                st.caption(
+                    "A structured document designed to be fed to an LLM alongside "
+                    "questions about this transcript. Contains methodology, confidence "
+                    "data, and uncertainty annotations."
+                )
+                ai_ctx_text = ai_ctx_path.read_text(encoding="utf-8")
+                with st.expander("Preview AI Context Pack"):
+                    st.markdown(ai_ctx_text)
+                st.download_button(
+                    label="⬇️ AI Context Pack (.md)",
+                    data=ai_ctx_text,
+                    file_name=ai_ctx_path.name,
+                    mime="text/markdown",
+                    key=f"dl_ai_ctx_{original_stem}",
+                )
+
             # Individual variant transcripts
             st.markdown("##### 🔍 Individual Variant Transcripts")
             tabs = st.tabs([VARIANT_LABELS.get(k, k) for k in transcripts])

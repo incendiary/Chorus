@@ -575,6 +575,11 @@ def export_zip(
         if speaker_names_path.exists():
             zf.write(speaker_names_path, speaker_names_path.name)
 
+        # AI context pack — included if it exists
+        ai_context_path = CONSENSUS_DIR / f"{stem}_ai_context.md"
+        if ai_context_path.exists():
+            zf.write(ai_context_path, ai_context_path.name)
+
         # Diarised transcript — included if it exists
         diarised_path = CONSENSUS_DIR / f"{stem}_diarised.md"
         if diarised_path.exists():
