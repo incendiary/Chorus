@@ -105,3 +105,42 @@ jobs:
         run: |
           pip install pip-audit
           pip-audit -r requirements.txt --ignore-vuln PYSEC-2022-42969 || true
+
+  # ── Version-Tag Drift Check ─────────────────────────────────────────────────
+  # Warns (via GitHub issue) if pyproject.toml version has no matching git tag.
+  # Non-blocking — runs in parallel with lint/test.
+  version-tag-check:
+    name: Version-Tag Sync
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check tag exists for pyproject version
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION=$(grep -m1 '^version' pyproject.toml | sed 's/.*"\(.*\)"/\1/')
+          TAG="v${VERSION}"
+          echo "pyproject.toml version: ${VERSION}"
+          echo "Expected tag: ${TAG}"
+
+          if git tag -l "${TAG}" | grep -q "${TAG}"; then
+            echo "✅ Tag ${TAG} exists."
+          else
+            echo "::warning::Tag ${TAG} does not exist for pyproject.toml version ${VERSION}."
+            echo "Creating issue to track missing tag…"
+            EXISTING=$(gh issue list --search "Release tag ${TAG} missing" --state open --json number --jq '.[0].number' || true)
+            if [ -z "${EXISTING}" ]; then
+              gh issue create \
+                --title "Release tag ${TAG} missing" \
+                --body "pyproject.toml declares version \`${VERSION}\` but no git tag \`${TAG}\` exists on main. Either tag the release or revert the version bump." \
+                --label "release"
+            else
+              echo "Issue #${EXISTING} already open — skipping."
+            fi
+          fi
