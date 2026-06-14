@@ -27,10 +27,12 @@ This approach dramatically reduces single-model hallucinations and improves word
 ## Prerequisites
 
 If running via Docker, you only need:
+
 - [Docker](https://docs.docker.com/get-docker/)
 - [Docker Compose](https://docs.docker.com/compose/install/)
 
 If running natively (bare-metal), you require:
+
 - Python 3.11+
 - [FFmpeg](https://ffmpeg.org/download.html) (must be available on your system `PATH`)
 
@@ -41,23 +43,30 @@ If running natively (bare-metal), you require:
 This is the recommended approach. The Docker image encapsulates the Python environment and FFmpeg dependencies.
 
 1. **Clone the repository:**
+
    ```bash
-   git clone -b v2.0.5 https://github.com/incendiary/Chorus.git
+   git clone -b v2.0.6 https://github.com/incendiary/Chorus.git
    cd Chorus
    ```
+
 2. **Configure environment (optional):**
+
    ```bash
    cp .env.example .env
    # Edit .env to change WHISPER_MODEL (default is "base")
    ```
+
 3. **Build and start the application:**
+
    ```bash
    docker-compose up --build
    ```
+
 4. **Access the UI:**
    Open your browser and navigate to: [http://localhost:8501](http://localhost:8501)
 
 ### Stopping the service
+
 ```bash
 docker-compose down
 ```
@@ -85,6 +94,7 @@ Requires NVIDIA Container Toolkit and a Volta (GTX 1070 Ti / RTX series) or newe
 The runtime command is identical to Linux, but the setup path is different. Docker Desktop on Windows uses a WSL2-based Linux VM to run containers, and GPU passthrough happens through that layer.
 
 **Prerequisites:**
+
 - Windows 10 (21H2 or later) or Windows 11
 - Docker Desktop for Windows with the **WSL2 backend** enabled (Settings → General → *Use the WSL2 based engine*)
 - NVIDIA driver **527.41 or later** installed on the **Windows host** — do not install CUDA inside WSL2, the host driver is all that is needed
@@ -147,15 +157,15 @@ Pre-built images are published to [GitHub Container Registry](https://ghcr.io/in
 ### CPU
 
 ```bash
-docker pull ghcr.io/incendiary/chorus:v2.0.5
-docker run --rm -p 8501:8501 ghcr.io/incendiary/chorus:v2.0.5
+docker pull ghcr.io/incendiary/chorus:v2.0.6
+docker run --rm -p 8501:8501 ghcr.io/incendiary/chorus:v2.0.6
 ```
 
 ### GPU (NVIDIA CUDA)
 
 ```bash
-docker pull ghcr.io/incendiary/chorus:v2.0.5-gpu
-docker run --rm -p 8501:8501 --gpus all ghcr.io/incendiary/chorus:v2.0.5-gpu
+docker pull ghcr.io/incendiary/chorus:v2.0.6-gpu
+docker run --rm -p 8501:8501 --gpus all ghcr.io/incendiary/chorus:v2.0.6-gpu
 ```
 
 Access the UI at [http://localhost:8501](http://localhost:8501).
@@ -172,18 +182,21 @@ Access the UI at [http://localhost:8501](http://localhost:8501).
    - Windows: Install via `winget` or download binaries.
 
 2. **Create a virtual environment:**
+
    ```bash
    python -m venv .venv
    source .venv/bin/activate  # On Windows: .venv\Scripts\activate
    ```
 
 3. **Install dependencies:**
+
    ```bash
    pip install --upgrade pip
    pip install -r requirements.txt
    ```
 
 4. **Run the Streamlit UI:**
+
    ```bash
    streamlit run ui/app.py
    ```
@@ -246,36 +259,15 @@ chorus-engine/
 
 ---
 
-## Roadmap
+## Roadmap Tracking
 
-### Implemented Features (v2.0.5)
-- ✅ **Sequence Alignment (Needleman-Wunsch):** Banded NW algorithm handles word insertions and deletions across variants. Configurable via `ALIGNMENT_STRATEGY` env var. Fast-path for identical sequences.
-- ✅ **Word-Level Timestamps:** Always-on per-word timing from Whisper. SRT/VTT exports group words into ≤6-word cues with precise start/end times.
-- ✅ **Memory-Optimised Pipeline:** Eager `del` of processed arrays after disk writes. Reduces peak memory for long recordings.
-- ✅ **VAD Noise Floor Detection:** Energy-based silence detection (auto mode) as alternative to fixed first-0.5s assumption. Configurable via `NOISE_FLOOR_MODE`.
-- ✅ **UI Overhaul:** Alignment strategy selector, noise mode selector, device indicator, model change warning, confidence bar visualisation (HIGH/MED/LOW), raw Markdown toggle, batch auto-switch for 3+ files, processing time display.
-- ✅ **Speaker Name Persistence:** Editable speaker name table in UI. Names saved to `{stem}_speakers.json` sidecar and auto-loaded on reprocess. Included in zip exports.
-- ✅ **AI Context Pack:** Generates `{stem}_ai_context.md` — a structured document for LLM consumption with methodology, confidence stats, clean transcript, uncertainty annotations, and usage guidance.
-- ✅ **Integration Tests:** Full pipeline tests with synthetic audio and mocked transcription (20 tests). Total test suite: 120+ tests.
+Roadmap planning and release completion tracking are maintained in [ROADMAP.md](ROADMAP.md) only.
 
-### Implemented Features (v1.1.0)
-- ✅ **Multi-File Upload:** Process multiple recordings in a single session; results appear in labelled expanders.
-- ✅ **Filename-Based Outputs:** All generated files (WAVs, transcripts, exports) are named after the original recording, not a temporary path.
-- ✅ **Download All:** A single zip per recording bundles the consensus Markdown, plain transcripts, and all selected export formats.
-- ✅ **Plain-Text Transcript:** "Most Likely" export strips confidence markup; a toggle controls whether LOW-confidence words are shown as `[word?]` or omitted entirely.
-- ✅ **Hardware-Aware Processing Mode:** Sequential vs. all-at-once toggle with a hardware recommendation derived from available RAM and CPU cores.
-- ✅ **Security Hardening (v1.0.1–v1.0.5):** Localhost binding, dependency pinning, no-new-privileges, read-only filesystem, non-root user, secret rotation, sanitised filenames.
+Use [ROADMAP.md](ROADMAP.md) as the source of truth for:
 
-### Implemented Features (v1.0.0)
-- ✅ **Audio Cleaning Pipeline:** High-pass, Normalisation, Spectral Denoising.
-- ✅ **Local Transcription:** Offline OpenAI Whisper integration.
-- ✅ **Consensus Alignment:** Word-level sliding window voting with NLTK fuzzy similarity.
-- ✅ **Rich UI:** Interactive Streamlit dashboard.
-- ✅ **Speaker Diarisation:** `pyannote.audio` integration for multi-speaker identification.
-- ✅ **GPU Acceleration:** Pre-configured `docker-compose.gpu.yml` for NVIDIA CUDA hardware.
-- ✅ **Multi-Format Export:** Direct export to PDF, DOCX, SRT, and VTT formats.
-- ✅ **NLP Reconstruction:** spaCy-powered grammatical reconstruction for LOW-confidence tokens.
-- ✅ **Batch Processing:** Unattended CLI mode (`python -m batch_processor.batch_runner`) for processing entire directories.
+- planned work items;
+- completed items and their release versions;
+- release progress status.
 
 ---
 
@@ -284,6 +276,7 @@ chorus-engine/
 > **Note to Maintainers:** This codebase has been hardened and prepared for autonomous maintenance via Claude Code. It adheres to the security and tooling standards established by the [Bedrock](https://github.com/incendiary/Bedrock) repository.
 >
 > When initialising this repository:
+>
 > 1. Run `./gh_init.sh <your-org> <repo-name>` to create the GitHub repository, enforce branch protection, and require signed commits.
 > 2. Open the project in Claude Code — the `CLAUDE.md` file will load automatically to enforce architectural rules, unit testing standards, and development guidelines.
 > 3. The CI pipeline (`.github/workflows/ci.yml`) enforces a strict three-layer secret scan (gitleaks + TruffleHog + detect-secrets) before any code is linted or tested.
