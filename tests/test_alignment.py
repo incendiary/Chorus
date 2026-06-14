@@ -118,12 +118,12 @@ class TestFuzzyMatching:
 
 class TestPerformance:
     def test_ten_thousand_words_under_two_seconds(self):
-        """Sliding-window alignment must complete in under 2 s for 10k words."""
+        """Positional alignment must complete in under 2 s for 10k words."""
         words = " ".join(f"word{i}" for i in range(10_000))
         variants = {"a": words, "b": words, "c": words, "d": words}
 
         start = time.perf_counter()
-        result = align_transcripts(variants)
+        result = align_transcripts(variants, strategy="positional")
         elapsed = time.perf_counter() - start
 
         assert len(result) == 10_000

@@ -72,6 +72,9 @@ NORMALISATION_TARGET_DBFS = -20.0
 # Noise reduction: proportion of noise floor to subtract (0.0 – 1.0)
 NOISE_REDUCTION_PROP = 0.75
 
+# Noise floor detection: "vad" (auto-detect silence via energy) or "fixed" (first 0.5 s)
+NOISE_FLOOR_MODE = os.environ.get("NOISE_FLOOR_MODE", "vad")
+
 # ─────────────────────────────────────────────
 # Consensus Merger Configuration
 # ─────────────────────────────────────────────
@@ -80,6 +83,11 @@ CONSENSUS_THRESHOLD = 0.75  # i.e., present in ≥ 3 of 4 transcripts
 
 # NLTK similarity threshold for fuzzy-match acceptance (0.0 – 1.0)
 SIMILARITY_THRESHOLD = 0.80
+
+# Alignment strategy: "sequence" (Needleman-Wunsch, accurate) or "positional" (fast, legacy)
+# Sequence alignment handles word insertions/deletions across variants.
+# Positional alignment is faster but assumes variants have similar word counts.
+ALIGNMENT_STRATEGY = os.environ.get("ALIGNMENT_STRATEGY", "sequence")
 
 # ─────────────────────────────────────────────
 # Audio Cleaning Variant Labels
