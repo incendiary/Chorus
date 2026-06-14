@@ -467,6 +467,8 @@ def _render_batch_outcome_summary(
     completed_files: int,
     failed_files: int,
     duration_seconds: float,
+    failed_file_names: list[str] | None = None,
+    file_anchors: dict[str, str] | None = None,
 ) -> None:
     """Render concise outcomes guidance after a batch run completes."""
     st.markdown("#### Run Summary")
@@ -486,6 +488,14 @@ def _render_batch_outcome_summary(
             "Some files failed. Check technical details in the affected sections, then retry failed files in smaller batches.",
             icon="⚠️",
         )
+        if failed_file_names:
+            if file_anchors:
+                failed_links = " · ".join(
+                    f"[{name}](#{file_anchors.get(name, '')})" for name in failed_file_names
+                )
+                st.markdown(f"**Failed files:** {failed_links}")
+            else:
+                st.markdown("**Failed files:** " + ", ".join(failed_file_names))
 
 
 def _render_result_navigation(file_names: list[str], file_anchors: dict[str, str]) -> None:
@@ -1022,6 +1032,7 @@ if uploaded_files:
         run_status_slot = st.empty()
         completed_files = 0
         failed_files = 0
+        failed_file_names: list[str] = []
 
         _render_run_status(
             container=run_status_slot,
@@ -1067,6 +1078,7 @@ if uploaded_files:
                         _render_file_results(uf.name, results, tmp_path, original_stem)
                     except Exception as exc:
                         failed_files += 1
+                        failed_file_names.append(str(uf.name))
                         _render_processing_error(uf.name, exc, allow_retry=True)
                         logger.exception("Pipeline error for %s", uf.name)
                     finally:
@@ -1117,6 +1129,7 @@ if uploaded_files:
                     completed_files += 1
                 except Exception as exc:
                     failed_files += 1
+                    failed_file_names.append(str(uf.name))
                     _render_processing_error(uf.name, exc)
                     logger.exception("Pipeline error for %s", uf.name)
                 finally:
@@ -1139,6 +1152,8 @@ if uploaded_files:
                 completed_files=completed_files,
                 failed_files=failed_files,
                 duration_seconds=time.time() - run_started_at,
+                failed_file_names=failed_file_names,
+                file_anchors=file_anchors,
             )
 
             for uf, results, tmp_path, original_stem in all_results:
@@ -1154,6 +1169,8 @@ if uploaded_files:
                 completed_files=completed_files,
                 failed_files=failed_files,
                 duration_seconds=time.time() - run_started_at,
+                failed_file_names=failed_file_names,
+                file_anchors=file_anchors,
             )
 
 else:
