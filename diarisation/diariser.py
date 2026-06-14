@@ -117,7 +117,7 @@ def _load_pipeline():
                 logger.info("Diarisation pipeline running on CUDA.")
             else:
                 logger.info("Diarisation pipeline running on CPU.")
-        except Exception:  # noqa: BLE001
+        except (RuntimeError, OSError, ValueError):
             logger.debug("Could not move diarisation pipeline to CUDA.", exc_info=True)
 
         return pipeline
@@ -129,7 +129,7 @@ def _load_pipeline():
             "Falling back to stub diarisation."
         )
         return None
-    except Exception as exc:
+    except (RuntimeError, OSError, ValueError) as exc:
         logger.warning("Failed to load diarisation pipeline: %s. Using stub.", exc)
         return None
 
