@@ -47,6 +47,79 @@ from utils import sanitise_stem  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
+THEME_PRESETS: dict[str, dict[str, str]] = {
+    "Ocean Professional": {
+        "primary": "#0f3460",
+        "surface": "#f8f9fa",
+        "border": "#dee2e6",
+        "header_a": "#1a1a2e",
+        "header_b": "#16213e",
+        "header_c": "#0f3460",
+        "high_bg": "#d4edda",
+        "high_fg": "#155724",
+        "med_bg": "#fff3cd",
+        "med_fg": "#856404",
+        "low_bg": "#f8d7da",
+        "low_fg": "#721c24",
+    },
+    "Slate Enterprise": {
+        "primary": "#243447",
+        "surface": "#f4f6f8",
+        "border": "#d0d7de",
+        "header_a": "#2c3e50",
+        "header_b": "#34495e",
+        "header_c": "#243447",
+        "high_bg": "#d8f3dc",
+        "high_fg": "#1b4332",
+        "med_bg": "#fff1c1",
+        "med_fg": "#7a5c00",
+        "low_bg": "#fde2e4",
+        "low_fg": "#8b1e3f",
+    },
+    "Forest Trust": {
+        "primary": "#1f5f3f",
+        "surface": "#f4f8f5",
+        "border": "#cad7ce",
+        "header_a": "#143d2b",
+        "header_b": "#1f5f3f",
+        "header_c": "#2f855a",
+        "high_bg": "#d9f2e3",
+        "high_fg": "#155d3b",
+        "med_bg": "#fff4cf",
+        "med_fg": "#775c00",
+        "low_bg": "#f8dcdf",
+        "low_fg": "#7a1f2d",
+    },
+    "Graphite Contrast": {
+        "primary": "#1f2937",
+        "surface": "#f3f4f6",
+        "border": "#c7ccd1",
+        "header_a": "#111827",
+        "header_b": "#1f2937",
+        "header_c": "#374151",
+        "high_bg": "#d1fae5",
+        "high_fg": "#065f46",
+        "med_bg": "#fef3c7",
+        "med_fg": "#78350f",
+        "low_bg": "#fee2e2",
+        "low_fg": "#991b1b",
+    },
+    "Sunrise Editorial": {
+        "primary": "#7a3e00",
+        "surface": "#faf7f2",
+        "border": "#dfd6c8",
+        "header_a": "#4e2a14",
+        "header_b": "#7a3e00",
+        "header_c": "#a35a1d",
+        "high_bg": "#deefe4",
+        "high_fg": "#1d5f3e",
+        "med_bg": "#ffeccb",
+        "med_fg": "#7a4f00",
+        "low_bg": "#f9dede",
+        "low_fg": "#7c2230",
+    },
+}
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Page configuration
 # ─────────────────────────────────────────────────────────────────────────────
@@ -58,21 +131,36 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+if "ui_theme" not in st.session_state:
+    st.session_state["ui_theme"] = "Ocean Professional"
+
+_theme_name = str(st.session_state.get("ui_theme", "Ocean Professional"))
+_theme = THEME_PRESETS.get(_theme_name, THEME_PRESETS["Ocean Professional"])
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Custom CSS
 # ─────────────────────────────────────────────────────────────────────────────
 
 st.markdown(
-    """
+    f"""
 <style>
     :root {
-        --chorus-primary: #0f3460;
-        --chorus-surface: #f8f9fa;
-        --chorus-border: #dee2e6;
+        --chorus-primary: {_theme['primary']};
+        --chorus-surface: {_theme['surface']};
+        --chorus-border: {_theme['border']};
+        --chorus-header-a: {_theme['header_a']};
+        --chorus-header-b: {_theme['header_b']};
+        --chorus-header-c: {_theme['header_c']};
+        --chorus-high-bg: {_theme['high_bg']};
+        --chorus-high-fg: {_theme['high_fg']};
+        --chorus-med-bg: {_theme['med_bg']};
+        --chorus-med-fg: {_theme['med_fg']};
+        --chorus-low-bg: {_theme['low_bg']};
+        --chorus-low-fg: {_theme['low_fg']};
     }
 
     .chorus-header {
-        background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+        background: linear-gradient(135deg, var(--chorus-header-a) 0%, var(--chorus-header-b) 50%, var(--chorus-header-c) 100%);
         padding: 2rem 2.5rem;
         border-radius: 12px;
         margin-bottom: 1.5rem;
@@ -81,16 +169,16 @@ st.markdown(
     .chorus-header h1 { margin: 0; font-size: 2.4rem; letter-spacing: -0.5px; }
     .chorus-header p  { margin: 0.4rem 0 0; opacity: 0.75; font-size: 1rem; }
 
-    .tier-badge-high   { background:#d4edda; color:#155724; padding:2px 8px;
+    .tier-badge-high   { background:var(--chorus-high-bg); color:var(--chorus-high-fg); padding:2px 8px;
                          border-radius:4px; font-size:0.8rem; font-weight:600; }
-    .tier-badge-medium { background:#fff3cd; color:#856404; padding:2px 8px;
+    .tier-badge-medium { background:var(--chorus-med-bg); color:var(--chorus-med-fg); padding:2px 8px;
                          border-radius:4px; font-size:0.8rem; font-weight:600; }
-    .tier-badge-low    { background:#f8d7da; color:#721c24; padding:2px 8px;
+    .tier-badge-low    { background:var(--chorus-low-bg); color:var(--chorus-low-fg); padding:2px 8px;
                          border-radius:4px; font-size:0.8rem; font-weight:600; }
 
-    .stProgress > div > div > div { background-color: #0f3460; }
-    .metric-card { background:#f8f9fa; border-radius:8px; padding:1rem;
-                   text-align:center; border:1px solid #dee2e6; }
+    .stProgress > div > div > div { background-color: var(--chorus-primary); }
+    .metric-card { background:var(--chorus-surface); border-radius:8px; padding:1rem;
+                   text-align:center; border:1px solid var(--chorus-border); }
 
     /* Improve keyboard navigation discoverability */
     button:focus-visible,
@@ -225,19 +313,19 @@ def _render_confidence_overview(consensus_text: str) -> None:
     bar_cols = st.columns([n_high or 1, n_med or 1, n_low or 1])
     with bar_cols[0]:
         st.markdown(
-            f'<div style="background:#d4edda;padding:8px;border-radius:4px;text-align:center">'
+            f'<div style="background:var(--chorus-high-bg);color:var(--chorus-high-fg);padding:8px;border-radius:4px;text-align:center">'
             f'<b>🟢 HIGH</b><br>{n_high} ({n_high*100//total_w}%)</div>',
             unsafe_allow_html=True,
         )
     with bar_cols[1]:
         st.markdown(
-            f'<div style="background:#fff3cd;padding:8px;border-radius:4px;text-align:center">'
+            f'<div style="background:var(--chorus-med-bg);color:var(--chorus-med-fg);padding:8px;border-radius:4px;text-align:center">'
             f'<b>🟡 MED</b><br>{n_med} ({n_med*100//total_w}%)</div>',
             unsafe_allow_html=True,
         )
     with bar_cols[2]:
         st.markdown(
-            f'<div style="background:#f8d7da;padding:8px;border-radius:4px;text-align:center">'
+            f'<div style="background:var(--chorus-low-bg);color:var(--chorus-low-fg);padding:8px;border-radius:4px;text-align:center">'
             f'<b>🔴 LOW</b><br>{n_low} ({n_low*100//total_w}%)</div>',
             unsafe_allow_html=True,
         )
@@ -281,6 +369,21 @@ def _render_processing_error(file_name: str, exc: Exception, allow_retry: bool =
 
 with st.sidebar:
     st.header("⚙️ Configuration")
+
+    # ── Appearance ───────────────────────────────────────────────────────────
+    st.subheader("Appearance")
+    st.selectbox(
+        "Theme preset",
+        options=list(THEME_PRESETS.keys()),
+        key="ui_theme",
+        help=(
+            "Choose a visual preset. Themes only change presentation; processing logic, "
+            "confidence math, and exports are unchanged."
+        ),
+    )
+    st.caption(
+        "Tip: choose higher-contrast presets when reviewing low-confidence segments for longer sessions."
+    )
 
     # ── Model & Device ────────────────────────────────────────────────────────
     st.subheader("Model & Device")
