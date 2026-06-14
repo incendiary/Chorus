@@ -19,7 +19,6 @@ from __future__ import annotations
 import json
 import logging
 import os
-import re
 import sys
 import tempfile
 import time
@@ -44,19 +43,9 @@ from export_engine.exporter import (  # noqa: E402
     export_zip,
 )
 from pipeline_runner import run_pipeline  # noqa: E402
+from utils import sanitise_stem  # noqa: E402
 
 logger = logging.getLogger(__name__)
-
-# Safe filename pattern — only alphanumeric, hyphens, and underscores retained
-_SAFE_STEM_RE = re.compile(r"[^a-zA-Z0-9_-]")
-
-
-def _sanitise_stem(raw_name: str) -> str:
-    """Sanitise a user-supplied filename stem to safe filesystem characters."""
-    stem = Path(raw_name).stem
-    sanitised = _SAFE_STEM_RE.sub("_", stem).strip("_")
-    return sanitised or "upload"
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Page configuration
@@ -378,7 +367,7 @@ if uploaded_files:
 
             Returns (results, tmp_path, original_stem).
             """
-            original_stem = _sanitise_stem(uf.name)
+            original_stem = sanitise_stem(Path(uf.name).stem, fallback="upload")
             suffix = Path(uf.name).suffix.lower()
             # Secure temp file: unique path, exclusive creation, no race condition
             tmp_fd = tempfile.NamedTemporaryFile(
