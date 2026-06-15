@@ -82,3 +82,60 @@ def test_run_transcription_pass_parallel(monkeypatch, tmp_path, variant_paths):
         assert txt_path.exists()
         text = txt_path.read_text(encoding="utf-8")
         assert "# Chorus Transcript" in text
+
+
+def test_run_transcription_pass_multimodel_keys(monkeypatch, tmp_path, variant_paths):
+    monkeypatch.setattr(orchestrator, "TRANSCRIPTS_DIR", tmp_path)
+    monkeypatch.setattr(orchestrator, "CONSENSUS_MODELS", ("base", "small"))
+    monkeypatch.setattr(
+        orchestrator,
+        "CONSENSUS_MODEL_LABELS",
+        {"base": "Whisper base", "small": "Whisper small"},
+    )
+    monkeypatch.setattr(orchestrator, "_resolve_parallelism", lambda total: 1)
+
+    seen_calls: list[tuple[str | None, str]] = []
+
+    def fake_transcribe(
+        audio_path, variant_key, stem, language=None, device=None, model_name=None, **kwargs
+    ):
+        seen_calls.append((model_name, variant_key))
+        return {
+            "text": f"{model_name}:{variant_key}",
+            "language": language or "en",
+            "model": model_name,
+            "device": device,
+        }
+
+    monkeypatch.setattr(orchestrator, "transcribe", fake_transcribe)
+
+    transcripts = orchestrator.run_transcription_pass(
+        variant_paths=variant_paths,
+        stem="sample",
+        language="en",
+    )
+
+    primary_keys = set(variant_paths.keys())
+    secondary_keys = {f"small__{k}" for k in variant_paths}
+    assert set(transcripts.keys()) == primary_keys | secondary_keys
+
+    expected_calls = {
+        ("base", k) for k in variant_paths
+    } | {
+        ("small", k) for k in variant_paths
+    }
+    assert set(seen_calls) == expected_calls
+
+
+def test_load_transcripts_from_disk_multimodel(monkeypatch, tmp_path):
+    monkeypatch.setattr(orchestrator, "TRANSCRIPTS_DIR", tmp_path)
+    monkeypatch.setattr(orchestrator, "CONSENSUS_MODELS", ("base", "small"))
+
+    payload = {"text": "hello", "model": "small"}
+    target = tmp_path / "sample_small__original.json"
+    target.write_text('{"text": "hello", "model": "small"}', encoding="utf-8")
+
+    transcripts = orchestrator.load_transcripts_from_disk("sample")
+
+    assert "small__original" in transcripts
+    assert transcripts["small__original"]["text"] == payload["text"]
