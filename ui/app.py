@@ -273,6 +273,7 @@ st.markdown(
 
 st.markdown(
     """
+<div id="top"></div>
 <div class="chorus-header">
     <h1>🎙️ Chorus</h1>
     <p>Multi-pass consensus audio transcription engine — powered by OpenAI Whisper</p>
@@ -490,10 +491,14 @@ def _render_batch_outcome_summary(
         )
         if failed_file_names:
             if file_anchors:
+                unique_failed = list(dict.fromkeys(failed_file_names))
                 failed_links = " · ".join(
-                    f"[{name}](#{file_anchors.get(name, '')})" for name in failed_file_names
+                    f"[{name}](#{file_anchors[name]})"
+                    for name in unique_failed
+                    if name in file_anchors
                 )
-                st.markdown(f"**Failed files:** {failed_links}")
+                if failed_links:
+                    st.markdown(f"**Failed files:** {failed_links}")
             else:
                 st.markdown("**Failed files:** " + ", ".join(failed_file_names))
 
@@ -504,7 +509,7 @@ def _render_result_navigation(file_names: list[str], file_anchors: dict[str, str
         return
 
     anchors = [(name, file_anchors[name]) for name in file_names]
-    links = " · ".join(f"[{name}](#{anchor})" for name, anchor in anchors)
+    links = " · ".join(["[Top](#top)", *[f"[{name}](#{anchor})" for name, anchor in anchors]])
     st.markdown(
         (
             '<div class="chorus-action-bar">'
