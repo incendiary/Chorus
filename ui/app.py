@@ -295,6 +295,30 @@ st.markdown(
         .chorus-header p {
             font-size: 0.9rem;
         }
+
+        .chorus-action-bar {
+            position: static;
+            backdrop-filter: none;
+            margin: 0.35rem 0 0.75rem;
+        }
+
+        .chorus-run-status {
+            padding: 0.75rem;
+            margin: 0.5rem 0 0.75rem;
+        }
+
+        .chorus-run-summary-ok,
+        .chorus-run-summary-issues {
+            font-size: 0.8rem;
+            padding: 0.2rem 0.55rem;
+        }
+
+        .chorus-skip-links a,
+        .chorus-skip-links a:focus {
+            position: static;
+            display: inline-block;
+            margin: 0.15rem 0.3rem 0.15rem 0;
+        }
     }
 </style>
 """
