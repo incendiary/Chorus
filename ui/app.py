@@ -33,6 +33,7 @@ if str(_ROOT) not in sys.path:
 
 from config import (  # noqa: E402
     ALIGNMENT_STRATEGY,
+    CONSENSUS_MODELS,
     NOISE_FLOOR_MODE,
     VARIANT_LABELS,
     WHISPER_MODEL,
@@ -419,6 +420,7 @@ def _hw_recommendation() -> tuple[str, str]:
 def _render_preflight_summary(
     file_count: int,
     model_choice: str,
+    consensus_models: tuple[str, ...],
     alignment_choice: str,
     noise_mode_choice: str,
     enable_nlp: bool,
@@ -437,13 +439,15 @@ def _render_preflight_summary(
         if model_choice in {"medium", "small"} or enable_nlp or enable_diarisation
         else "balanced runtime expected"
     )
+    model_set_text = ", ".join(consensus_models)
 
     st.markdown(
         (
             '<div class="chorus-preflight">'
             f"<b>Preflight:</b> {file_count} file{'s' if file_count > 1 else ''}, "
             f"model <b>{model_choice}</b>, alignment <b>{alignment_choice}</b>, "
-            f"noise mode <b>{noise_mode_choice}</b>, advanced features: <b>{feature_text}</b>.<br>"
+            f"noise mode <b>{noise_mode_choice}</b>, consensus models <b>{model_set_text}</b>, "
+            f"advanced features: <b>{feature_text}</b>.<br>"
             f"Expected profile: <b>{runtime_hint}</b>. "
             "Tip: use smaller batches if you need faster feedback cycles."
             "</div>"
@@ -690,12 +694,32 @@ with st.sidebar:
 
     # ── Model & Device ────────────────────────────────────────────────────────
     st.subheader("Model & Device")
+    model_options = ["tiny", "base", "small", "medium"]
     model_choice = st.selectbox(
         "Model size",
-        options=["tiny", "base", "small", "medium"],
-        index=["tiny", "base", "small", "medium"].index(WHISPER_MODEL),
+        options=model_options,
+        index=model_options.index(WHISPER_MODEL),
         help="Larger models are more accurate but slower. 'base' is recommended for local CPU use.",  # noqa: E501
     )
+
+    default_consensus = [m for m in CONSENSUS_MODELS if m in model_options] or [model_choice]
+    if model_choice not in default_consensus:
+        default_consensus.insert(0, model_choice)
+
+    consensus_model_choice = st.multiselect(
+        "Consensus models",
+        options=model_options,
+        default=default_consensus,
+        help=(
+            "Choose one or more models for consensus voting. The first selected model "
+            "is treated as primary for compatibility outputs."
+        ),
+    )
+    if not consensus_model_choice:
+        consensus_model_choice = [model_choice]
+    if consensus_model_choice[0] != model_choice:
+        consensus_model_choice = [model_choice, *[m for m in consensus_model_choice if m != model_choice]]
+    consensus_models = tuple(dict.fromkeys(consensus_model_choice))
 
     # Warn if model changed and is already loaded
     if model_choice != WHISPER_MODEL:
@@ -876,6 +900,7 @@ if uploaded_files:
     _render_preflight_summary(
         file_count=n,
         model_choice=model_choice,
+        consensus_models=consensus_models,
         alignment_choice=alignment_choice,
         noise_mode_choice=noise_mode_choice,
         enable_nlp=enable_nlp,
@@ -899,6 +924,7 @@ if uploaded_files:
 
     if run_btn:
         os.environ["WHISPER_MODEL"] = model_choice
+        os.environ["CONSENSUS_MODELS"] = ",".join(consensus_models)
         os.environ["NOISE_FLOOR_MODE"] = noise_mode_choice
 
         formats_to_export = [
@@ -944,6 +970,7 @@ if uploaded_files:
             results = run_pipeline(
                 audio_path=tmp_path,
                 language=language,
+                    consensus_models=consensus_models,
                 enable_nlp=enable_nlp,
                 enable_diarisation=enable_diarisation,
                 alignment_strategy=alignment_choice,
