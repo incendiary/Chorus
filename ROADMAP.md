@@ -12,8 +12,6 @@ Tracked improvements identified during the June 2026 repository assessment.
 
 - [x] **Remove import-time side effects in `config.py`** (v2.0.3) — directory creation (`mkdir`) runs at import time (line 25), which complicates testing and causes side effects when any module imports `config`. ✓ Gated creation behind `ensure_output_dirs()` function called at pipeline start.
 
-- [ ] **Tighten output path coupling** — the global `OUTPUTS_DIR` is patched in 5+ locations in test fixtures. Consider passing the output path as a parameter through the pipeline to improve testability and flexibility.
-
 ---
 
 ## Error Handling
@@ -43,6 +41,8 @@ Tracked improvements identified during the June 2026 repository assessment.
 - [x] **Version sync across all release channels** (v2.0.8) — pyproject.toml, README.md, git tags, and ROADMAP completions enforced via Python tests and shell consistency guard (`tests/version_consistency_test.sh`).
 
 - [x] **Streamlit UI polish and batch UX** (v2.0.8) — live batch status panel with ETA, post-run summary with success/issue badges, failed-file jump links, quick-navigation bar with sticky positioning, keyboard skip links, mobile-responsive layout, results filter control, centralised microcopy constants, and in-session recent run snapshots.
+
+- [x] **Tighten output path coupling** (v2.0.9) — `output_dir: Path | None` parameter added to `run_pipeline()` and threaded through all stages. Tests use `tmp_path` isolation; two new `TestOutputDirIsolation` integration tests confirm correct sub-directory creation and run isolation.
 
 ---
 

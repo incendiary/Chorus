@@ -65,6 +65,7 @@ def transcribe(
     stem: str,
     language: str | None = None,
     device: str | None = None,
+    transcripts_dir: Path | None = None,
 ) -> dict[str, Any]:
     """
     Transcribe a single audio file and persist the result as JSON.
@@ -123,8 +124,10 @@ def transcribe(
     result["model"] = WHISPER_MODEL
     result["device"] = active_device
 
-    # Persist to TRANSCRIPTS_DIR/<stem>_<variant>.json
-    out_path = TRANSCRIPTS_DIR / f"{stem}_{variant_key}.json"
+    # Persist to transcripts_dir/<stem>_<variant>.json
+    out_dir = transcripts_dir if transcripts_dir is not None else TRANSCRIPTS_DIR
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / f"{stem}_{variant_key}.json"
     with open(out_path, "w", encoding="utf-8") as fh:
         json.dump(result, fh, ensure_ascii=False, indent=2)
 

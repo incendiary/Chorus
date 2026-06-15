@@ -82,9 +82,16 @@ def _build_device_pool(parallelism: int) -> list[str]:
     return [WHISPER_DEVICE]
 
 
-def _write_txt_companion(stem: str, key: str, label: str, result: dict[str, Any]) -> None:
+def _write_txt_companion(
+    stem: str,
+    key: str,
+    label: str,
+    result: dict[str, Any],
+    transcripts_dir: Path | None = None,
+) -> None:
     """Write human-readable transcript companion file."""
-    txt_path = TRANSCRIPTS_DIR / f"{stem}_{key}.txt"
+    out_dir = transcripts_dir if transcripts_dir is not None else TRANSCRIPTS_DIR
+    txt_path = out_dir / f"{stem}_{key}.txt"
     with open(txt_path, "w", encoding="utf-8") as fh:
         fh.write(f"# Chorus Transcript — {label}\n")
         fh.write(f"# Model : {result.get('model', 'unknown')}\n")
@@ -100,6 +107,7 @@ def _transcribe_one(
     stem: str,
     language: str | None,
     device: str,
+    transcripts_dir: Path | None = None,
 ) -> tuple[str, str, dict[str, Any]]:
     """Run one transcription unit and return key/label/result."""
     label = VARIANT_LABELS.get(key, key)
@@ -109,8 +117,15 @@ def _transcribe_one(
         stem=stem,
         language=language,
         device=device,
+        transcripts_dir=transcripts_dir,
     )
-    _write_txt_companion(stem=stem, key=key, label=label, result=result)
+    _write_txt_companion(
+        stem=stem,
+        key=key,
+        label=label,
+        result=result,
+        transcripts_dir=transcripts_dir,
+    )
     return key, label, result
 
 
@@ -119,6 +134,7 @@ def run_transcription_pass(
     stem: str,
     language: str | None = None,
     progress_callback=None,
+    transcripts_dir: Path | None = None,
 ) -> dict[str, dict[str, Any]]:
     """
     Transcribe every audio variant and return all results.
@@ -157,6 +173,7 @@ def run_transcription_pass(
                 stem=stem,
                 language=language,
                 device=device_pool[0],
+                transcripts_dir=transcripts_dir,
             )
             transcripts[key] = result
             if progress_callback:
@@ -182,6 +199,7 @@ def run_transcription_pass(
                     stem,
                     language,
                     device,
+                    transcripts_dir,
                 )
                 futures[future] = key
 

@@ -129,6 +129,7 @@ def _mock_run_transcription_pass(
     stem: str,
     language: str | None = None,
     progress_callback=None,
+    **kwargs,
 ) -> dict[str, dict]:
     """Mock transcription that returns pre-defined results."""
     if progress_callback:
@@ -537,3 +538,44 @@ class TestErrorHandling:
         assert len(calls) > 5
         # Last call should be at 1.0
         assert calls[-1][1] == 1.0
+
+
+class TestOutputDirIsolation:
+    """Test that output_dir correctly isolates pipeline outputs."""
+
+    @pytest.mark.usefixtures("_patch_transcription")
+    def test_output_dir_creates_subdirs(self, synthetic_audio, tmp_path):
+        """Pipeline should write all outputs into the provided output_dir."""
+        from pipeline_runner import run_pipeline
+
+        out = tmp_path / "isolated_run"
+        result = run_pipeline(
+            audio_path=synthetic_audio,
+            language="en",
+            output_dir=out,
+        )
+
+        # variants and consensus are written by real stages (Stage 1 & 3).
+        # transcripts/ is created by Stage 2 (mocked), so only assert real stages.
+        assert (out / "variants").is_dir()
+        assert (out / "consensus").is_dir()
+        assert result["consensus_path"].parent == out / "consensus"
+
+    @pytest.mark.usefixtures("_patch_transcription")
+    def test_two_runs_stay_isolated(self, synthetic_audio, tmp_path):
+        """Concurrent output dirs must not share outputs."""
+        from pipeline_runner import run_pipeline
+
+        out_a = tmp_path / "run_a"
+        out_b = tmp_path / "run_b"
+
+        result_a = run_pipeline(
+            audio_path=synthetic_audio, language="en", output_dir=out_a
+        )
+        result_b = run_pipeline(
+            audio_path=synthetic_audio, language="en", output_dir=out_b
+        )
+
+        assert result_a["consensus_path"] != result_b["consensus_path"]
+        assert result_a["consensus_path"].parent == out_a / "consensus"
+        assert result_b["consensus_path"].parent == out_b / "consensus"

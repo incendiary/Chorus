@@ -44,6 +44,7 @@ def run_pipeline(
     enable_diarisation: bool = False,
     alignment_strategy: str | None = None,
     progress_callback: Callable[[str, float], None] | None = None,
+    output_dir: Path | None = None,
 ) -> dict[str, Path]:
     """
     Execute the full Chorus pipeline on a single audio file.
@@ -62,6 +63,10 @@ def run_pipeline(
     progress_callback : callable, optional
         Called as ``progress_callback(stage_label, fraction_complete)``
         at key milestones.  Fraction is in [0.0, 1.0].
+    output_dir : Path, optional
+        Root directory for all pipeline outputs.  When provided, sub-dirs
+        ``variants/``, ``transcripts/``, and ``consensus/`` are created
+        inside it.  Defaults to the global ``config.OUTPUTS_DIR`` layout.
 
     Returns
     -------
@@ -82,6 +87,17 @@ def run_pipeline(
     stem = sanitise_stem(audio_path.stem, fallback="audio")
     t_start = time.perf_counter()
 
+    # Derive per-stage output dirs from optional override
+    variants_dir: Path | None = None
+    transcripts_dir: Path | None = None
+    consensus_dir: Path | None = None
+    if output_dir is not None:
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        variants_dir = output_dir / "variants"
+        transcripts_dir = output_dir / "transcripts"
+        consensus_dir = output_dir / "consensus"
+
     def _progress(label: str, frac: float) -> None:
         logger.info("Progress [%.0f%%] — %s", frac * 100, label)
         if progress_callback:
@@ -89,7 +105,7 @@ def run_pipeline(
 
     # ── Stage 1: Audio Processing ────────────────────────────────────────────
     _progress("Applying audio cleaning filters…", 0.05)
-    variant_paths = process_audio(audio_path)
+    variant_paths = process_audio(audio_path, output_dir=variants_dir)
     _progress("Audio variants ready.", 0.25)
 
     # ── Stage 2: Transcription ───────────────────────────────────────────────
@@ -104,6 +120,7 @@ def run_pipeline(
         stem=stem,
         language=language,
         progress_callback=_transcription_progress,
+        transcripts_dir=transcripts_dir,
     )
     _progress("All transcription variants complete.", 0.80)
 
@@ -120,6 +137,7 @@ def run_pipeline(
         stem=stem,
         strategy=alignment_strategy,
         enable_nlp=enable_nlp,
+        consensus_dir=consensus_dir,
     )
     _progress("Consensus document generated.", 0.95)
 
