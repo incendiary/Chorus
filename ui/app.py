@@ -213,6 +213,18 @@ st.markdown(
         margin: 0.75rem 0 1rem;
     }
 
+    .chorus-run-summary-ok {
+        display: inline-block;
+        background: var(--chorus-high-bg);
+        color: var(--chorus-high-fg);
+        border: 1px solid var(--chorus-border);
+        border-radius: 999px;
+        padding: 0.25rem 0.7rem;
+        font-size: 0.85rem;
+        font-weight: 700;
+        margin-bottom: 0.4rem;
+    }
+
     .chorus-action-bar {
         position: sticky;
         top: 0.5rem;
@@ -480,6 +492,10 @@ def _render_batch_outcome_summary(
     c4.metric("Duration", f"{int(duration_seconds)} s")
 
     if failed_files == 0:
+        st.markdown(
+            '<div class="chorus-run-summary-ok">ALL FILES COMPLETED</div>',
+            unsafe_allow_html=True,
+        )
         st.success(
             "All files completed successfully. Review confidence sections below, then download archives.",
             icon="✅",
