@@ -19,10 +19,13 @@ from pathlib import Path
 from typing import Any
 
 from config import (
+    CONSENSUS_MODEL_LABELS,
+    CONSENSUS_MODELS,
     TRANSCRIPTS_DIR,
     TRANSCRIPTION_PARALLELISM,
     VARIANT_LABELS,
     WHISPER_DEVICE,
+    WHISPER_MODEL,
 )
 from transcription_engine.whisper_engine import transcribe
 
@@ -101,32 +104,76 @@ def _write_txt_companion(
         fh.write("\n")
 
 
+def _configured_models() -> tuple[str, ...]:
+    """Return the configured model list, always with at least one entry."""
+    models = tuple(CONSENSUS_MODELS)
+    if models:
+        return models
+    return (WHISPER_MODEL,)
+
+
+def _build_result_key(
+    model_name: str,
+    variant_key: str,
+    primary_model: str,
+) -> str:
+    """Build transcript key, preserving legacy keys for the primary model."""
+    if model_name == primary_model:
+        return variant_key
+    return f"{model_name}__{variant_key}"
+
+
+def _build_transcription_jobs(
+    variant_paths: dict[str, Path],
+) -> list[tuple[str, str, Path, str, str]]:
+    """Expand configured models × variants into concrete transcription jobs."""
+    jobs: list[tuple[str, str, Path, str, str]] = []
+    models = _configured_models()
+    primary_model = models[0]
+
+    for model_name in models:
+        model_label = CONSENSUS_MODEL_LABELS.get(model_name, f"Whisper {model_name}")
+        for variant_key, audio_path in variant_paths.items():
+            variant_label = VARIANT_LABELS.get(variant_key, variant_key)
+            result_key = _build_result_key(model_name, variant_key, primary_model)
+            if model_name == primary_model:
+                label = variant_label
+            else:
+                label = f"{model_label} — {variant_label}"
+            jobs.append((result_key, variant_key, audio_path, model_name, label))
+
+    return jobs
+
+
 def _transcribe_one(
-    key: str,
+    result_key: str,
+    variant_key: str,
     audio_path: Path,
     stem: str,
     language: str | None,
     device: str,
+    model_name: str,
+    label: str,
     transcripts_dir: Path | None = None,
 ) -> tuple[str, str, dict[str, Any]]:
     """Run one transcription unit and return key/label/result."""
-    label = VARIANT_LABELS.get(key, key)
     result = transcribe(
         audio_path=audio_path,
-        variant_key=key,
+        variant_key=variant_key,
         stem=stem,
         language=language,
         device=device,
+        model_name=model_name,
         transcripts_dir=transcripts_dir,
     )
     _write_txt_companion(
         stem=stem,
-        key=key,
+        key=result_key,
         label=label,
         result=result,
         transcripts_dir=transcripts_dir,
     )
-    return key, label, result
+    return result_key, label, result
 
 
 def run_transcription_pass(
@@ -155,27 +202,35 @@ def run_transcription_pass(
     Returns
     -------
     dict[str, dict]
-        Mapping of variant key → Whisper result dict (includes ``text``,
-        ``segments``, ``language``, ``variant``, ``model``).
+        Mapping of transcript key → Whisper result dict (includes ``text``,
+        ``segments``, ``language``, ``variant``, ``model``). Primary model
+        keys keep legacy names (for example ``original``); secondary model
+        keys are namespaced as ``<model>__<variant>``.
     """
     transcripts: dict[str, dict[str, Any]] = {}
-    total = len(variant_paths)
+    jobs = _build_transcription_jobs(variant_paths)
+    total = len(jobs)
     workers = _resolve_parallelism(total)
     device_pool = _build_device_pool(workers)
 
     if workers <= 1:
-        for step, (key, audio_path) in enumerate(variant_paths.items(), start=1):
-            label = VARIANT_LABELS.get(key, key)
+        for step, (result_key, variant_key, audio_path, model_name, label) in enumerate(
+            jobs,
+            start=1,
+        ):
             logger.info("[%d/%d] Transcribing: %s", step, total, label)
-            _, label, result = _transcribe_one(
-                key=key,
+            result_key, label, result = _transcribe_one(
+                result_key=result_key,
+                variant_key=variant_key,
                 audio_path=audio_path,
                 stem=stem,
                 language=language,
                 device=device_pool[0],
+                model_name=model_name,
+                label=label,
                 transcripts_dir=transcripts_dir,
             )
-            transcripts[key] = result
+            transcripts[result_key] = result
             if progress_callback:
                 progress_callback(step, total, label)
     else:
@@ -185,27 +240,34 @@ def run_transcription_pass(
             ", ".join(device_pool),
         )
 
-        items = list(variant_paths.items())
         with ThreadPoolExecutor(max_workers=workers) as executor:
             futures = {}
-            for idx, (key, audio_path) in enumerate(items):
-                label = VARIANT_LABELS.get(key, key)
+            for idx, (
+                result_key,
+                variant_key,
+                audio_path,
+                model_name,
+                label,
+            ) in enumerate(jobs):
                 logger.info("[queued %d/%d] Transcribing: %s", idx + 1, total, label)
                 device = device_pool[idx % len(device_pool)]
                 future = executor.submit(
                     _transcribe_one,
-                    key,
+                    result_key,
+                    variant_key,
                     audio_path,
                     stem,
                     language,
                     device,
+                    model_name,
+                    label,
                     transcripts_dir,
                 )
-                futures[future] = key
+                futures[future] = result_key
 
             for step, future in enumerate(as_completed(futures), start=1):
-                key, label, result = future.result()
-                transcripts[key] = result
+                result_key, label, result = future.result()
+                transcripts[result_key] = result
                 logger.info("[%d/%d] Completed: %s", step, total, label)
                 if progress_callback:
                     progress_callback(step, total, label)
@@ -233,13 +295,17 @@ def load_transcripts_from_disk(stem: str) -> dict[str, dict[str, Any]]:
     import json
 
     transcripts: dict[str, dict[str, Any]] = {}
-    for key in VARIANT_LABELS:
-        path = TRANSCRIPTS_DIR / f"{stem}_{key}.json"
-        if path.exists():
-            with open(path, encoding="utf-8") as fh:
-                transcripts[key] = json.load(fh)
-            logger.info("Loaded cached transcript: %s", path.name)
-        else:
-            logger.warning("Transcript not found on disk: %s", path)
+    models = _configured_models()
+    primary_model = models[0]
+    for model_name in models:
+        for variant_key in VARIANT_LABELS:
+            key = _build_result_key(model_name, variant_key, primary_model)
+            path = TRANSCRIPTS_DIR / f"{stem}_{key}.json"
+            if path.exists():
+                with open(path, encoding="utf-8") as fh:
+                    transcripts[key] = json.load(fh)
+                logger.info("Loaded cached transcript: %s", path.name)
+            else:
+                logger.warning("Transcript not found on disk: %s", path)
 
     return transcripts
