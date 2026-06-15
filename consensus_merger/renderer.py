@@ -68,9 +68,10 @@ def render_consensus(
     votes: list[WordVote],
     stem: str,
     transcripts_meta: dict[str, dict],
+    consensus_dir: Path | None = None,
 ) -> Path:
     """
-    Render the consensus Markdown document and write it to CONSENSUS_DIR.
+    Render the consensus Markdown document and write it to consensus_dir.
 
     Parameters
     ----------
@@ -81,6 +82,9 @@ def render_consensus(
     transcripts_meta : dict[str, dict]
         Mapping of variant key → transcript result dict (used for metadata
         such as detected language and model name).
+    consensus_dir : Path, optional
+        Directory to write the consensus ``.md`` file into.  Defaults to
+        ``config.CONSENSUS_DIR`` when *None*.
 
     Returns
     -------
@@ -159,7 +163,9 @@ def render_consensus(
     ]
 
     # ── Write file ───────────────────────────────────────────────────────────
-    out_path = CONSENSUS_DIR / f"{stem}_consensus.md"
+    out_dir = consensus_dir if consensus_dir is not None else CONSENSUS_DIR
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / f"{stem}_consensus.md"
     with open(out_path, "w", encoding="utf-8") as fh:
         fh.write("\n".join(lines))
 

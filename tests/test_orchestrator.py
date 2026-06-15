@@ -47,7 +47,9 @@ def test_run_transcription_pass_parallel(monkeypatch, tmp_path, variant_paths):
 
     seen_devices: list[str] = []
 
-    def fake_transcribe(audio_path, variant_key, stem, language=None, device=None):
+    def fake_transcribe(
+        audio_path, variant_key, stem, language=None, device=None, **kwargs
+    ):
         seen_devices.append(device or "")
         return {
             "text": f"text for {variant_key}",

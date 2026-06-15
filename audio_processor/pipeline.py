@@ -32,7 +32,10 @@ logger = logging.getLogger(__name__)
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def process_audio(input_path: str | Path) -> dict[str, Path]:
+def process_audio(
+    input_path: str | Path,
+    output_dir: Path | None = None,
+) -> dict[str, Path]:
     """
     Run the full cleaning pipeline on *input_path*.
 
@@ -40,6 +43,9 @@ def process_audio(input_path: str | Path) -> dict[str, Path]:
     ----------
     input_path : str | Path
         Path to the raw audio file (any format supported by librosa/ffmpeg).
+    output_dir : Path, optional
+        Directory to write variant WAV files into.  Defaults to
+        ``config.VARIANTS_DIR`` when *None*.
 
     Returns
     -------
@@ -67,6 +73,8 @@ def process_audio(input_path: str | Path) -> dict[str, Path]:
     logger.info("Loaded %.2f s @ %d Hz (%.1f MB)", len(audio) / sr, sr, audio.nbytes / 1e6)
 
     stem = input_path.stem
+    variants_dir = output_dir if output_dir is not None else VARIANTS_DIR
+    variants_dir.mkdir(parents=True, exist_ok=True)
 
     # Define the pipeline: label → (filter_fn | None)
     pipeline: dict[str, object] = {
@@ -85,7 +93,7 @@ def process_audio(input_path: str | Path) -> dict[str, Path]:
             logger.info("Applying filter: %s", VARIANT_LABELS[key])
             processed = filter_fn(audio, sr)
 
-        out_path = VARIANTS_DIR / f"{stem}_{key}.wav"
+        out_path = variants_dir / f"{stem}_{key}.wav"
         sf.write(str(out_path), processed, sr, subtype="PCM_16")
         output_paths[key] = out_path
         logger.info("Saved variant '%s' → %s", key, out_path)
