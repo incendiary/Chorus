@@ -151,6 +151,9 @@ st.set_page_config(
 if "ui_theme" not in st.session_state:
     st.session_state["ui_theme"] = "Ocean Professional"
 
+if "recent_runs" not in st.session_state:
+    st.session_state["recent_runs"] = []
+
 _theme_name = str(st.session_state.get("ui_theme", "Ocean Professional"))
 _theme = THEME_PRESETS.get(_theme_name, THEME_PRESETS["Ocean Professional"])
 
@@ -634,6 +637,35 @@ def _build_file_anchors(file_names: list[str]) -> dict[str, str]:
     return anchors
 
 
+def _record_recent_run(*, total: int, completed: int, failed: int, duration: float) -> None:
+    """Store a compact run snapshot in session state."""
+    stamp = time.strftime("%H:%M:%S")
+    st.session_state["recent_runs"] = [
+        {
+            "time": stamp,
+            "total": total,
+            "completed": completed,
+            "failed": failed,
+            "duration": int(duration),
+        },
+        *st.session_state["recent_runs"],
+    ][:5]
+
+
+def _render_recent_runs() -> None:
+    """Render recent in-session run snapshots."""
+    runs = st.session_state.get("recent_runs", [])
+    if not runs:
+        return
+
+    with st.expander("Recent Runs", expanded=False):
+        for run in runs:
+            st.markdown(
+                f"- **{run['time']}** — {run['completed']}/{run['total']} completed, "
+                f"{run['failed']} failed, {run['duration']} s"
+            )
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Sidebar — Configuration
 # ─────────────────────────────────────────────────────────────────────────────
@@ -862,6 +894,8 @@ if uploaded_files:
             type="primary",
             use_container_width=True,
         )
+
+    _render_recent_runs()
 
     if run_btn:
         os.environ["WHISPER_MODEL"] = model_choice
@@ -1204,13 +1238,20 @@ if uploaded_files:
                 )
 
             # Show summary once processing is finished, then render detail sections.
+            total_duration = time.time() - run_started_at
             _render_batch_outcome_summary(
                 total_files=len(uploaded_files),
                 completed_files=completed_files,
                 failed_files=failed_files,
-                duration_seconds=time.time() - run_started_at,
+                duration_seconds=total_duration,
                 failed_file_names=failed_file_names,
                 file_anchors=file_anchors,
+            )
+            _record_recent_run(
+                total=len(uploaded_files),
+                completed=completed_files,
+                failed=failed_files,
+                duration=total_duration,
             )
             result_filter = _render_result_filter(len(uploaded_files))
 
@@ -1275,13 +1316,20 @@ if uploaded_files:
             overall.progress(1.0, text=f"✅ All {len(uploaded_files)} files complete!")
 
             # Now render all results
+            total_duration = time.time() - run_started_at
             _render_batch_outcome_summary(
                 total_files=len(uploaded_files),
                 completed_files=completed_files,
                 failed_files=failed_files,
-                duration_seconds=time.time() - run_started_at,
+                duration_seconds=total_duration,
                 failed_file_names=failed_file_names,
                 file_anchors=file_anchors,
+            )
+            _record_recent_run(
+                total=len(uploaded_files),
+                completed=completed_files,
+                failed=failed_files,
+                duration=total_duration,
             )
             result_filter = _render_result_filter(len(uploaded_files))
 
