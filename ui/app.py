@@ -47,6 +47,23 @@ from utils import sanitise_stem  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
+SUMMARY_SUCCESS_MSG = (
+    "All files completed successfully. Review confidence sections below, "
+    "then download archives."
+)
+SUMMARY_FAILURE_MSG = (
+    "Some files failed. Check technical details in the affected sections, "
+    "then retry failed files in smaller batches."
+)
+PROCESSING_FAILURE_MSG = (
+    "Processing failed for {file_name}. Review guidance below and retry when ready."
+)
+PROCESSING_REMEDIATION_STEPS = (
+    "- Confirm audio file integrity and supported format\n"
+    "- Try a smaller model or disable advanced features\n"
+    "- Re-run this file alone to isolate the issue"
+)
+
 THEME_PRESETS: dict[str, dict[str, str]] = {
     "Ocean Professional": {
         "primary": "#0f3460",
@@ -479,14 +496,8 @@ def _render_confidence_overview(consensus_text: str) -> None:
 
 def _render_processing_error(file_name: str, exc: Exception, allow_retry: bool = False) -> None:
     """Render consistent actionable processing error guidance."""
-    st.error(
-        f"Processing failed for {file_name}. Review guidance below and retry when ready."
-    )
-    st.markdown(
-        "- Confirm audio file integrity and supported format\n"
-        "- Try a smaller model or disable advanced features\n"
-        "- Re-run this file alone to isolate the issue"
-    )
+    st.error(PROCESSING_FAILURE_MSG.format(file_name=file_name))
+    st.markdown(PROCESSING_REMEDIATION_STEPS)
     with st.expander(f"Technical details — {file_name}"):
         st.code(str(exc))
 
@@ -559,19 +570,13 @@ def _render_batch_outcome_summary(
             '<div class="chorus-run-summary-ok">ALL FILES COMPLETED</div>',
             unsafe_allow_html=True,
         )
-        st.success(
-            "All files completed successfully. Review confidence sections below, then download archives.",
-            icon="✅",
-        )
+        st.success(SUMMARY_SUCCESS_MSG, icon="✅")
     else:
         st.markdown(
             '<div class="chorus-run-summary-issues">ATTENTION REQUIRED</div>',
             unsafe_allow_html=True,
         )
-        st.warning(
-            "Some files failed. Check technical details in the affected sections, then retry failed files in smaller batches.",
-            icon="⚠️",
-        )
+        st.warning(SUMMARY_FAILURE_MSG, icon="⚠️")
         if failed_file_names:
             if file_anchors:
                 unique_failed = list(dict.fromkeys(failed_file_names))
@@ -1271,7 +1276,11 @@ if uploaded_files:
                     _render_file_results(uf.name, results, tmp_path, original_stem)
 
 else:
-    st.info("Upload one or more audio files above to begin.", icon="👆")
+    st.info(
+        "Upload one or more audio files above to begin. "
+        "Then configure options in the sidebar and start Chorus.",
+        icon="👆",
+    )
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Footer
