@@ -35,6 +35,15 @@ def _get_pyproject_version() -> str:
     return match.group(1)
 
 
+def _get_version_file_version() -> str:
+    """Extract the version string from VERSION file."""
+    version_path = ROOT / "VERSION"
+    assert version_path.exists(), "VERSION file is missing at repository root"
+    version = version_path.read_text(encoding="utf-8").strip()
+    assert version, "VERSION file is empty"
+    return version
+
+
 def _parse_semver(version: str) -> tuple[int, int, int]:
     """Parse X.Y.Z into comparable integer tuple."""
     match = re.match(r"^(\d+)\.(\d+)\.(\d+)$", version)
@@ -118,6 +127,19 @@ class TestVersionSync:
         version = _get_pyproject_version()
         assert re.match(r"^\d+\.\d+\.\d+$", version), (
             f"pyproject.toml version '{version}' is not valid semver"
+        )
+
+    def test_version_file_is_valid_semver(self):
+        """VERSION should be valid semver (X.Y.Z)."""
+        version = _get_version_file_version()
+        assert re.match(r"^\d+\.\d+\.\d+$", version), (
+            f"VERSION value '{version}' is not valid semver"
+        )
+
+    def test_version_file_matches_pyproject(self):
+        """VERSION file should match pyproject.toml version."""
+        assert _get_version_file_version() == _get_pyproject_version(), (
+            "VERSION and pyproject.toml versions are out of sync"
         )
 
     def test_readme_clone_command_matches(self):
