@@ -40,8 +40,10 @@ Tracked improvements identified during the June 2026 repository assessment.
 
 - [x] **Parallel transcription for multi-GPU setups** (v2.0.7) — variants are now transcribed with configurable parallelism and device-aware assignment, including multi-CUDA-device round-robin scheduling.
 
-- [ ] **Version sync across all release channels** — ensure pyproject.toml, README.md, git tags, and ROADMAP completions stay in sync. ✓ Added comprehensive version sync tests in v2.0.6+.
+- [x] **Version sync across all release channels** (v2.0.8) — pyproject.toml, README.md, git tags, and ROADMAP completions enforced via Python tests and shell consistency guard (`tests/version_consistency_test.sh`).
+
+- [x] **Streamlit UI polish and batch UX** (v2.0.8) — live batch status panel with ETA, post-run summary with success/issue badges, failed-file jump links, quick-navigation bar with sticky positioning, keyboard skip links, mobile-responsive layout, results filter control, centralised microcopy constants, and in-session recent run snapshots.
 
 ---
 
-*Last updated: 15 June 2026*
+*Last updated: 16 June 2026*
