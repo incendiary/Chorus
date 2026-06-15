@@ -1051,6 +1051,7 @@ if uploaded_files:
             file_names = [str(uf.name) for uf in uploaded_files]
             file_anchors = _build_file_anchors(file_names)
             _render_result_navigation(file_names, file_anchors)
+            sequential_results: list[tuple[object, dict, Path, str]] = []
 
             # Process and render each file as it completes
             for uf in uploaded_files:
@@ -1080,7 +1081,7 @@ if uploaded_files:
                         status_text.success(
                             f"Completed in **{results['elapsed_seconds']} s**"
                         )
-                        _render_file_results(uf.name, results, tmp_path, original_stem)
+                        sequential_results.append((uf, results, tmp_path, original_stem))
                     except Exception as exc:
                         failed_files += 1
                         failed_file_names.append(str(uf.name))
@@ -1097,6 +1098,21 @@ if uploaded_files:
                     failed_files=failed_files,
                     start_time=run_started_at,
                 )
+
+            # Show summary once processing is finished, then render detail sections.
+            _render_batch_outcome_summary(
+                total_files=len(uploaded_files),
+                completed_files=completed_files,
+                failed_files=failed_files,
+                duration_seconds=time.time() - run_started_at,
+                failed_file_names=failed_file_names,
+                file_anchors=file_anchors,
+            )
+
+            for uf, results, tmp_path, original_stem in sequential_results:
+                with st.expander(f"📄 {uf.name}", expanded=True):
+                    st.success(f"Completed in **{results['elapsed_seconds']} s**")
+                    _render_file_results(uf.name, results, tmp_path, original_stem)
 
         else:
             file_names = [str(uf.name) for uf in uploaded_files]
@@ -1167,16 +1183,6 @@ if uploaded_files:
                 with st.expander(f"📄 {uf.name}", expanded=True):
                     st.success(f"Completed in **{results['elapsed_seconds']} s**")
                     _render_file_results(uf.name, results, tmp_path, original_stem)
-
-        if sequential and len(uploaded_files) > 1:
-            _render_batch_outcome_summary(
-                total_files=len(uploaded_files),
-                completed_files=completed_files,
-                failed_files=failed_files,
-                duration_seconds=time.time() - run_started_at,
-                failed_file_names=failed_file_names,
-                file_anchors=file_anchors,
-            )
 
 else:
     st.info("Upload one or more audio files above to begin.", icon="👆")
