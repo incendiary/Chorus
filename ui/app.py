@@ -609,6 +609,19 @@ def _render_result_navigation(file_names: list[str], file_anchors: dict[str, str
     )
 
 
+def _render_result_filter(total_files: int) -> str:
+    """Render a simple result visibility filter for larger batches."""
+    if total_files < 3:
+        return "All"
+    return st.radio(
+        "Results filter",
+        options=["All", "Completed", "Failed"],
+        index=0,
+        horizontal=True,
+        help="Use this to focus on successful or failed files in larger batches.",
+    )
+
+
 def _build_file_anchors(file_names: list[str]) -> dict[str, str]:
     """Return deterministic unique anchors keyed by file name."""
     anchors: dict[str, str] = {}
@@ -1199,8 +1212,11 @@ if uploaded_files:
                 failed_file_names=failed_file_names,
                 file_anchors=file_anchors,
             )
+            result_filter = _render_result_filter(len(uploaded_files))
 
             for uf, results, tmp_path, original_stem in sequential_results:
+                if result_filter == "Failed":
+                    continue
                 with st.expander(f"📄 {uf.name}", expanded=True):
                     st.success(f"Completed in **{results['elapsed_seconds']} s**")
                     _render_file_results(uf.name, results, tmp_path, original_stem)
@@ -1267,8 +1283,11 @@ if uploaded_files:
                 failed_file_names=failed_file_names,
                 file_anchors=file_anchors,
             )
+            result_filter = _render_result_filter(len(uploaded_files))
 
             for uf, results, tmp_path, original_stem in all_results:
+                if result_filter == "Failed":
+                    continue
                 section_anchor = file_anchors[str(uf.name)]
                 st.markdown(f'<div id="{section_anchor}"></div>', unsafe_allow_html=True)
                 with st.expander(f"📄 {uf.name}", expanded=True):
