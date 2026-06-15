@@ -5,6 +5,8 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  schedule:
+    - cron: "0 8 * * 1"
 
 jobs:
 
@@ -74,6 +76,12 @@ jobs:
 
       - name: Version consistency check (non-blocking release warning mode)
         run: bash tests/version_consistency_test.sh
+
+      - name: DevOps practices checks (unreleased-safe mode)
+        run: |
+          sh devops-practices/check-version-sync.sh --allow-unreleased
+          sh devops-practices/check-clone-refs.sh
+          sh devops-practices/check-test-baseline.sh
 
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
