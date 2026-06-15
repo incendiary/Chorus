@@ -104,9 +104,9 @@ def _write_txt_companion(
         fh.write("\n")
 
 
-def _configured_models() -> tuple[str, ...]:
+def _configured_models(model_names: tuple[str, ...] | None = None) -> tuple[str, ...]:
     """Return the configured model list, always with at least one entry."""
-    models = tuple(CONSENSUS_MODELS)
+    models = tuple(model_names) if model_names is not None else tuple(CONSENSUS_MODELS)
     if models:
         return models
     return (WHISPER_MODEL,)
@@ -125,10 +125,11 @@ def _build_result_key(
 
 def _build_transcription_jobs(
     variant_paths: dict[str, Path],
+    model_names: tuple[str, ...] | None = None,
 ) -> list[tuple[str, str, Path, str, str]]:
     """Expand configured models × variants into concrete transcription jobs."""
     jobs: list[tuple[str, str, Path, str, str]] = []
-    models = _configured_models()
+    models = _configured_models(model_names=model_names)
     primary_model = models[0]
 
     for model_name in models:
@@ -182,6 +183,7 @@ def run_transcription_pass(
     language: str | None = None,
     progress_callback=None,
     transcripts_dir: Path | None = None,
+    model_names: tuple[str, ...] | None = None,
 ) -> dict[str, dict[str, Any]]:
     """
     Transcribe every audio variant and return all results.
@@ -198,6 +200,9 @@ def run_transcription_pass(
     progress_callback : callable, optional
         If provided, called as ``progress_callback(step, total, label)``
         after each variant completes — useful for Streamlit progress bars.
+    model_names : tuple[str, ...], optional
+        Ordered list of Whisper model names to run. When omitted, uses
+        ``config.CONSENSUS_MODELS``.
 
     Returns
     -------
@@ -208,7 +213,7 @@ def run_transcription_pass(
         keys are namespaced as ``<model>__<variant>``.
     """
     transcripts: dict[str, dict[str, Any]] = {}
-    jobs = _build_transcription_jobs(variant_paths)
+    jobs = _build_transcription_jobs(variant_paths, model_names=model_names)
     total = len(jobs)
     workers = _resolve_parallelism(total)
     device_pool = _build_device_pool(workers)

@@ -40,6 +40,7 @@ logger = logging.getLogger("chorus.pipeline")
 def run_pipeline(
     audio_path: str | Path,
     language: str | None = None,
+    consensus_models: tuple[str, ...] | None = None,
     enable_nlp: bool = False,
     enable_diarisation: bool = False,
     alignment_strategy: str | None = None,
@@ -56,6 +57,9 @@ def run_pipeline(
     language : str, optional
         BCP-47 language code hint for Whisper (e.g., ``"en"``).
         If ``None``, Whisper auto-detects the language.
+    consensus_models : tuple[str, ...], optional
+        Ordered Whisper model names to include in consensus transcription.
+        If ``None``, configured defaults are used.
     enable_nlp : bool
         If True, run spaCy NLP reconstruction on LOW-confidence tokens.
     enable_diarisation : bool
@@ -121,6 +125,7 @@ def run_pipeline(
         language=language,
         progress_callback=_transcription_progress,
         transcripts_dir=transcripts_dir,
+        model_names=consensus_models,
     )
     _progress("All transcription variants complete.", 0.80)
 

@@ -579,3 +579,36 @@ class TestOutputDirIsolation:
         assert result_a["consensus_path"] != result_b["consensus_path"]
         assert result_a["consensus_path"].parent == out_a / "consensus"
         assert result_b["consensus_path"].parent == out_b / "consensus"
+
+
+class TestConsensusModelForwarding:
+    """Test consensus model selection wiring into transcription stage."""
+
+    @pytest.mark.usefixtures("_patch_consensus_dir")
+    def test_run_pipeline_forwards_consensus_models(self, synthetic_audio):
+        """run_pipeline should forward explicit model selection to orchestrator."""
+        from pipeline_runner import run_pipeline
+
+        captured: dict[str, Any] = {}
+
+        def _capture_pass(
+            variant_paths: dict[str, Path],
+            stem: str,
+            language: str | None = None,
+            progress_callback=None,
+            **kwargs,
+        ) -> dict[str, dict]:
+            captured["model_names"] = kwargs.get("model_names")
+            if progress_callback:
+                for i, key in enumerate(variant_paths):
+                    progress_callback(i + 1, len(variant_paths), key)
+            return MOCK_TRANSCRIPTS
+
+        with patch("pipeline_runner.run_transcription_pass", side_effect=_capture_pass):
+            run_pipeline(
+                audio_path=synthetic_audio,
+                language="en",
+                consensus_models=("base", "small"),
+            )
+
+        assert captured["model_names"] == ("base", "small")

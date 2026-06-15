@@ -139,3 +139,34 @@ def test_load_transcripts_from_disk_multimodel(monkeypatch, tmp_path):
 
     assert "small__original" in transcripts
     assert transcripts["small__original"]["text"] == payload["text"]
+
+
+def test_run_transcription_pass_model_names_override(monkeypatch, tmp_path, variant_paths):
+    monkeypatch.setattr(orchestrator, "TRANSCRIPTS_DIR", tmp_path)
+    monkeypatch.setattr(orchestrator, "CONSENSUS_MODELS", ("base", "small"))
+    monkeypatch.setattr(orchestrator, "_resolve_parallelism", lambda total: 1)
+
+    seen_models: list[str | None] = []
+
+    def fake_transcribe(
+        audio_path, variant_key, stem, language=None, device=None, model_name=None, **kwargs
+    ):
+        seen_models.append(model_name)
+        return {
+            "text": f"{model_name}:{variant_key}",
+            "language": language or "en",
+            "model": model_name,
+            "device": device,
+        }
+
+    monkeypatch.setattr(orchestrator, "transcribe", fake_transcribe)
+
+    transcripts = orchestrator.run_transcription_pass(
+        variant_paths=variant_paths,
+        stem="sample",
+        language="en",
+        model_names=("medium",),
+    )
+
+    assert set(transcripts.keys()) == set(variant_paths.keys())
+    assert set(seen_models) == {"medium"}
