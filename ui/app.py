@@ -260,6 +260,28 @@ st.markdown(
         text-decoration: underline;
     }
 
+    .chorus-skip-links {
+        position: relative;
+        z-index: 50;
+        margin-bottom: 0.5rem;
+    }
+
+    .chorus-skip-links a {
+        position: absolute;
+        left: -9999px;
+        top: 0;
+        background: var(--chorus-primary);
+        color: white;
+        padding: 0.5rem 0.7rem;
+        border-radius: 6px;
+        text-decoration: none;
+        font-weight: 700;
+    }
+
+    .chorus-skip-links a:focus {
+        left: 0;
+    }
+
     @media (max-width: 900px) {
         .chorus-header {
             padding: 1.25rem 1rem;
@@ -297,6 +319,11 @@ st.markdown(
 
 st.markdown(
     """
+<div class="chorus-skip-links">
+    <a href="#upload-section">Skip to upload</a>
+    <a href="#run-section" style="margin-left: 11rem;">Skip to run controls</a>
+    <a href="#results-section" style="margin-left: 25rem;">Skip to results</a>
+</div>
 <div id="top"></div>
 <div class="chorus-header">
     <h1>🎙️ Chorus</h1>
@@ -692,6 +719,7 @@ with st.sidebar:
 col_upload, col_info = st.columns([2, 1])
 
 with col_upload:
+    st.markdown('<div id="upload-section"></div>', unsafe_allow_html=True)
     st.subheader("1 · Upload Audio Files")
     uploaded_files = st.file_uploader(
         "Drag and drop or click to browse — multiple files supported",
@@ -716,6 +744,7 @@ with col_info:
 # ─────────────────────────────────────────────────────────────────────────────
 
 if uploaded_files:
+    st.markdown('<div id="run-section"></div>', unsafe_allow_html=True)
     st.divider()
     st.subheader("2 · Run Pipeline")
 
@@ -1063,6 +1092,7 @@ if uploaded_files:
 
         # ── Main run loop ─────────────────────────────────────────────────────
 
+        st.markdown('<div id="results-section"></div>', unsafe_allow_html=True)
         st.divider()
         st.subheader("3 · Results")
         run_started_at = time.time()
