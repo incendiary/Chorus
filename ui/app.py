@@ -225,6 +225,18 @@ st.markdown(
         margin-bottom: 0.4rem;
     }
 
+    .chorus-run-summary-issues {
+        display: inline-block;
+        background: var(--chorus-low-bg);
+        color: var(--chorus-low-fg);
+        border: 1px solid var(--chorus-border);
+        border-radius: 999px;
+        padding: 0.25rem 0.7rem;
+        font-size: 0.85rem;
+        font-weight: 700;
+        margin-bottom: 0.4rem;
+    }
+
     .chorus-action-bar {
         position: sticky;
         top: 0.5rem;
@@ -501,6 +513,10 @@ def _render_batch_outcome_summary(
             icon="✅",
         )
     else:
+        st.markdown(
+            '<div class="chorus-run-summary-issues">ATTENTION REQUIRED</div>',
+            unsafe_allow_html=True,
+        )
         st.warning(
             "Some files failed. Check technical details in the affected sections, then retry failed files in smaller batches.",
             icon="⚠️",
