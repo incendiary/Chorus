@@ -19,6 +19,7 @@ include = [
   "consensus_merger*",
   "diarisation*",
   "nlp_reconstructor*",
+  "llm_reconstructor*",
   "export_engine*",
   "batch_processor*",
   "ui*",

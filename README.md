@@ -240,6 +240,9 @@ chorus-engine/
 │   └── ai_context.py         # AI/LLM context pack generator
 ├── nlp_reconstructor/        # NLP post-processing
 │   └── reconstructor.py      # spaCy grammatical reconstruction
+├── llm_reconstructor/        # Optional local LLM post-processing
+│   ├── ollama_client.py      # Local Ollama API client wrapper
+│   └── reconstructor.py      # LOW-token reconstruction helpers
 ├── ui/                       # Stage 4: Web interface
 │   └── app.py                # Streamlit dashboard (confidence vis, batch mode)
 ├── tests/                    # Test suite (120+ tests)

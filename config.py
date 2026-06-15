@@ -102,6 +102,11 @@ WHISPER_LANGUAGE = os.environ.get("WHISPER_LANGUAGE", None)
 #   - integer string (e.g. "1", "2", "4")
 TRANSCRIPTION_PARALLELISM = os.environ.get("TRANSCRIPTION_PARALLELISM", "auto")
 
+# Local Ollama settings for optional LLM token reconstruction.
+OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
+OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "llama3.1:8b")
+OLLAMA_TIMEOUT_SECONDS = float(os.environ.get("OLLAMA_TIMEOUT_SECONDS", "20"))
+
 # ─────────────────────────────────────────────
 # Audio Processing Configuration
 # ─────────────────────────────────────────────
