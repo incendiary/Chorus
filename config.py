@@ -34,6 +34,42 @@ def ensure_output_dirs() -> None:
 # "base" offers a strong balance between speed and accuracy for local use.
 WHISPER_MODEL = os.environ.get("WHISPER_MODEL", "base")
 
+
+def _parse_consensus_models(
+    raw_value: str | None,
+    default_model: str,
+) -> tuple[str, ...]:
+    """Parse comma-separated model names into a stable, de-duplicated tuple."""
+    if raw_value is None:
+        return (default_model,)
+
+    parsed: list[str] = []
+    seen: set[str] = set()
+    for chunk in raw_value.split(","):
+        model_name = chunk.strip().lower()
+        if not model_name or model_name in seen:
+            continue
+        seen.add(model_name)
+        parsed.append(model_name)
+
+    if not parsed:
+        return (default_model,)
+    return tuple(parsed)
+
+
+# Model list for upcoming multi-model consensus passes.
+# Example: CONSENSUS_MODELS=base,small,medium
+CONSENSUS_MODELS = _parse_consensus_models(
+    os.environ.get("CONSENSUS_MODELS"),
+    WHISPER_MODEL,
+)
+
+# Human-readable labels for configured consensus model variants.
+CONSENSUS_MODEL_LABELS = {
+    model: f"Whisper {model}"
+    for model in CONSENSUS_MODELS
+}
+
 # Compute device for Whisper inference.
 # Explicit override: set WHISPER_DEVICE=cpu | cuda | mps in your environment.
 # If unset, the best available device is probed automatically:
