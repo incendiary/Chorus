@@ -795,6 +795,16 @@ with st.sidebar:
             "Requires Ollama running locally."
         ),
     )
+    if enable_llm:
+        from llm_reconstructor.ollama_client import probe_model
+
+        _llm_ok, _llm_reason = probe_model()
+        if not _llm_ok:
+            st.warning(
+                f"⚠️ LLM unavailable — {_llm_reason}",
+                icon="⚠️",
+            )
+            enable_llm = False
     enable_diarisation = st.checkbox(
         "🗣️ Speaker Diarisation",
         help="Identify multiple speakers (requires HUGGINGFACE_TOKEN).",

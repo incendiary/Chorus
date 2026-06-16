@@ -8,6 +8,7 @@ from urllib import error
 
 from consensus_merger.alignment import WordVote
 from llm_reconstructor import ollama_client
+from llm_reconstructor.ollama_client import probe_model
 from llm_reconstructor.reconstructor import reconstruct_low_tokens_llm
 
 
@@ -142,3 +143,44 @@ def test_reconstruct_votes_unchanged_on_all_failures(monkeypatch):
 
     assert result[1].word == "garbl"
     assert result[1].tier == "LOW"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# probe_model
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def test_probe_model_success():
+    body = '{"models": [{"name": "llama3.1:8b"}]}'
+    with patch("llm_reconstructor.ollama_client.request.urlopen", return_value=_make_urlopen_response(body)):
+        with patch("llm_reconstructor.ollama_client.OLLAMA_MODEL", "llama3.1:8b"):
+            ok, reason = probe_model()
+    assert ok is True
+    assert reason == ""
+
+
+def test_probe_model_connection_refused():
+    with patch(
+        "llm_reconstructor.ollama_client.request.urlopen",
+        side_effect=error.URLError("connection refused"),
+    ):
+        ok, reason = probe_model()
+    assert ok is False
+    assert "Cannot reach Ollama" in reason
+
+
+def test_probe_model_model_not_pulled():
+    body = '{"models": [{"name": "mistral:7b"}]}'
+    with patch("llm_reconstructor.ollama_client.request.urlopen", return_value=_make_urlopen_response(body)):
+        with patch("llm_reconstructor.ollama_client.OLLAMA_MODEL", "llama3.1:8b"):
+            ok, reason = probe_model()
+    assert ok is False
+    assert "not pulled" in reason
+    assert "ollama pull" in reason
+
+
+def test_probe_model_timeout():
+    with patch("llm_reconstructor.ollama_client.request.urlopen", side_effect=TimeoutError("timed out")):
+        ok, reason = probe_model()
+    assert ok is False
+    assert "did not respond" in reason
