@@ -42,6 +42,7 @@ def run_pipeline(
     language: str | None = None,
     consensus_models: tuple[str, ...] | None = None,
     enable_nlp: bool = False,
+    enable_llm: bool = False,
     enable_diarisation: bool = False,
     alignment_strategy: str | None = None,
     progress_callback: Callable[[str, float], None] | None = None,
@@ -62,6 +63,8 @@ def run_pipeline(
         If ``None``, configured defaults are used.
     enable_nlp : bool
         If True, run spaCy NLP reconstruction on LOW-confidence tokens.
+    enable_llm : bool
+        If True, run local LLM reconstruction (Ollama) on LOW-confidence tokens.
     enable_diarisation : bool
         If True, run pyannote speaker diarisation.
     progress_callback : callable, optional
@@ -136,12 +139,15 @@ def run_pipeline(
 
     if enable_nlp:
         _progress("Running spaCy NLP reconstruction…", 0.90)
+    if enable_llm:
+        _progress("Running LLM reconstruction…", 0.92)
 
     consensus_path, votes = merge_transcripts_with_votes(
         transcripts=transcripts,
         stem=stem,
         strategy=alignment_strategy,
         enable_nlp=enable_nlp,
+        enable_llm=enable_llm,
         consensus_dir=consensus_dir,
     )
     _progress("Consensus document generated.", 0.95)

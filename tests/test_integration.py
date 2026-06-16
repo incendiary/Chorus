@@ -284,6 +284,24 @@ class TestOptionalPipelineFeatures:
         mock_reconstruct.assert_called_once()
 
     @pytest.mark.usefixtures("_patch_transcription", "_patch_consensus_dir")
+    def test_pipeline_with_llm_enabled(self, synthetic_audio, _patch_consensus_dir):
+        """LLM reconstruction path should execute when enabled."""
+        from pipeline_runner import run_pipeline
+
+        with patch(
+            "llm_reconstructor.reconstructor.reconstruct_low_tokens_llm",
+            side_effect=lambda votes: votes,
+        ) as mock_reconstruct:
+            results = run_pipeline(
+                audio_path=synthetic_audio,
+                language="en",
+                enable_llm=True,
+            )
+
+        assert results["consensus_path"].exists()
+        mock_reconstruct.assert_called_once()
+
+    @pytest.mark.usefixtures("_patch_transcription", "_patch_consensus_dir")
     def test_pipeline_with_diarisation_enabled(self, synthetic_audio, _patch_consensus_dir):
         """Diarisation path should produce diarised output and speaker labels."""
         from diarisation.diariser import SpeakerSegment

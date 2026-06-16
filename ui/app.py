@@ -424,19 +424,22 @@ def _render_preflight_summary(
     alignment_choice: str,
     noise_mode_choice: str,
     enable_nlp: bool,
+    enable_llm: bool,
     enable_diarisation: bool,
 ) -> None:
     """Render run preflight summary with informed-choice guidance."""
     selected_features = []
     if enable_nlp:
         selected_features.append("NLP reconstruction")
+    if enable_llm:
+        selected_features.append("LLM reconstruction")
     if enable_diarisation:
         selected_features.append("speaker diarisation")
     feature_text = ", ".join(selected_features) if selected_features else "none"
 
     runtime_hint = (
         "longer runs expected due to max-accuracy configuration"
-        if model_choice in {"medium", "small"} or enable_nlp or enable_diarisation
+        if model_choice in {"medium", "small"} or enable_nlp or enable_llm or enable_diarisation
         else "balanced runtime expected"
     )
     model_set_text = ", ".join(consensus_models)
@@ -785,6 +788,13 @@ with st.sidebar:
         "🧠 NLP Reconstruction",
         help="Use spaCy to grammatically reconstruct LOW-confidence tokens.",
     )
+    enable_llm = st.checkbox(
+        "🤖 LLM Reconstruction (Ollama)",
+        help=(
+            "Use a local Ollama model to resolve LOW-confidence tokens. "
+            "Requires Ollama running locally."
+        ),
+    )
     enable_diarisation = st.checkbox(
         "🗣️ Speaker Diarisation",
         help="Identify multiple speakers (requires HUGGINGFACE_TOKEN).",
@@ -904,6 +914,7 @@ if uploaded_files:
         alignment_choice=alignment_choice,
         noise_mode_choice=noise_mode_choice,
         enable_nlp=enable_nlp,
+        enable_llm=enable_llm,
         enable_diarisation=enable_diarisation,
     )
     if n > 10:
@@ -970,8 +981,9 @@ if uploaded_files:
             results = run_pipeline(
                 audio_path=tmp_path,
                 language=language,
-                    consensus_models=consensus_models,
+                consensus_models=consensus_models,
                 enable_nlp=enable_nlp,
+                enable_llm=enable_llm,
                 enable_diarisation=enable_diarisation,
                 alignment_strategy=alignment_choice,
                 progress_callback=_progress,
