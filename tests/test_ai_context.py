@@ -20,7 +20,6 @@ import pytest
 from consensus_merger.alignment import WordVote
 from export_engine.ai_context import generate_ai_context_pack
 
-
 # ─────────────────────────────────────────────────────────────────────────────
 # Fixtures
 # ─────────────────────────────────────────────────────────────────────────────
@@ -37,15 +36,78 @@ def tmp_consensus_dir(tmp_path, monkeypatch):
 def sample_votes() -> list[WordVote]:
     """Sample votes with mixed confidence tiers."""
     return [
-        WordVote(word="the", count=4, total=4, confidence=1.0, tier="HIGH", variants=["the", "the", "the", "the"]),
-        WordVote(word="quick", count=4, total=4, confidence=1.0, tier="HIGH", variants=["quick", "quick", "quick", "quick"]),
-        WordVote(word="brown", count=2, total=4, confidence=0.5, tier="MEDIUM", variants=["brown", "brown", "down", "drown"]),
-        WordVote(word="fox", count=4, total=4, confidence=1.0, tier="HIGH", variants=["fox", "fox", "fox", "fox"]),
-        WordVote(word="jumps", count=1, total=4, confidence=0.25, tier="LOW", variants=["jumps", "dumps", "bumps", "lumps"]),
-        WordVote(word="over", count=4, total=4, confidence=1.0, tier="HIGH", variants=["over", "over", "over", "over"]),
-        WordVote(word="the", count=4, total=4, confidence=1.0, tier="HIGH", variants=["the", "the", "the", "the"]),
-        WordVote(word="lazy", count=3, total=4, confidence=0.75, tier="HIGH", variants=["lazy", "lazy", "lazy", "hazy"]),
-        WordVote(word="dog", count=4, total=4, confidence=1.0, tier="HIGH", variants=["dog", "dog", "dog", "dog"]),
+        WordVote(
+            word="the",
+            count=4,
+            total=4,
+            confidence=1.0,
+            tier="HIGH",
+            variants=["the", "the", "the", "the"],
+        ),
+        WordVote(
+            word="quick",
+            count=4,
+            total=4,
+            confidence=1.0,
+            tier="HIGH",
+            variants=["quick", "quick", "quick", "quick"],
+        ),
+        WordVote(
+            word="brown",
+            count=2,
+            total=4,
+            confidence=0.5,
+            tier="MEDIUM",
+            variants=["brown", "brown", "down", "drown"],
+        ),
+        WordVote(
+            word="fox",
+            count=4,
+            total=4,
+            confidence=1.0,
+            tier="HIGH",
+            variants=["fox", "fox", "fox", "fox"],
+        ),
+        WordVote(
+            word="jumps",
+            count=1,
+            total=4,
+            confidence=0.25,
+            tier="LOW",
+            variants=["jumps", "dumps", "bumps", "lumps"],
+        ),
+        WordVote(
+            word="over",
+            count=4,
+            total=4,
+            confidence=1.0,
+            tier="HIGH",
+            variants=["over", "over", "over", "over"],
+        ),
+        WordVote(
+            word="the",
+            count=4,
+            total=4,
+            confidence=1.0,
+            tier="HIGH",
+            variants=["the", "the", "the", "the"],
+        ),
+        WordVote(
+            word="lazy",
+            count=3,
+            total=4,
+            confidence=0.75,
+            tier="HIGH",
+            variants=["lazy", "lazy", "lazy", "hazy"],
+        ),
+        WordVote(
+            word="dog",
+            count=4,
+            total=4,
+            confidence=1.0,
+            tier="HIGH",
+            variants=["dog", "dog", "dog", "dog"],
+        ),
     ]
 
 
@@ -53,10 +115,26 @@ def sample_votes() -> list[WordVote]:
 def sample_transcripts_meta() -> dict[str, dict]:
     """Sample transcripts metadata."""
     return {
-        "original": {"text": "the quick brown fox jumps over the lazy dog", "model": "base", "language": "en"},
-        "cleaned_hp": {"text": "the quick down fox dumps over the hazy dog", "model": "base", "language": "en"},
-        "normalised": {"text": "the quick drown fox bumps over the lazy dog", "model": "base", "language": "en"},
-        "denoised": {"text": "the quick brown fox lumps over the lazy dog", "model": "base", "language": "en"},
+        "original": {
+            "text": "the quick brown fox jumps over the lazy dog",
+            "model": "base",
+            "language": "en",
+        },
+        "cleaned_hp": {
+            "text": "the quick down fox dumps over the hazy dog",
+            "model": "base",
+            "language": "en",
+        },
+        "normalised": {
+            "text": "the quick drown fox bumps over the lazy dog",
+            "model": "base",
+            "language": "en",
+        },
+        "denoised": {
+            "text": "the quick brown fox lumps over the lazy dog",
+            "model": "base",
+            "language": "en",
+        },
     }
 
 
@@ -66,7 +144,9 @@ def sample_transcripts_meta() -> dict[str, dict]:
 
 
 class TestBasicGeneration:
-    def test_creates_file(self, tmp_consensus_dir, sample_votes, sample_transcripts_meta):
+    def test_creates_file(
+        self, tmp_consensus_dir, sample_votes, sample_transcripts_meta
+    ):
         """Should create a .md file at the expected path."""
         path = generate_ai_context_pack(
             votes=sample_votes,
@@ -76,7 +156,9 @@ class TestBasicGeneration:
         assert path.exists()
         assert path.name == "test_audio_ai_context.md"
 
-    def test_output_is_markdown(self, tmp_consensus_dir, sample_votes, sample_transcripts_meta):
+    def test_output_is_markdown(
+        self, tmp_consensus_dir, sample_votes, sample_transcripts_meta
+    ):
         """Output should start with a level-1 heading."""
         path = generate_ai_context_pack(
             votes=sample_votes,
@@ -86,7 +168,9 @@ class TestBasicGeneration:
         text = path.read_text(encoding="utf-8")
         assert text.startswith("# AI Context Pack")
 
-    def test_non_empty_output(self, tmp_consensus_dir, sample_votes, sample_transcripts_meta):
+    def test_non_empty_output(
+        self, tmp_consensus_dir, sample_votes, sample_transcripts_meta
+    ):
         """Output should be non-trivial (> 500 chars given all the sections)."""
         path = generate_ai_context_pack(
             votes=sample_votes,
@@ -103,7 +187,9 @@ class TestBasicGeneration:
 
 
 class TestRequiredSections:
-    def test_methodology_section(self, tmp_consensus_dir, sample_votes, sample_transcripts_meta):
+    def test_methodology_section(
+        self, tmp_consensus_dir, sample_votes, sample_transcripts_meta
+    ):
         """Should contain the methodology explanation."""
         path = generate_ai_context_pack(
             votes=sample_votes, stem="test", transcripts_meta=sample_transcripts_meta
@@ -112,7 +198,9 @@ class TestRequiredSections:
         assert "## Methodology" in text
         assert "multi-pass consensus" in text
 
-    def test_processing_config_section(self, tmp_consensus_dir, sample_votes, sample_transcripts_meta):
+    def test_processing_config_section(
+        self, tmp_consensus_dir, sample_votes, sample_transcripts_meta
+    ):
         """Should contain processing configuration."""
         path = generate_ai_context_pack(
             votes=sample_votes, stem="test", transcripts_meta=sample_transcripts_meta
@@ -121,7 +209,9 @@ class TestRequiredSections:
         assert "## Processing Configuration" in text
         assert "Whisper model" in text
 
-    def test_confidence_stats_section(self, tmp_consensus_dir, sample_votes, sample_transcripts_meta):
+    def test_confidence_stats_section(
+        self, tmp_consensus_dir, sample_votes, sample_transcripts_meta
+    ):
         """Should contain confidence statistics."""
         path = generate_ai_context_pack(
             votes=sample_votes, stem="test", transcripts_meta=sample_transcripts_meta
@@ -132,7 +222,9 @@ class TestRequiredSections:
         assert "MEDIUM" in text
         assert "LOW" in text
 
-    def test_clean_transcript_section(self, tmp_consensus_dir, sample_votes, sample_transcripts_meta):
+    def test_clean_transcript_section(
+        self, tmp_consensus_dir, sample_votes, sample_transcripts_meta
+    ):
         """Should contain the clean transcript."""
         path = generate_ai_context_pack(
             votes=sample_votes, stem="test", transcripts_meta=sample_transcripts_meta
@@ -140,7 +232,9 @@ class TestRequiredSections:
         text = path.read_text(encoding="utf-8")
         assert "## Clean Transcript" in text
 
-    def test_uncertainty_section(self, tmp_consensus_dir, sample_votes, sample_transcripts_meta):
+    def test_uncertainty_section(
+        self, tmp_consensus_dir, sample_votes, sample_transcripts_meta
+    ):
         """Should contain uncertainty annotations."""
         path = generate_ai_context_pack(
             votes=sample_votes, stem="test", transcripts_meta=sample_transcripts_meta
@@ -148,7 +242,9 @@ class TestRequiredSections:
         text = path.read_text(encoding="utf-8")
         assert "## Uncertainty Annotations" in text
 
-    def test_usage_guidance_section(self, tmp_consensus_dir, sample_votes, sample_transcripts_meta):
+    def test_usage_guidance_section(
+        self, tmp_consensus_dir, sample_votes, sample_transcripts_meta
+    ):
         """Should contain usage guidance for AI systems."""
         path = generate_ai_context_pack(
             votes=sample_votes, stem="test", transcripts_meta=sample_transcripts_meta
@@ -163,7 +259,9 @@ class TestRequiredSections:
 
 
 class TestConfidenceStats:
-    def test_correct_counts(self, tmp_consensus_dir, sample_votes, sample_transcripts_meta):
+    def test_correct_counts(
+        self, tmp_consensus_dir, sample_votes, sample_transcripts_meta
+    ):
         """Should report correct HIGH/MEDIUM/LOW counts."""
         path = generate_ai_context_pack(
             votes=sample_votes, stem="test", transcripts_meta=sample_transcripts_meta
@@ -174,7 +272,9 @@ class TestConfidenceStats:
         assert "| MEDIUM | 1 |" in text
         assert "| LOW | 1 |" in text
 
-    def test_reliability_score(self, tmp_consensus_dir, sample_votes, sample_transcripts_meta):
+    def test_reliability_score(
+        self, tmp_consensus_dir, sample_votes, sample_transcripts_meta
+    ):
         """Should include overall reliability score."""
         path = generate_ai_context_pack(
             votes=sample_votes, stem="test", transcripts_meta=sample_transcripts_meta
@@ -190,7 +290,9 @@ class TestConfidenceStats:
 
 
 class TestUncertaintyAnnotations:
-    def test_lists_uncertain_words(self, tmp_consensus_dir, sample_votes, sample_transcripts_meta):
+    def test_lists_uncertain_words(
+        self, tmp_consensus_dir, sample_votes, sample_transcripts_meta
+    ):
         """MEDIUM and LOW words should appear in the uncertainty table."""
         path = generate_ai_context_pack(
             votes=sample_votes, stem="test", transcripts_meta=sample_transcripts_meta
@@ -199,7 +301,9 @@ class TestUncertaintyAnnotations:
         assert "brown" in text  # MEDIUM word
         assert "jumps" in text  # LOW word
 
-    def test_variants_listed(self, tmp_consensus_dir, sample_votes, sample_transcripts_meta):
+    def test_variants_listed(
+        self, tmp_consensus_dir, sample_votes, sample_transcripts_meta
+    ):
         """Variant forms should be listed for uncertain words."""
         path = generate_ai_context_pack(
             votes=sample_votes, stem="test", transcripts_meta=sample_transcripts_meta
@@ -213,8 +317,22 @@ class TestUncertaintyAnnotations:
     def test_all_high_no_table(self, tmp_consensus_dir, sample_transcripts_meta):
         """When all words are HIGH, should say 'No uncertain words'."""
         all_high = [
-            WordVote(word="hello", count=4, total=4, confidence=1.0, tier="HIGH", variants=["hello"]),
-            WordVote(word="world", count=4, total=4, confidence=1.0, tier="HIGH", variants=["world"]),
+            WordVote(
+                word="hello",
+                count=4,
+                total=4,
+                confidence=1.0,
+                tier="HIGH",
+                variants=["hello"],
+            ),
+            WordVote(
+                word="world",
+                count=4,
+                total=4,
+                confidence=1.0,
+                tier="HIGH",
+                variants=["world"],
+            ),
         ]
         path = generate_ai_context_pack(
             votes=all_high, stem="test", transcripts_meta=sample_transcripts_meta
@@ -229,7 +347,9 @@ class TestUncertaintyAnnotations:
 
 
 class TestCleanTranscript:
-    def test_contains_all_words(self, tmp_consensus_dir, sample_votes, sample_transcripts_meta):
+    def test_contains_all_words(
+        self, tmp_consensus_dir, sample_votes, sample_transcripts_meta
+    ):
         """Clean transcript should contain every consensus word."""
         path = generate_ai_context_pack(
             votes=sample_votes, stem="test", transcripts_meta=sample_transcripts_meta
@@ -245,7 +365,9 @@ class TestCleanTranscript:
 
 
 class TestSpeakerInfo:
-    def test_no_speakers_no_section(self, tmp_consensus_dir, sample_votes, sample_transcripts_meta):
+    def test_no_speakers_no_section(
+        self, tmp_consensus_dir, sample_votes, sample_transcripts_meta
+    ):
         """Without speaker labels, no Speaker Information section."""
         path = generate_ai_context_pack(
             votes=sample_votes, stem="test", transcripts_meta=sample_transcripts_meta
@@ -253,7 +375,9 @@ class TestSpeakerInfo:
         text = path.read_text(encoding="utf-8")
         assert "## Speaker Information" not in text
 
-    def test_with_speakers(self, tmp_consensus_dir, sample_votes, sample_transcripts_meta):
+    def test_with_speakers(
+        self, tmp_consensus_dir, sample_votes, sample_transcripts_meta
+    ):
         """With speaker labels, should include speaker table."""
         path = generate_ai_context_pack(
             votes=sample_votes,
@@ -284,7 +408,9 @@ class TestEdgeCases:
         text = path.read_text(encoding="utf-8")
         assert "AI Context Pack" in text
 
-    def test_elapsed_seconds_displayed(self, tmp_consensus_dir, sample_votes, sample_transcripts_meta):
+    def test_elapsed_seconds_displayed(
+        self, tmp_consensus_dir, sample_votes, sample_transcripts_meta
+    ):
         """Elapsed time should appear in the output."""
         path = generate_ai_context_pack(
             votes=sample_votes,
@@ -295,7 +421,9 @@ class TestEdgeCases:
         text = path.read_text(encoding="utf-8")
         assert "12.5" in text
 
-    def test_alignment_strategy_displayed(self, tmp_consensus_dir, sample_votes, sample_transcripts_meta):
+    def test_alignment_strategy_displayed(
+        self, tmp_consensus_dir, sample_votes, sample_transcripts_meta
+    ):
         """Custom alignment strategy should appear."""
         path = generate_ai_context_pack(
             votes=sample_votes,

@@ -43,7 +43,9 @@ def test_build_device_pool_round_robin_cuda(monkeypatch):
 def test_run_transcription_pass_parallel(monkeypatch, tmp_path, variant_paths):
     monkeypatch.setattr(orchestrator, "TRANSCRIPTS_DIR", tmp_path)
     monkeypatch.setattr(orchestrator, "_resolve_parallelism", lambda total: 2)
-    monkeypatch.setattr(orchestrator, "_build_device_pool", lambda workers: ["cuda:0", "cuda:1"])
+    monkeypatch.setattr(
+        orchestrator, "_build_device_pool", lambda workers: ["cuda:0", "cuda:1"]
+    )
 
     seen_devices: list[str] = []
 
@@ -97,7 +99,13 @@ def test_run_transcription_pass_multimodel_keys(monkeypatch, tmp_path, variant_p
     seen_calls: list[tuple[str | None, str]] = []
 
     def fake_transcribe(
-        audio_path, variant_key, stem, language=None, device=None, model_name=None, **kwargs
+        audio_path,
+        variant_key,
+        stem,
+        language=None,
+        device=None,
+        model_name=None,
+        **kwargs,
     ):
         seen_calls.append((model_name, variant_key))
         return {
@@ -119,9 +127,7 @@ def test_run_transcription_pass_multimodel_keys(monkeypatch, tmp_path, variant_p
     secondary_keys = {f"small__{k}" for k in variant_paths}
     assert set(transcripts.keys()) == primary_keys | secondary_keys
 
-    expected_calls = {
-        ("base", k) for k in variant_paths
-    } | {
+    expected_calls = {("base", k) for k in variant_paths} | {
         ("small", k) for k in variant_paths
     }
     assert set(seen_calls) == expected_calls
@@ -155,7 +161,9 @@ def test_load_transcripts_from_disk_custom_dir(monkeypatch, tmp_path):
         '{"text": "isolated", "model": "base"}', encoding="utf-8"
     )
 
-    transcripts = orchestrator.load_transcripts_from_disk("sample", transcripts_dir=custom_dir)
+    transcripts = orchestrator.load_transcripts_from_disk(
+        "sample", transcripts_dir=custom_dir
+    )
 
     assert "original" in transcripts
     assert transcripts["original"]["text"] == "isolated"
@@ -165,7 +173,9 @@ def test_load_transcripts_from_disk_custom_dir(monkeypatch, tmp_path):
     assert "original" not in transcripts_global
 
 
-def test_run_transcription_pass_model_names_override(monkeypatch, tmp_path, variant_paths):
+def test_run_transcription_pass_model_names_override(
+    monkeypatch, tmp_path, variant_paths
+):
     monkeypatch.setattr(orchestrator, "TRANSCRIPTS_DIR", tmp_path)
     monkeypatch.setattr(orchestrator, "CONSENSUS_MODELS", ("base", "small"))
     monkeypatch.setattr(orchestrator, "_resolve_parallelism", lambda total: 1)
@@ -173,7 +183,13 @@ def test_run_transcription_pass_model_names_override(monkeypatch, tmp_path, vari
     seen_models: list[str | None] = []
 
     def fake_transcribe(
-        audio_path, variant_key, stem, language=None, device=None, model_name=None, **kwargs
+        audio_path,
+        variant_key,
+        stem,
+        language=None,
+        device=None,
+        model_name=None,
+        **kwargs,
     ):
         seen_models.append(model_name)
         return {

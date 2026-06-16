@@ -74,6 +74,7 @@ def _get_git_tags() -> list[str]:
             return []
 
         tags = [tag.strip() for tag in result.stdout.strip().split("\n") if tag.strip()]
+
         # Sort by semantic version (extract X.Y.Z and sort)
         def version_key(tag: str) -> tuple[int, int, int]:
             match = re.match(r"v(\d+)\.(\d+)\.(\d+)", tag)
@@ -104,7 +105,7 @@ def _get_completed_items_by_version() -> dict[str, list[str]]:
     roadmap = _get_roadmap_text()
     completed: dict[str, list[str]] = {}
 
-    pattern = r'-\s*\[x\]\s+\*\*([^*]+)\*\*\s+\(v([\d.]+)\)'
+    pattern = r"-\s*\[x\]\s+\*\*([^*]+)\*\*\s+\(v([\d.]+)\)"
     matches = re.findall(pattern, roadmap)
 
     for description, version in matches:
@@ -113,6 +114,7 @@ def _get_completed_items_by_version() -> dict[str, list[str]]:
         completed[version].append(description.strip())
 
     return completed
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Tests
@@ -125,22 +127,22 @@ class TestVersionSync:
     def test_pyproject_version_is_valid_semver(self):
         """Version should be valid semver (X.Y.Z)."""
         version = _get_pyproject_version()
-        assert re.match(r"^\d+\.\d+\.\d+$", version), (
-            f"pyproject.toml version '{version}' is not valid semver"
-        )
+        assert re.match(
+            r"^\d+\.\d+\.\d+$", version
+        ), f"pyproject.toml version '{version}' is not valid semver"
 
     def test_version_file_is_valid_semver(self):
         """VERSION should be valid semver (X.Y.Z)."""
         version = _get_version_file_version()
-        assert re.match(r"^\d+\.\d+\.\d+$", version), (
-            f"VERSION value '{version}' is not valid semver"
-        )
+        assert re.match(
+            r"^\d+\.\d+\.\d+$", version
+        ), f"VERSION value '{version}' is not valid semver"
 
     def test_version_file_matches_pyproject(self):
         """VERSION file should match pyproject.toml version."""
-        assert _get_version_file_version() == _get_pyproject_version(), (
-            "VERSION and pyproject.toml versions are out of sync"
-        )
+        assert (
+            _get_version_file_version() == _get_pyproject_version()
+        ), "VERSION and pyproject.toml versions are out of sync"
 
     def test_readme_clone_command_matches(self):
         """git clone -b vX.Y.Z should match pyproject version."""
@@ -175,16 +177,16 @@ class TestVersionSync:
     def test_readme_links_to_roadmap(self):
         """README must contain a clickable link to ROADMAP.md."""
         readme = _get_readme_text()
-        assert "[ROADMAP.md](ROADMAP.md)" in readme, (
-            "README.md must link to ROADMAP.md using '[ROADMAP.md](ROADMAP.md)'."
-        )
+        assert (
+            "[ROADMAP.md](ROADMAP.md)" in readme
+        ), "README.md must link to ROADMAP.md using '[ROADMAP.md](ROADMAP.md)'."
 
     def test_readme_does_not_embed_roadmap_items(self):
         """Roadmap item lists must live in ROADMAP.md, not README.md."""
         readme = _get_readme_text()
-        assert "### Implemented Features (v" not in readme, (
-            "README.md contains versioned roadmap headings. Move roadmap lists to ROADMAP.md."
-        )
+        assert (
+            "### Implemented Features (v" not in readme
+        ), "README.md contains versioned roadmap headings. Move roadmap lists to ROADMAP.md."
 
     def test_no_stale_version_references(self):
         """
@@ -199,15 +201,14 @@ class TestVersionSync:
         # Find all version-tagged refs in clone and docker commands
         # Pattern: commands that reference a specific release version
         clone_refs = re.findall(r"git clone -b (v[\d.]+)", readme)
-        docker_pull_refs = re.findall(r"ghcr\.io/incendiary/chorus:(v[\d.]+-?g?p?u?)", readme)
+        docker_pull_refs = re.findall(
+            r"ghcr\.io/incendiary/chorus:(v[\d.]+-?g?p?u?)", readme
+        )
 
         all_refs = clone_refs + docker_pull_refs
         expected_tag = f"v{version}"
 
-        stale = [
-            ref for ref in all_refs
-            if not ref.startswith(expected_tag)
-        ]
+        stale = [ref for ref in all_refs if not ref.startswith(expected_tag)]
         assert not stale, (
             f"README.md contains stale version references: {stale}. "
             f"All should reference v{version} (from pyproject.toml)."
@@ -279,16 +280,18 @@ class TestGitTagSync:
 
         # Verify each tag is valid semver
         for tag in tags:
-            assert re.match(r"^v\d+\.\d+\.\d+$", tag), (
-                f"Git tag '{tag}' is not valid semver (vX.Y.Z format)"
-            )
+            assert re.match(
+                r"^v\d+\.\d+\.\d+$", tag
+            ), f"Git tag '{tag}' is not valid semver (vX.Y.Z format)"
 
         # Verify tags are in ascending order (we already sorted them in _get_git_tags)
         # This is a sanity check — the function sorts them, so they should be ordered
-        sorted_tags = sorted(tags, key=lambda t: tuple(map(int, t.lstrip("v").split("."))))
-        assert tags == sorted_tags, (
-            f"Git tags are not in ascending version order: {tags}"
+        sorted_tags = sorted(
+            tags, key=lambda t: tuple(map(int, t.lstrip("v").split(".")))
         )
+        assert (
+            tags == sorted_tags
+        ), f"Git tags are not in ascending version order: {tags}"
 
     def test_no_duplicate_git_tags(self):
         """Ensure there are no duplicate version tags."""
@@ -298,9 +301,9 @@ class TestGitTagSync:
             pytest.skip("No git tags found")
 
         unique_tags = set(tags)
-        assert len(tags) == len(unique_tags), (
-            f"Duplicate git tags detected: {[t for t in tags if tags.count(t) > 1]}"
-        )
+        assert len(tags) == len(
+            unique_tags
+        ), f"Duplicate git tags detected: {[t for t in tags if tags.count(t) > 1]}"
 
 
 class TestRoadmapSync:
@@ -309,9 +312,9 @@ class TestRoadmapSync:
     def test_roadmap_exists(self):
         """ROADMAP.md should exist for tracking feature completions."""
         roadmap_path = ROOT / "ROADMAP.md"
-        assert roadmap_path.exists(), (
-            "ROADMAP.md not found. Create a ROADMAP.md to track feature completions."
-        )
+        assert (
+            roadmap_path.exists()
+        ), "ROADMAP.md not found. Create a ROADMAP.md to track feature completions."
 
     def test_roadmap_contains_checklist_items(self):
         """ROADMAP.md should contain at least one checklist item."""
@@ -320,7 +323,9 @@ class TestRoadmapSync:
             pytest.skip("ROADMAP.md is empty")
 
         has_item = bool(re.search(r"-\s*\[(?:x| )\]\s+", roadmap, re.IGNORECASE))
-        assert has_item, "ROADMAP.md contains no checklist items. Add tracked roadmap entries."
+        assert (
+            has_item
+        ), "ROADMAP.md contains no checklist items. Add tracked roadmap entries."
 
     def test_current_version_items_are_marked_completed(self):
         """
@@ -338,7 +343,7 @@ class TestRoadmapSync:
 
         # Look for uncompleted items tagged with the current version
         # Pattern: - [ ] **Description** (vX.Y.Z)
-        pattern = rf'-\s*\[\s*\]\s+\*\*([^*]+)\*\*\s+\(v{re.escape(version)}\)'
+        pattern = rf"-\s*\[\s*\]\s+\*\*([^*]+)\*\*\s+\(v{re.escape(version)}\)"
         incomplete_items = re.findall(pattern, roadmap)
 
         assert not incomplete_items, (
@@ -361,12 +366,14 @@ class TestRoadmapSync:
 
         # Find items marked [x] that don't have a version tag
         # Use a simpler approach: find completed items without (vX.Y.Z) nearby
-        lines = roadmap.split('\n')
+        lines = roadmap.split("\n")
         problematic = []
         for line in lines:
-            if re.search(r'-\s*\[x\]', line) and not re.search(r'\(v\d+\.\d+\.\d+\)', line):
+            if re.search(r"-\s*\[x\]", line) and not re.search(
+                r"\(v\d+\.\d+\.\d+\)", line
+            ):
                 # This is a completed item without a version tag
-                item_match = re.search(r'\*\*([^*]+)\*\*', line)
+                item_match = re.search(r"\*\*([^*]+)\*\*", line)
                 if item_match:
                     problematic.append(item_match.group(1).strip())
 

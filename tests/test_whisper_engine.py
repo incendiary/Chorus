@@ -61,8 +61,12 @@ def test_get_model_fallback_uses_cpu_cache_per_model(monkeypatch):
 
     monkeypatch.setattr(whisper_engine.whisper, "load_model", fake_load_model)
 
-    _, device_1, model_1 = whisper_engine._get_model(model_name="small", device="cuda:0")
-    _, device_2, model_2 = whisper_engine._get_model(model_name="small", device="cuda:1")
+    _, device_1, model_1 = whisper_engine._get_model(
+        model_name="small", device="cuda:0"
+    )
+    _, device_2, model_2 = whisper_engine._get_model(
+        model_name="small", device="cuda:1"
+    )
 
     assert (device_1, model_1) == ("cpu", "small")
     assert (device_2, model_2) == ("cpu", "small")

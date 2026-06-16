@@ -153,7 +153,9 @@ class TestFilterAcousticProperties:
         attenuation = output_rms / input_rms if input_rms > 1e-9 else 1.0
 
         # Attenuation should be substantial (< 0.5 for a 30 Hz signal vs 80 Hz cutoff)
-        assert attenuation < 0.5, f"Low frequencies should be attenuated, but ratio={attenuation}"
+        assert (
+            attenuation < 0.5
+        ), f"Low frequencies should be attenuated, but ratio={attenuation}"
 
     def test_high_pass_preserves_mid_high_frequencies(self):
         """High-pass filter should preserve frequencies above cutoff."""
@@ -169,7 +171,9 @@ class TestFilterAcousticProperties:
         attenuation = output_rms / input_rms if input_rms > 1e-9 else 1.0
 
         # Attenuation should be minimal (> 0.8 for a 440 Hz signal)
-        assert attenuation > 0.8, f"Mid frequencies should be preserved, but ratio={attenuation}"
+        assert (
+            attenuation > 0.8
+        ), f"Mid frequencies should be preserved, but ratio={attenuation}"
 
     def test_normalisation_hits_target_dbfs(self):
         """Normalisation filter should bring RMS to target dBFS."""
@@ -186,8 +190,9 @@ class TestFilterAcousticProperties:
         rms_dbfs = 20 * np.log10(rms) if rms > 1e-9 else -np.inf
 
         # Should be close to target (within ±3 dB is reasonable given signal type)
-        assert abs(rms_dbfs - NORMALISATION_TARGET_DBFS) < 3, \
-            f"RMS should be ~{NORMALISATION_TARGET_DBFS} dBFS, got {rms_dbfs:.1f} dBFS"
+        assert (
+            abs(rms_dbfs - NORMALISATION_TARGET_DBFS) < 3
+        ), f"RMS should be ~{NORMALISATION_TARGET_DBFS} dBFS, got {rms_dbfs:.1f} dBFS"
 
     def test_normalisation_reduces_dynamic_range(self):
         """Normalisation should apply consistent gain to hit target RMS level."""
@@ -199,6 +204,7 @@ class TestFilterAcousticProperties:
 
         # Weak signal with RMS ~0.07 should be boosted toward target dBFS (-20)
         from config import NORMALISATION_TARGET_DBFS
+
         input_rms = np.sqrt(np.mean(weak_signal**2))
         output_rms = np.sqrt(np.mean(normalised**2))
 
@@ -206,8 +212,9 @@ class TestFilterAcousticProperties:
         output_dbfs = 20 * np.log10(output_rms) if output_rms > 1e-9 else -np.inf
 
         # Output should be much closer to target than input
-        assert abs(output_dbfs - NORMALISATION_TARGET_DBFS) < abs(input_dbfs - NORMALISATION_TARGET_DBFS), \
-            f"Normalisation should bring RMS closer to target: input={input_dbfs:.1f}dB, output={output_dbfs:.1f}dB, target={NORMALISATION_TARGET_DBFS}dB"
+        assert abs(output_dbfs - NORMALISATION_TARGET_DBFS) < abs(
+            input_dbfs - NORMALISATION_TARGET_DBFS
+        ), f"Normalisation should bring RMS closer to target: input={input_dbfs:.1f}dB, output={output_dbfs:.1f}dB, target={NORMALISATION_TARGET_DBFS}dB"
 
         # Output should still be clipped to [-1, 1]
         assert np.max(np.abs(normalised)) <= 1.0
@@ -218,10 +225,14 @@ class TestFilterAcousticProperties:
         t = np.linspace(0, 2.0, int(SR * 2.0), endpoint=False, dtype=np.float32)
 
         # Mix a 0.5s silent segment with 1.5s of signal
-        signal = np.concatenate([
-            np.zeros(int(SR * 0.5), dtype=np.float32),  # silence
-            (0.3 * np.sin(2 * np.pi * 200 * t[int(SR * 0.5):int(SR * 2)])).astype(np.float32),
-        ])
+        signal = np.concatenate(
+            [
+                np.zeros(int(SR * 0.5), dtype=np.float32),  # silence
+                (0.3 * np.sin(2 * np.pi * 200 * t[int(SR * 0.5) : int(SR * 2)])).astype(
+                    np.float32
+                ),
+            ]
+        )
 
         denoised = denoise_filter(signal, SR)
 
@@ -234,15 +245,18 @@ class TestFilterAcousticProperties:
 
         # Denoise should reduce or preserve energy (should not amplify noise)
         # Note: denoise may not always reduce energy, but should not explode
-        assert output_energy <= input_energy * 1.1, \
-            "Denoise should not amplify signal energy significantly"
+        assert (
+            output_energy <= input_energy * 1.1
+        ), "Denoise should not amplify signal energy significantly"
 
     def test_denoise_preserves_signal_structure(self):
         """Denoise filter should not remove periodic signal content."""
         # Create periodic signal with noise floor
         t = np.linspace(0, 1.0, SR, endpoint=False, dtype=np.float32)
         clean_signal = (0.4 * np.sin(2 * np.pi * 440 * t)).astype(np.float32)
-        noisy_signal = clean_signal + 0.05 * np.random.default_rng(42).normal(size=SR).astype(np.float32)
+        noisy_signal = clean_signal + 0.05 * np.random.default_rng(42).normal(
+            size=SR
+        ).astype(np.float32)
         noisy_signal = np.clip(noisy_signal, -1.0, 1.0).astype(np.float32)
 
         denoised = denoise_filter(noisy_signal, SR)
@@ -250,10 +264,12 @@ class TestFilterAcousticProperties:
         # Denoised signal should still be periodic (check by cross-correlation with original)
         # Split into two halves and check correlation
         mid = SR // 2
-        corr = np.corrcoef(denoised[:mid], denoised[mid:2*mid])[0, 1]
+        corr = np.corrcoef(denoised[:mid], denoised[mid : 2 * mid])[0, 1]
 
         # For periodic content, correlation should be reasonably high
-        assert corr > 0.3, f"Denoise should preserve signal periodicity, correlation={corr:.2f}"
+        assert (
+            corr > 0.3
+        ), f"Denoise should preserve signal periodicity, correlation={corr:.2f}"
 
 
 # ─────────────────────────────────────────────────────────────────────────────

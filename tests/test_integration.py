@@ -34,7 +34,9 @@ import pytest
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def _generate_sine_wav(path: Path, duration_s: float = 1.0, freq_hz: float = 440.0) -> Path:
+def _generate_sine_wav(
+    path: Path, duration_s: float = 1.0, freq_hz: float = 440.0
+) -> Path:
     """
     Generate a synthetic WAV file containing a sine wave.
 
@@ -92,20 +94,24 @@ def _make_whisper_result(text: str, language: str = "en") -> dict[str, Any]:
         for idx, word in enumerate(words_list):
             start = idx * word_duration
             end = start + word_duration
-            word_entries.append({
-                "word": word,
-                "start": start,
-                "end": end,
-                "probability": 0.95,
-            })
+            word_entries.append(
+                {
+                    "word": word,
+                    "start": start,
+                    "end": end,
+                    "probability": 0.95,
+                }
+            )
 
-        segments.append({
-            "id": 0,
-            "start": 0.0,
-            "end": len(words_list) * word_duration,
-            "text": text,
-            "words": word_entries,
-        })
+        segments.append(
+            {
+                "id": 0,
+                "start": 0.0,
+                "end": len(words_list) * word_duration,
+                "text": text,
+                "words": word_entries,
+            }
+        )
 
     return {
         "text": text,
@@ -302,7 +308,9 @@ class TestOptionalPipelineFeatures:
         mock_reconstruct.assert_called_once()
 
     @pytest.mark.usefixtures("_patch_transcription", "_patch_consensus_dir")
-    def test_pipeline_with_diarisation_enabled(self, synthetic_audio, _patch_consensus_dir):
+    def test_pipeline_with_diarisation_enabled(
+        self, synthetic_audio, _patch_consensus_dir
+    ):
         """Diarisation path should produce diarised output and speaker labels."""
         from diarisation.diariser import SpeakerSegment
         from pipeline_runner import run_pipeline
@@ -349,7 +357,9 @@ class TestAlignmentStrategies:
         assert results["consensus_path"].exists()
 
     @pytest.mark.usefixtures("_patch_transcription", "_patch_consensus_dir")
-    def test_different_strategies_same_high_words(self, synthetic_audio, _patch_consensus_dir):
+    def test_different_strategies_same_high_words(
+        self, synthetic_audio, _patch_consensus_dir
+    ):
         """Both strategies should agree on HIGH-confidence words."""
         from pipeline_runner import run_pipeline
 
@@ -486,7 +496,9 @@ class TestAIContextIntegration:
     """Test AI context pack integration with pipeline."""
 
     @pytest.mark.usefixtures("_patch_transcription", "_patch_consensus_dir")
-    def test_context_pack_has_processing_config(self, synthetic_audio, _patch_consensus_dir):
+    def test_context_pack_has_processing_config(
+        self, synthetic_audio, _patch_consensus_dir
+    ):
         """AI context should reflect actual processing config."""
         from pipeline_runner import run_pipeline
 
@@ -497,7 +509,9 @@ class TestAIContextIntegration:
         assert "sequence" in ai_text
 
     @pytest.mark.usefixtures("_patch_transcription", "_patch_consensus_dir")
-    def test_context_pack_has_clean_transcript(self, synthetic_audio, _patch_consensus_dir):
+    def test_context_pack_has_clean_transcript(
+        self, synthetic_audio, _patch_consensus_dir
+    ):
         """AI context should contain the clean transcript words."""
         from pipeline_runner import run_pipeline
 
@@ -509,7 +523,9 @@ class TestAIContextIntegration:
         assert "brown" in ai_text
 
     @pytest.mark.usefixtures("_patch_transcription", "_patch_consensus_dir")
-    def test_context_pack_has_uncertainty_info(self, synthetic_audio, _patch_consensus_dir):
+    def test_context_pack_has_uncertainty_info(
+        self, synthetic_audio, _patch_consensus_dir
+    ):
         """AI context should flag uncertain words."""
         from pipeline_runner import run_pipeline
 
@@ -549,9 +565,7 @@ class TestErrorHandling:
         def _cb(label: str, frac: float) -> None:
             calls.append((label, frac))
 
-        run_pipeline(
-            audio_path=synthetic_audio, language="en", progress_callback=_cb
-        )
+        run_pipeline(audio_path=synthetic_audio, language="en", progress_callback=_cb)
         # Should have multiple progress updates
         assert len(calls) > 5
         # Last call should be at 1.0

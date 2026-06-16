@@ -129,7 +129,9 @@ def run_pipeline(
             return
         # We don't know total variants at this point; interpolate within current step range
         seg_frac = (seg_idx + 1) / seg_total
-        _progress(f"Decoding segments… ({seg_idx + 1}/{seg_total})", seg_frac * 0.02 + 0.30)
+        _progress(
+            f"Decoding segments… ({seg_idx + 1}/{seg_total})", seg_frac * 0.02 + 0.30
+        )
 
     transcripts = run_transcription_pass(
         variant_paths=variant_paths,

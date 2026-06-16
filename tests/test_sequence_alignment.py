@@ -21,7 +21,6 @@ from consensus_merger.sequence_alignment import (
     align_transcripts_sequence,
 )
 
-
 # ─────────────────────────────────────────────────────────────────────────────
 # Needleman-Wunsch pairwise tests
 # ─────────────────────────────────────────────────────────────────────────────

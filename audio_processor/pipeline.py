@@ -70,7 +70,9 @@ def process_audio(
     except Exception as exc:  # noqa: BLE001
         raise RuntimeError(f"Failed to decode audio file: {input_path}") from exc
 
-    logger.info("Loaded %.2f s @ %d Hz (%.1f MB)", len(audio) / sr, sr, audio.nbytes / 1e6)
+    logger.info(
+        "Loaded %.2f s @ %d Hz (%.1f MB)", len(audio) / sr, sr, audio.nbytes / 1e6
+    )
 
     stem = input_path.stem
     variants_dir = output_dir if output_dir is not None else VARIANTS_DIR

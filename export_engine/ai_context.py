@@ -85,9 +85,7 @@ particularly for noisy audio, accented speech, or domain-specific terminology.
 
 def _build_uncertainty_table(votes: list) -> str:
     """Build a Markdown table of all uncertain (non-HIGH) words."""
-    uncertain = [
-        (idx, v) for idx, v in enumerate(votes) if v.tier != "HIGH"
-    ]
+    uncertain = [(idx, v) for idx, v in enumerate(votes) if v.tier != "HIGH"]
 
     if not uncertain:
         return (
@@ -109,9 +107,7 @@ def _build_uncertainty_table(votes: list) -> str:
     for idx, v in uncertain:
         variants_str = " / ".join(sorted(set(v.variants))) if v.variants else "—"
         pct = f"{v.confidence * 100:.0f}%"
-        lines.append(
-            f"| {idx + 1} | {v.word} | {pct} | {v.tier} | {variants_str} |"
-        )
+        lines.append(f"| {idx + 1} | {v.word} | {pct} | {v.tier} | {variants_str} |")
 
     lines.append("")
     lines.append(
