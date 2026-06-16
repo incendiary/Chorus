@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from io import BytesIO
 from unittest.mock import MagicMock, patch
 from urllib import error
@@ -184,3 +185,57 @@ def test_probe_model_timeout():
         ok, reason = probe_model()
     assert ok is False
     assert "did not respond" in reason
+
+
+def test_suggest_token_weighted_prompt_includes_agreement():
+    """Prompt sent to Ollama should contain agreement percentages when weights provided."""
+    sent_payloads: list[dict] = []
+
+    class CapturingRequest:
+        def __init__(self, url, data, headers, method):
+            self.url = url
+            self.data = data
+            self.headers = headers
+            self.method = method
+            sent_payloads.append(json.loads(data.decode("utf-8")))
+
+    with patch("llm_reconstructor.ollama_client.request.Request", CapturingRequest):
+        with patch(
+            "llm_reconstructor.ollama_client.request.urlopen",
+            return_value=_make_urlopen_response('{"response": "garble"}'),
+        ):
+            result = ollama_client.suggest_token(
+                context="hello world",
+                candidates=["garbl", "garble"],
+                candidate_weights={"garbl": 0.25, "garble": 0.75},
+            )
+
+    assert result == "garble"
+    assert sent_payloads
+    prompt = sent_payloads[0]["prompt"]
+    assert "agreement" in prompt
+    assert "75%" in prompt
+
+
+def test_reconstruct_low_tokens_passes_weights_to_suggest(monkeypatch):
+    """reconstruct_low_tokens_llm should pass candidate_weights to suggest_token."""
+    votes = [
+        _vote("the", tier="HIGH"),
+        _vote("garbl", tier="LOW", variants=["garbl", "garble", "garble"]),
+        _vote("word", tier="HIGH"),
+    ]
+
+    received_weights: list[dict] = []
+
+    def capturing_suggest(*, context, candidates, candidate_weights=None):
+        received_weights.append(candidate_weights or {})
+        return candidates[0]
+
+    monkeypatch.setattr("llm_reconstructor.reconstructor.suggest_token", capturing_suggest)
+    reconstruct_low_tokens_llm(votes)
+
+    assert received_weights
+    weights = received_weights[0]
+    assert set(weights.keys()) == {"garbl", "garble"}
+    # "garble" appears twice, "garbl" once → garble should have higher weight
+    assert weights["garble"] > weights["garbl"]
