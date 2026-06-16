@@ -235,9 +235,18 @@ if __name__ == "__main__":
         help="BCP-47 language code hint for Whisper (e.g., 'en', 'fr'). "
         "Omit for auto-detection.",
     )
+    parser.add_argument(
+        "--output-dir",
+        "-o",
+        default=None,
+        metavar="DIR",
+        help="Root directory for pipeline outputs (variants/, transcripts/, consensus/). "
+        "Defaults to the global outputs/ directory.",
+    )
     args = parser.parse_args()
 
-    results = run_pipeline(args.audio, language=args.language)
+    output_dir = Path(args.output_dir) if args.output_dir else None
+    results = run_pipeline(args.audio, language=args.language, output_dir=output_dir)
     print(f"\n✓ Consensus transcript: {results['consensus_path']}")
     print(f"  Completed in {results['elapsed_seconds']} s")
     sys.exit(0)
