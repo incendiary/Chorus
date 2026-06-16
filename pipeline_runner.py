@@ -155,6 +155,7 @@ def run_pipeline(
     # ── AI Context Pack (always generated) ───────────────────────────────────
     _progress("Generating AI context pack…", 0.96)
     from export_engine.ai_context import generate_ai_context_pack
+    from export_engine.exporter import export_transcript_bundle
 
     ai_context_path = generate_ai_context_pack(
         votes=votes,
@@ -162,6 +163,13 @@ def run_pipeline(
         transcripts_meta=transcripts,
         elapsed_seconds=round(time.perf_counter() - t_start, 2),
         alignment_strategy=alignment_strategy,
+    )
+
+    bundle_path = export_transcript_bundle(
+        transcripts=transcripts,
+        votes=votes,
+        stem=stem,
+        output_dir=consensus_dir,
     )
 
     # ── Optional: Speaker Diarisation ────────────────────────────────────────
@@ -210,6 +218,7 @@ def run_pipeline(
         "transcripts": transcripts,
         "consensus_path": consensus_path,
         "ai_context_path": ai_context_path,
+        "bundle_path": bundle_path,
         "diarised_path": diarised_path,
         "speaker_labels": speaker_labels,
         "elapsed_seconds": elapsed,

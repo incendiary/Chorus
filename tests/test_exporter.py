@@ -131,3 +131,62 @@ class TestVTTExport:
         result = export_vtt(_mock_whisper_result(), stem="test_vtt_text")
         content = result.read_text(encoding="utf-8")
         assert "Hello world" in content or "hello world" in content.lower()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# JSON transcript bundle
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class TestExportTranscriptBundle:
+    def _make_votes(self):
+        from consensus_merger.alignment import WordVote
+        return [
+            WordVote(word="hello", count=4, total=4, confidence=1.0, tier="HIGH", variants=["hello"]),
+            WordVote(word="world", count=2, total=4, confidence=0.5, tier="MEDIUM", variants=["world", "word"]),
+            WordVote(word="garbl", count=1, total=4, confidence=0.25, tier="LOW", variants=["garbl"]),
+        ]
+
+    def _make_transcripts(self):
+        return {
+            "original": {"text": "hello world garbl", "language": "en", "model": "base", "device": "cpu"},
+            "highpass": {"text": "hello word garbl", "language": "en", "model": "base", "device": "cpu"},
+        }
+
+    def test_bundle_file_created(self, tmp_path):
+        from export_engine.exporter import export_transcript_bundle
+        path = export_transcript_bundle(self._make_transcripts(), self._make_votes(), "test", output_dir=tmp_path)
+        assert path.exists()
+        assert path.name == "test_bundle.json"
+
+    def test_bundle_structure(self, tmp_path):
+        import json
+        from export_engine.exporter import export_transcript_bundle
+        path = export_transcript_bundle(self._make_transcripts(), self._make_votes(), "test", output_dir=tmp_path)
+        data = json.loads(path.read_text(encoding="utf-8"))
+        assert "meta" in data
+        assert data["meta"]["stem"] == "test"
+        assert "variants" in data
+        assert "original" in data["variants"]
+        assert data["variants"]["original"]["text"] == "hello world garbl"
+        assert "consensus" in data
+        assert len(data["consensus"]) == 3
+        assert data["consensus"][0] == {"word": "hello", "tier": "HIGH", "confidence": 1.0, "count": 4, "total": 4, "variants": ["hello"]}
+        assert "statistics" in data
+        assert data["statistics"]["high"] == 1
+        assert data["statistics"]["medium"] == 1
+        assert data["statistics"]["low"] == 1
+        assert data["statistics"]["total_words"] == 3
+
+    def test_bundle_in_pipeline_output(self, tmp_path):
+        """run_pipeline should return bundle_path in its result dict."""
+        from pathlib import Path
+        from unittest.mock import patch
+        from tests.test_integration import _mock_run_transcription_pass, _generate_sine_wav
+        audio = _generate_sine_wav(tmp_path / "audio.wav")
+        with patch("pipeline_runner.run_transcription_pass", side_effect=_mock_run_transcription_pass):
+            from pipeline_runner import run_pipeline
+            result = run_pipeline(audio_path=audio, language="en", output_dir=tmp_path / "out")
+        assert "bundle_path" in result
+        assert result["bundle_path"].exists()
+        assert result["bundle_path"].name.endswith("_bundle.json")

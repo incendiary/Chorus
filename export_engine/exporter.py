@@ -601,3 +601,95 @@ def export_zip(
 
     buf.seek(0)
     return buf.read()
+
+
+# ───────────────────────────────────────────────────────────────────────────
+# JSON transcript bundle
+# ───────────────────────────────────────────────────────────────────────────
+
+
+def export_transcript_bundle(
+    transcripts: dict[str, dict[str, Any]],
+    votes: list[Any],
+    stem: str,
+    *,
+    output_dir: Path | None = None,
+) -> Path:
+    """
+    Write a structured JSON transcript bundle for programmatic consumption.
+
+    The bundle contains:
+    - ``meta``           — stem, chorus version, timestamp
+    - ``variants``       — all variant transcript dicts (text, language, model, device)
+    - ``consensus``      — word-vote sequence with tier/confidence per word
+    - ``statistics``     — HIGH/MEDIUM/LOW word counts and percentages
+
+    Parameters
+    ----------
+    transcripts : dict[str, dict]
+        Mapping of variant key → Whisper result dict.
+    votes : list[WordVote]
+        Ordered consensus vote sequence from the alignment stage.
+    stem : str
+        Base filename stem.
+    output_dir : Path, optional
+        Directory to write the bundle.  Defaults to ``CONSENSUS_DIR``.
+
+    Returns
+    -------
+    Path
+        Path to the written ``{stem}_bundle.json`` file.
+    """
+    import json
+    from datetime import UTC, datetime
+
+    out_dir = output_dir if output_dir is not None else CONSENSUS_DIR
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    high = sum(1 for v in votes if v.tier == "HIGH")
+    medium = sum(1 for v in votes if v.tier == "MEDIUM")
+    low = sum(1 for v in votes if v.tier == "LOW")
+    total_words = max(len(votes), 1)
+
+    bundle: dict[str, Any] = {
+        "meta": {
+            "stem": stem,
+            "generated_at": datetime.now(UTC).isoformat(),
+        },
+        "variants": {
+            key: {
+                "text": result.get("text", ""),
+                "language": result.get("language", ""),
+                "model": result.get("model", ""),
+                "device": result.get("device", ""),
+            }
+            for key, result in transcripts.items()
+        },
+        "consensus": [
+            {
+                "word": v.word,
+                "tier": v.tier,
+                "confidence": v.confidence,
+                "count": v.count,
+                "total": v.total,
+                "variants": v.variants,
+            }
+            for v in votes
+        ],
+        "statistics": {
+            "total_words": total_words,
+            "high": high,
+            "medium": medium,
+            "low": low,
+            "high_pct": round(high / total_words * 100, 1),
+            "medium_pct": round(medium / total_words * 100, 1),
+            "low_pct": round(low / total_words * 100, 1),
+        },
+    }
+
+    out_path = out_dir / f"{stem}_bundle.json"
+    with open(out_path, "w", encoding="utf-8") as fh:
+        json.dump(bundle, fh, ensure_ascii=False, indent=2)
+
+    logger.info("Transcript bundle written \u2192 %s", out_path)
+    return out_path
