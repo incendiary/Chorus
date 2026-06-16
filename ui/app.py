@@ -342,8 +342,9 @@ st.markdown(
         }
     }
 </style>
-"""
-    .replace("__CHORUS_PRIMARY__", _theme["primary"])
+""".replace(
+        "__CHORUS_PRIMARY__", _theme["primary"]
+    )
     .replace("__CHORUS_SURFACE__", _theme["surface"])
     .replace("__CHORUS_BORDER__", _theme["border"])
     .replace("__CHORUS_HEADER_A__", _theme["header_a"])
@@ -439,7 +440,10 @@ def _render_preflight_summary(
 
     runtime_hint = (
         "longer runs expected due to max-accuracy configuration"
-        if model_choice in {"medium", "small"} or enable_nlp or enable_llm or enable_diarisation
+        if model_choice in {"medium", "small"}
+        or enable_nlp
+        or enable_llm
+        or enable_diarisation
         else "balanced runtime expected"
     )
     model_set_text = ", ".join(consensus_models)
@@ -475,19 +479,19 @@ def _render_confidence_overview(consensus_text: str) -> None:
     with bar_cols[0]:
         st.markdown(
             f'<div style="background:var(--chorus-high-bg);color:var(--chorus-high-fg);padding:8px;border-radius:4px;text-align:center">'
-            f'<b>🟢 HIGH</b><br>{n_high} ({n_high*100//total_w}%)</div>',
+            f"<b>🟢 HIGH</b><br>{n_high} ({n_high*100//total_w}%)</div>",
             unsafe_allow_html=True,
         )
     with bar_cols[1]:
         st.markdown(
             f'<div style="background:var(--chorus-med-bg);color:var(--chorus-med-fg);padding:8px;border-radius:4px;text-align:center">'
-            f'<b>🟡 MED</b><br>{n_med} ({n_med*100//total_w}%)</div>',
+            f"<b>🟡 MED</b><br>{n_med} ({n_med*100//total_w}%)</div>",
             unsafe_allow_html=True,
         )
     with bar_cols[2]:
         st.markdown(
             f'<div style="background:var(--chorus-low-bg);color:var(--chorus-low-fg);padding:8px;border-radius:4px;text-align:center">'
-            f'<b>🔴 LOW</b><br>{n_low} ({n_low*100//total_w}%)</div>',
+            f"<b>🔴 LOW</b><br>{n_low} ({n_low*100//total_w}%)</div>",
             unsafe_allow_html=True,
         )
 
@@ -504,7 +508,9 @@ def _render_confidence_overview(consensus_text: str) -> None:
     )
 
 
-def _render_processing_error(file_name: str, exc: Exception, allow_retry: bool = False) -> None:
+def _render_processing_error(
+    file_name: str, exc: Exception, allow_retry: bool = False
+) -> None:
     """Render consistent actionable processing error guidance."""
     st.error(PROCESSING_FAILURE_MSG.format(file_name=file_name))
     st.markdown(PROCESSING_REMEDIATION_STEPS)
@@ -533,7 +539,9 @@ def _render_run_status(
     progress = (processed / total_files) if total_files else 0.0
 
     rate_per_sec = processed / elapsed if processed else 0.0
-    eta_seconds = int((total_files - processed) / rate_per_sec) if rate_per_sec > 0 else None
+    eta_seconds = (
+        int((total_files - processed) / rate_per_sec) if rate_per_sec > 0 else None
+    )
 
     with container.container():
         st.markdown('<div class="chorus-run-status">', unsafe_allow_html=True)
@@ -551,7 +559,9 @@ def _render_run_status(
         st.progress(progress, text=progress_text)
 
         if eta_seconds is not None and processed < total_files:
-            st.caption(f"Estimated time remaining: ~{eta_seconds} s (updates as files complete).")
+            st.caption(
+                f"Estimated time remaining: ~{eta_seconds} s (updates as files complete)."
+            )
         elif processed == total_files:
             st.caption("Batch complete. Review results and download outputs below.")
 
@@ -601,17 +611,21 @@ def _render_batch_outcome_summary(
                 st.markdown("**Failed files:** " + ", ".join(failed_file_names))
 
 
-def _render_result_navigation(file_names: list[str], file_anchors: dict[str, str]) -> None:
+def _render_result_navigation(
+    file_names: list[str], file_anchors: dict[str, str]
+) -> None:
     """Render quick links to each file section for large result sets."""
     if len(file_names) < 3:
         return
 
     anchors = [(name, file_anchors[name]) for name in file_names]
-    links = " · ".join(["[Top](#top)", *[f"[{name}](#{anchor})" for name, anchor in anchors]])
+    links = " · ".join(
+        ["[Top](#top)", *[f"[{name}](#{anchor})" for name, anchor in anchors]]
+    )
     st.markdown(
         (
             '<div class="chorus-action-bar">'
-            '<b>Quick Navigation:</b> '
+            "<b>Quick Navigation:</b> "
             f"{links}"
             "</div>"
         ),
@@ -644,7 +658,9 @@ def _build_file_anchors(file_names: list[str]) -> dict[str, str]:
     return anchors
 
 
-def _record_recent_run(*, total: int, completed: int, failed: int, duration: float) -> None:
+def _record_recent_run(
+    *, total: int, completed: int, failed: int, duration: float
+) -> None:
     """Store a compact run snapshot in session state."""
     stamp = time.strftime("%H:%M:%S")
     st.session_state["recent_runs"] = [
@@ -705,7 +721,9 @@ with st.sidebar:
         help="Larger models are more accurate but slower. 'base' is recommended for local CPU use.",  # noqa: E501
     )
 
-    default_consensus = [m for m in CONSENSUS_MODELS if m in model_options] or [model_choice]
+    default_consensus = [m for m in CONSENSUS_MODELS if m in model_options] or [
+        model_choice
+    ]
     if model_choice not in default_consensus:
         default_consensus.insert(0, model_choice)
 
@@ -721,7 +739,10 @@ with st.sidebar:
     if not consensus_model_choice:
         consensus_model_choice = [model_choice]
     if consensus_model_choice[0] != model_choice:
-        consensus_model_choice = [model_choice, *[m for m in consensus_model_choice if m != model_choice]]
+        consensus_model_choice = [
+            model_choice,
+            *[m for m in consensus_model_choice if m != model_choice],
+        ]
     consensus_models = tuple(dict.fromkeys(consensus_model_choice))
 
     # Warn if model changed and is already loaded
@@ -733,7 +754,12 @@ with st.sidebar:
 
     # Show detected compute device
     from config import WHISPER_DEVICE  # noqa: E402
-    device_icons = {"cuda": "🟢 CUDA (GPU)", "mps": "🟠 MPS (Apple Silicon)", "cpu": "⚪ CPU"}
+
+    device_icons = {
+        "cuda": "🟢 CUDA (GPU)",
+        "mps": "🟠 MPS (Apple Silicon)",
+        "cpu": "⚪ CPU",
+    }
     st.caption(f"**Device:** {device_icons.get(WHISPER_DEVICE, WHISPER_DEVICE)}")
 
     # ── Language ──────────────────────────────────────────────────────────────
@@ -752,7 +778,11 @@ with st.sidebar:
         "Alignment algorithm",
         options=["sequence", "positional"],
         index=0 if ALIGNMENT_STRATEGY == "sequence" else 1,
-        format_func=lambda x: "Sequence alignment (accurate)" if x == "sequence" else "Positional (fast, legacy)",
+        format_func=lambda x: (
+            "Sequence alignment (accurate)"
+            if x == "sequence"
+            else "Positional (fast, legacy)"
+        ),
         help=(
             "**Sequence (Needleman-Wunsch):** Handles word insertions and deletions "
             "across variants. More accurate on noisy audio.\n\n"
@@ -1243,7 +1273,9 @@ if uploaded_files:
             # Process and render each file as it completes
             for uf in uploaded_files:
                 section_anchor = file_anchors[str(uf.name)]
-                st.markdown(f'<div id="{section_anchor}"></div>', unsafe_allow_html=True)
+                st.markdown(
+                    f'<div id="{section_anchor}"></div>', unsafe_allow_html=True
+                )
                 _render_run_status(
                     container=run_status_slot,
                     total_files=len(uploaded_files),
@@ -1268,7 +1300,9 @@ if uploaded_files:
                         status_text.success(
                             f"Completed in **{results['elapsed_seconds']} s**"
                         )
-                        sequential_results.append((uf, results, tmp_path, original_stem))
+                        sequential_results.append(
+                            (uf, results, tmp_path, original_stem)
+                        )
                     except Exception as exc:
                         failed_files += 1
                         failed_file_names.append(str(uf.name))
@@ -1386,7 +1420,9 @@ if uploaded_files:
                 if result_filter == "Failed":
                     continue
                 section_anchor = file_anchors[str(uf.name)]
-                st.markdown(f'<div id="{section_anchor}"></div>', unsafe_allow_html=True)
+                st.markdown(
+                    f'<div id="{section_anchor}"></div>', unsafe_allow_html=True
+                )
                 with st.expander(f"📄 {uf.name}", expanded=True):
                     st.success(f"Completed in **{results['elapsed_seconds']} s**")
                     _render_file_results(uf.name, results, tmp_path, original_stem)

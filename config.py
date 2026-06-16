@@ -27,6 +27,7 @@ def ensure_output_dirs() -> None:
     for out_dir in (VARIANTS_DIR, TRANSCRIPTS_DIR, CONSENSUS_DIR):
         out_dir.mkdir(parents=True, exist_ok=True)
 
+
 # ─────────────────────────────────────────────
 # Whisper Model Configuration
 # ─────────────────────────────────────────────
@@ -65,10 +66,7 @@ CONSENSUS_MODELS = _parse_consensus_models(
 )
 
 # Human-readable labels for configured consensus model variants.
-CONSENSUS_MODEL_LABELS = {
-    model: f"Whisper {model}"
-    for model in CONSENSUS_MODELS
-}
+CONSENSUS_MODEL_LABELS = {model: f"Whisper {model}" for model in CONSENSUS_MODELS}
 
 # Compute device for Whisper inference.
 # Explicit override: set WHISPER_DEVICE=cpu | cuda | mps in your environment.

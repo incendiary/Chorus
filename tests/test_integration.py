@@ -19,8 +19,6 @@ What is tested:
 
 from __future__ import annotations
 
-import json
-import re
 import struct
 import wave
 from pathlib import Path
@@ -34,7 +32,9 @@ import pytest
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def _generate_sine_wav(path: Path, duration_s: float = 1.0, freq_hz: float = 440.0) -> Path:
+def _generate_sine_wav(
+    path: Path, duration_s: float = 1.0, freq_hz: float = 440.0
+) -> Path:
     """
     Generate a synthetic WAV file containing a sine wave.
 
@@ -92,20 +92,24 @@ def _make_whisper_result(text: str, language: str = "en") -> dict[str, Any]:
         for idx, word in enumerate(words_list):
             start = idx * word_duration
             end = start + word_duration
-            word_entries.append({
-                "word": word,
-                "start": start,
-                "end": end,
-                "probability": 0.95,
-            })
+            word_entries.append(
+                {
+                    "word": word,
+                    "start": start,
+                    "end": end,
+                    "probability": 0.95,
+                }
+            )
 
-        segments.append({
-            "id": 0,
-            "start": 0.0,
-            "end": len(words_list) * word_duration,
-            "text": text,
-            "words": word_entries,
-        })
+        segments.append(
+            {
+                "id": 0,
+                "start": 0.0,
+                "end": len(words_list) * word_duration,
+                "text": text,
+                "words": word_entries,
+            }
+        )
 
     return {
         "text": text,
@@ -166,7 +170,7 @@ def _patch_transcription():
 
 
 @pytest.fixture
-def _patch_consensus_dir(tmp_path, monkeypatch):
+def patch_consensus_dir(tmp_path, monkeypatch):
     """Redirect consensus output to a temp directory."""
     out_dir = tmp_path / "outputs" / "consensus"
     out_dir.mkdir(parents=True)
@@ -186,8 +190,8 @@ def _patch_consensus_dir(tmp_path, monkeypatch):
 class TestFullPipeline:
     """End-to-end pipeline tests with mocked transcription."""
 
-    @pytest.mark.usefixtures("_patch_transcription", "_patch_consensus_dir")
-    def test_pipeline_completes(self, synthetic_audio, _patch_consensus_dir):
+    @pytest.mark.usefixtures("_patch_transcription", "patch_consensus_dir")
+    def test_pipeline_completes(self, synthetic_audio, patch_consensus_dir):
         """Pipeline should complete without error."""
         from pipeline_runner import run_pipeline
 
@@ -197,8 +201,8 @@ class TestFullPipeline:
         assert "transcripts" in results
         assert "elapsed_seconds" in results
 
-    @pytest.mark.usefixtures("_patch_transcription", "_patch_consensus_dir")
-    def test_consensus_document_generated(self, synthetic_audio, _patch_consensus_dir):
+    @pytest.mark.usefixtures("_patch_transcription", "patch_consensus_dir")
+    def test_consensus_document_generated(self, synthetic_audio, patch_consensus_dir):
         """Should produce a consensus .md file."""
         from pipeline_runner import run_pipeline
 
@@ -211,8 +215,8 @@ class TestFullPipeline:
         assert "Chorus" in text
         assert "Consensus Transcript" in text
 
-    @pytest.mark.usefixtures("_patch_transcription", "_patch_consensus_dir")
-    def test_ai_context_pack_generated(self, synthetic_audio, _patch_consensus_dir):
+    @pytest.mark.usefixtures("_patch_transcription", "patch_consensus_dir")
+    def test_ai_context_pack_generated(self, synthetic_audio, patch_consensus_dir):
         """Should produce an AI context pack."""
         from pipeline_runner import run_pipeline
 
@@ -227,8 +231,8 @@ class TestFullPipeline:
         assert "## Confidence Statistics" in text
         assert "## Clean Transcript" in text
 
-    @pytest.mark.usefixtures("_patch_transcription", "_patch_consensus_dir")
-    def test_confidence_tiers_present(self, synthetic_audio, _patch_consensus_dir):
+    @pytest.mark.usefixtures("_patch_transcription", "patch_consensus_dir")
+    def test_confidence_tiers_present(self, synthetic_audio, patch_consensus_dir):
         """Consensus should contain HIGH/MEDIUM/LOW words given controlled input."""
         from pipeline_runner import run_pipeline
 
@@ -241,16 +245,16 @@ class TestFullPipeline:
         assert "HIGH" in text
         assert "Confidence Statistics" in text
 
-    @pytest.mark.usefixtures("_patch_transcription", "_patch_consensus_dir")
-    def test_elapsed_time_positive(self, synthetic_audio, _patch_consensus_dir):
+    @pytest.mark.usefixtures("_patch_transcription", "patch_consensus_dir")
+    def test_elapsed_time_positive(self, synthetic_audio, patch_consensus_dir):
         """Elapsed time should be a positive number."""
         from pipeline_runner import run_pipeline
 
         results = run_pipeline(audio_path=synthetic_audio, language="en")
         assert results["elapsed_seconds"] > 0
 
-    @pytest.mark.usefixtures("_patch_transcription", "_patch_consensus_dir")
-    def test_variant_paths_returned(self, synthetic_audio, _patch_consensus_dir):
+    @pytest.mark.usefixtures("_patch_transcription", "patch_consensus_dir")
+    def test_variant_paths_returned(self, synthetic_audio, patch_consensus_dir):
         """Should return the audio variant paths."""
         from pipeline_runner import run_pipeline
 
@@ -258,15 +262,15 @@ class TestFullPipeline:
         variant_paths = results["variant_paths"]
         assert isinstance(variant_paths, dict)
         assert len(variant_paths) > 0
-        for key, path in variant_paths.items():
+        for _key, path in variant_paths.items():
             assert Path(path).exists()
 
 
 class TestOptionalPipelineFeatures:
     """Test optional NLP and diarisation pipeline paths."""
 
-    @pytest.mark.usefixtures("_patch_transcription", "_patch_consensus_dir")
-    def test_pipeline_with_nlp_enabled(self, synthetic_audio, _patch_consensus_dir):
+    @pytest.mark.usefixtures("_patch_transcription", "patch_consensus_dir")
+    def test_pipeline_with_nlp_enabled(self, synthetic_audio, patch_consensus_dir):
         """NLP reconstruction path should execute when enabled."""
         from pipeline_runner import run_pipeline
 
@@ -283,8 +287,8 @@ class TestOptionalPipelineFeatures:
         assert results["consensus_path"].exists()
         mock_reconstruct.assert_called_once()
 
-    @pytest.mark.usefixtures("_patch_transcription", "_patch_consensus_dir")
-    def test_pipeline_with_llm_enabled(self, synthetic_audio, _patch_consensus_dir):
+    @pytest.mark.usefixtures("_patch_transcription", "patch_consensus_dir")
+    def test_pipeline_with_llm_enabled(self, synthetic_audio, patch_consensus_dir):
         """LLM reconstruction path should execute when enabled."""
         from pipeline_runner import run_pipeline
 
@@ -301,8 +305,10 @@ class TestOptionalPipelineFeatures:
         assert results["consensus_path"].exists()
         mock_reconstruct.assert_called_once()
 
-    @pytest.mark.usefixtures("_patch_transcription", "_patch_consensus_dir")
-    def test_pipeline_with_diarisation_enabled(self, synthetic_audio, _patch_consensus_dir):
+    @pytest.mark.usefixtures("_patch_transcription", "patch_consensus_dir")
+    def test_pipeline_with_diarisation_enabled(
+        self, synthetic_audio, patch_consensus_dir
+    ):
         """Diarisation path should produce diarised output and speaker labels."""
         from diarisation.diariser import SpeakerSegment
         from pipeline_runner import run_pipeline
@@ -328,8 +334,8 @@ class TestOptionalPipelineFeatures:
 class TestAlignmentStrategies:
     """Test that both alignment strategies work end-to-end."""
 
-    @pytest.mark.usefixtures("_patch_transcription", "_patch_consensus_dir")
-    def test_sequence_alignment(self, synthetic_audio, _patch_consensus_dir):
+    @pytest.mark.usefixtures("_patch_transcription", "patch_consensus_dir")
+    def test_sequence_alignment(self, synthetic_audio, patch_consensus_dir):
         """Pipeline with sequence alignment should complete."""
         from pipeline_runner import run_pipeline
 
@@ -338,8 +344,8 @@ class TestAlignmentStrategies:
         )
         assert results["consensus_path"].exists()
 
-    @pytest.mark.usefixtures("_patch_transcription", "_patch_consensus_dir")
-    def test_positional_alignment(self, synthetic_audio, _patch_consensus_dir):
+    @pytest.mark.usefixtures("_patch_transcription", "patch_consensus_dir")
+    def test_positional_alignment(self, synthetic_audio, patch_consensus_dir):
         """Pipeline with positional alignment should complete."""
         from pipeline_runner import run_pipeline
 
@@ -348,8 +354,10 @@ class TestAlignmentStrategies:
         )
         assert results["consensus_path"].exists()
 
-    @pytest.mark.usefixtures("_patch_transcription", "_patch_consensus_dir")
-    def test_different_strategies_same_high_words(self, synthetic_audio, _patch_consensus_dir):
+    @pytest.mark.usefixtures("_patch_transcription", "patch_consensus_dir")
+    def test_different_strategies_same_high_words(
+        self, synthetic_audio, patch_consensus_dir
+    ):
         """Both strategies should agree on HIGH-confidence words."""
         from pipeline_runner import run_pipeline
 
@@ -371,8 +379,8 @@ class TestAlignmentStrategies:
 class TestExportIntegration:
     """Test export formats work end-to-end with pipeline output."""
 
-    @pytest.mark.usefixtures("_patch_transcription", "_patch_consensus_dir")
-    def test_srt_export(self, synthetic_audio, _patch_consensus_dir):
+    @pytest.mark.usefixtures("_patch_transcription", "patch_consensus_dir")
+    def test_srt_export(self, synthetic_audio, patch_consensus_dir):
         """Should produce a valid SRT file."""
         from export_engine.exporter import export_srt
         from pipeline_runner import run_pipeline
@@ -386,8 +394,8 @@ class TestExportIntegration:
         assert "1\n" in content
         assert "-->" in content
 
-    @pytest.mark.usefixtures("_patch_transcription", "_patch_consensus_dir")
-    def test_vtt_export(self, synthetic_audio, _patch_consensus_dir):
+    @pytest.mark.usefixtures("_patch_transcription", "patch_consensus_dir")
+    def test_vtt_export(self, synthetic_audio, patch_consensus_dir):
         """Should produce a valid VTT file."""
         from export_engine.exporter import export_vtt
         from pipeline_runner import run_pipeline
@@ -400,8 +408,8 @@ class TestExportIntegration:
         assert content.startswith("WEBVTT")
         assert "-->" in content
 
-    @pytest.mark.usefixtures("_patch_transcription", "_patch_consensus_dir")
-    def test_plain_text_export(self, synthetic_audio, _patch_consensus_dir):
+    @pytest.mark.usefixtures("_patch_transcription", "patch_consensus_dir")
+    def test_plain_text_export(self, synthetic_audio, patch_consensus_dir):
         """Should produce a plain-text transcript."""
         from export_engine.exporter import export_plain_text
         from pipeline_runner import run_pipeline
@@ -414,8 +422,8 @@ class TestExportIntegration:
         # Should contain at least some recognisable words
         assert len(content) > 0
 
-    @pytest.mark.usefixtures("_patch_transcription", "_patch_consensus_dir")
-    def test_zip_export(self, synthetic_audio, _patch_consensus_dir):
+    @pytest.mark.usefixtures("_patch_transcription", "patch_consensus_dir")
+    def test_zip_export(self, synthetic_audio, patch_consensus_dir):
         """Should produce a non-empty zip bundle."""
         import zipfile
         from io import BytesIO
@@ -442,8 +450,8 @@ class TestExportIntegration:
 class TestSpeakerNameIntegration:
     """Test speaker name persistence end-to-end."""
 
-    @pytest.mark.usefixtures("_patch_consensus_dir")
-    def test_save_and_load_roundtrip(self, _patch_consensus_dir):
+    @pytest.mark.usefixtures("patch_consensus_dir")
+    def test_save_and_load_roundtrip(self, patch_consensus_dir):
         """Speaker names should survive a save/load cycle."""
         from diarisation.diariser import load_speaker_names, save_speaker_names
 
@@ -453,8 +461,8 @@ class TestSpeakerNameIntegration:
         loaded = load_speaker_names("roundtrip_test")
         assert loaded == mapping
 
-    @pytest.mark.usefixtures("_patch_consensus_dir")
-    def test_names_appear_in_diarised_output(self, _patch_consensus_dir):
+    @pytest.mark.usefixtures("patch_consensus_dir")
+    def test_names_appear_in_diarised_output(self, patch_consensus_dir):
         """Saved speaker names should appear in the diarised transcript."""
         from diarisation.diariser import (
             LabelledSegment,
@@ -485,8 +493,10 @@ class TestSpeakerNameIntegration:
 class TestAIContextIntegration:
     """Test AI context pack integration with pipeline."""
 
-    @pytest.mark.usefixtures("_patch_transcription", "_patch_consensus_dir")
-    def test_context_pack_has_processing_config(self, synthetic_audio, _patch_consensus_dir):
+    @pytest.mark.usefixtures("_patch_transcription", "patch_consensus_dir")
+    def test_context_pack_has_processing_config(
+        self, synthetic_audio, patch_consensus_dir
+    ):
         """AI context should reflect actual processing config."""
         from pipeline_runner import run_pipeline
 
@@ -496,8 +506,10 @@ class TestAIContextIntegration:
         ai_text = results["ai_context_path"].read_text(encoding="utf-8")
         assert "sequence" in ai_text
 
-    @pytest.mark.usefixtures("_patch_transcription", "_patch_consensus_dir")
-    def test_context_pack_has_clean_transcript(self, synthetic_audio, _patch_consensus_dir):
+    @pytest.mark.usefixtures("_patch_transcription", "patch_consensus_dir")
+    def test_context_pack_has_clean_transcript(
+        self, synthetic_audio, patch_consensus_dir
+    ):
         """AI context should contain the clean transcript words."""
         from pipeline_runner import run_pipeline
 
@@ -508,8 +520,10 @@ class TestAIContextIntegration:
         assert "quick" in ai_text
         assert "brown" in ai_text
 
-    @pytest.mark.usefixtures("_patch_transcription", "_patch_consensus_dir")
-    def test_context_pack_has_uncertainty_info(self, synthetic_audio, _patch_consensus_dir):
+    @pytest.mark.usefixtures("_patch_transcription", "patch_consensus_dir")
+    def test_context_pack_has_uncertainty_info(
+        self, synthetic_audio, patch_consensus_dir
+    ):
         """AI context should flag uncertain words."""
         from pipeline_runner import run_pipeline
 
@@ -539,8 +553,8 @@ class TestErrorHandling:
         with pytest.raises(RuntimeError, match="Failed to decode audio file"):
             run_pipeline(audio_path=bad_audio)
 
-    @pytest.mark.usefixtures("_patch_transcription", "_patch_consensus_dir")
-    def test_progress_callback_invoked(self, synthetic_audio, _patch_consensus_dir):
+    @pytest.mark.usefixtures("_patch_transcription", "patch_consensus_dir")
+    def test_progress_callback_invoked(self, synthetic_audio, patch_consensus_dir):
         """Progress callback should be called multiple times."""
         from pipeline_runner import run_pipeline
 
@@ -549,9 +563,7 @@ class TestErrorHandling:
         def _cb(label: str, frac: float) -> None:
             calls.append((label, frac))
 
-        run_pipeline(
-            audio_path=synthetic_audio, language="en", progress_callback=_cb
-        )
+        run_pipeline(audio_path=synthetic_audio, language="en", progress_callback=_cb)
         # Should have multiple progress updates
         assert len(calls) > 5
         # Last call should be at 1.0
@@ -602,7 +614,7 @@ class TestOutputDirIsolation:
 class TestConsensusModelForwarding:
     """Test consensus model selection wiring into transcription stage."""
 
-    @pytest.mark.usefixtures("_patch_consensus_dir")
+    @pytest.mark.usefixtures("patch_consensus_dir")
     def test_run_pipeline_forwards_consensus_models(self, synthetic_audio):
         """run_pipeline should forward explicit model selection to orchestrator."""
         from pipeline_runner import run_pipeline

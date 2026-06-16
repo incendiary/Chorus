@@ -390,9 +390,7 @@ def save_speaker_names(stem: str, speaker_map: dict[str, str]) -> Path:
     """
     # Filter out identity mappings and empty names
     cleaned = {
-        k: v.strip()
-        for k, v in speaker_map.items()
-        if v.strip() and v.strip() != k
+        k: v.strip() for k, v in speaker_map.items() if v.strip() and v.strip() != k
     }
 
     path = _speaker_names_path(stem)

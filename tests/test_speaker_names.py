@@ -13,20 +13,16 @@ Verifies:
 from __future__ import annotations
 
 import json
-from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
 from diarisation.diariser import (
     LabelledSegment,
-    SpeakerSegment,
     get_unique_speakers,
     load_speaker_names,
     render_diarised_md,
     save_speaker_names,
 )
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Fixtures
@@ -45,8 +41,12 @@ def sample_labelled() -> list[LabelledSegment]:
     """Sample labelled segments with two speakers."""
     return [
         LabelledSegment(speaker="SPEAKER_00", start=0.0, end=2.5, text="Hello there."),
-        LabelledSegment(speaker="SPEAKER_01", start=2.5, end=5.0, text="Hi, how are you?"),
-        LabelledSegment(speaker="SPEAKER_00", start=5.0, end=8.0, text="I'm fine thanks."),
+        LabelledSegment(
+            speaker="SPEAKER_01", start=2.5, end=5.0, text="Hi, how are you?"
+        ),
+        LabelledSegment(
+            speaker="SPEAKER_00", start=5.0, end=8.0, text="I'm fine thanks."
+        ),
         LabelledSegment(speaker="SPEAKER_02", start=8.0, end=10.0, text="Me too."),
     ]
 

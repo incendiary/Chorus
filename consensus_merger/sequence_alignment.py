@@ -26,10 +26,8 @@ Scoring
 from __future__ import annotations
 
 import logging
-from collections import Counter
 
 import numpy as np
-from nltk.metrics.distance import edit_distance
 
 from config import CONSENSUS_THRESHOLD, SIMILARITY_THRESHOLD
 from consensus_merger.alignment import WordVote, _normalised_similarity, _tokenise
@@ -78,7 +76,7 @@ def _needleman_wunsch(seq_a: list[str], seq_b: list[str]) -> list[tuple[str, str
 
     # Fast path: identical sequences
     if seq_a == seq_b:
-        return list(zip(seq_a, seq_b))
+        return list(zip(seq_a, seq_b, strict=False))
 
     # Pre-compute score lookup: build set of exact matches for O(1) checks
     # For fuzzy matching, only call _normalised_similarity when no exact match
@@ -194,7 +192,7 @@ def _build_multi_alignment(
 
     # Use the reference sequence to anchor columns
     # For each pairwise alignment, track where reference tokens land
-    ref_alignment = _needleman_wunsch(ref_tokens, ref_tokens)  # identity
+    _needleman_wunsch(ref_tokens, ref_tokens)  # identity
 
     # Simpler approach: iterate through each pairwise alignment
     # and merge into a unified column structure

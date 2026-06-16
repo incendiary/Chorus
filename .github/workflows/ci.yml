@@ -95,7 +95,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
-          pip install librosa soundfile scipy nltk numpy
+          pip install librosa soundfile scipy nltk numpy openai-whisper
           python -c "import nltk; nltk.download('punkt', quiet=True); nltk.download('punkt_tab', quiet=True); nltk.download('stopwords', quiet=True)"
 
       - name: Run tests

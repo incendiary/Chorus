@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "chorus-engine"
-version = "3.0.0"
+version = "3.1.0"
 description = "Chorus — A containerised, multi-pass consensus audio transcription engine."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -50,6 +50,10 @@ target-version = "py311"
 select = ["E", "F", "W", "I", "N", "UP", "S", "B", "A", "C4", "PT"]
 ignore = [
   "S101",   # allow assert in tests
+  "E501",   # line length is governed by Black formatting
+  "PT001",  # allow @pytest.fixture style without parentheses
+  "PT019",  # allow fixture injection in tests for readability
+  "S310",   # local Ollama endpoint URLs are validated by configuration
 ]
 
 [tool.ruff.lint.per-file-ignores]

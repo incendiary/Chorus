@@ -49,9 +49,7 @@ def probe_model() -> tuple[bool, str]:
             f"Available: {', '.join(pulled)}. "
             f"Run: ollama pull {OLLAMA_MODEL}"
         )
-    return False, (
-        f"No models are pulled in Ollama. Run: ollama pull {OLLAMA_MODEL}"
-    )
+    return False, (f"No models are pulled in Ollama. Run: ollama pull {OLLAMA_MODEL}")
 
 
 def suggest_token(

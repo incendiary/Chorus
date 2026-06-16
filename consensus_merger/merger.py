@@ -22,7 +22,9 @@ from consensus_merger.renderer import render_consensus
 logger = logging.getLogger(__name__)
 
 
-def _extract_non_empty_text_map(transcripts: dict[str, dict[str, Any]]) -> dict[str, str]:
+def _extract_non_empty_text_map(
+    transcripts: dict[str, dict[str, Any]],
+) -> dict[str, str]:
     """Extract non-empty text values from Whisper result payloads."""
     if not transcripts:
         raise ValueError("No transcripts provided to merge.")
