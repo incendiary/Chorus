@@ -177,6 +177,28 @@ else
   fail; echo "    ROADMAP completed versions are not in ascending order"
 fi
 
+# --- 11. Roadmap Last updated date freshness ---
+info "ROADMAP.md last-updated date is within 30 days"
+LAST_UPDATED_LINE=$(grep -E '^\*Last updated:' "$REPO_ROOT/ROADMAP.md" | head -1 || true)
+if [[ -z "$LAST_UPDATED_LINE" ]]; then
+  warn; echo "    No 'Last updated:' line found in ROADMAP.md"
+else
+  # Extract date portion (expected format: *Last updated: DD Month YYYY*)
+  ROADMAP_DATE=$(echo "$LAST_UPDATED_LINE" | sed -E 's/\*Last updated: ([0-9]+ [A-Za-z]+ [0-9]+)\*/\1/')
+  # Convert to epoch seconds using date; fall back gracefully on parse failure
+  if ROADMAP_EPOCH=$(date -j -f "%d %B %Y" "$ROADMAP_DATE" "+%s" 2>/dev/null || date -d "$ROADMAP_DATE" "+%s" 2>/dev/null); then
+    NOW_EPOCH=$(date "+%s")
+    DAYS_OLD=$(( (NOW_EPOCH - ROADMAP_EPOCH) / 86400 ))
+    if [[ $DAYS_OLD -le 30 ]]; then
+      pass
+    else
+      warn; echo "    ROADMAP.md last updated ${DAYS_OLD} days ago (>${30} day threshold) — consider refreshing"
+    fi
+  else
+    warn; echo "    Could not parse ROADMAP.md date '${ROADMAP_DATE}'"
+  fi
+fi
+
 # --- Summary ---
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
