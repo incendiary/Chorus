@@ -54,31 +54,31 @@ Tracked improvements identified during the June 2026 repository assessment.
 
 ## Completed — Post-v3 Hardening
 
-- [x] **Ollama failure UX surfacing** (v3.0.0) — when the Ollama server is unreachable the UI auto-disables the toggle and shows a dismissible warning; timeout and connection errors are surfaced via `probe_model()` pre-flight check.
+- [x] **Ollama failure UX surfacing** (v3.1.0) — when the Ollama server is unreachable the UI auto-disables the toggle and shows a dismissible warning; timeout and connection errors are surfaced via `probe_model()` pre-flight check.
 
-- [x] **LLM reconstruction timeout/fallback integration tests** (v3.0.0) — end-to-end tests covering Ollama timeout, HTTP error, and malformed JSON; votes are confirmed unchanged in all failure modes.
+- [x] **LLM reconstruction timeout/fallback integration tests** (v3.1.0) — end-to-end tests covering Ollama timeout, HTTP error, and malformed JSON; votes are confirmed unchanged in all failure modes.
 
-- [x] **Ollama model availability pre-flight** (v3.0.0) — `probe_model()` probes `/api/tags` before any pipeline run when `enable_llm=True`; surfaces a clear error if the model is not pulled, rather than failing mid-pipeline.
+- [x] **Ollama model availability pre-flight** (v3.1.0) — `probe_model()` probes `/api/tags` before any pipeline run when `enable_llm=True`; surfaces a clear error if the model is not pulled, rather than failing mid-pipeline.
 
-- [x] **`load_transcripts_from_disk` respects `output_dir`** (v3.0.0) — optional `transcripts_dir` parameter added; falls back to global `TRANSCRIPTS_DIR` when omitted.
+- [x] **`load_transcripts_from_disk` respects `output_dir`** (v3.1.0) — optional `transcripts_dir` parameter added; falls back to global `TRANSCRIPTS_DIR` when omitted.
 
 ---
 
 ## Completed — Next Feature Work
 
-- [x] **Confidence-weighted LLM prompting** (v3.0.0) — per-candidate agreement percentages passed to Ollama prompt; reconstructor builds weights from variant occurrence counts.
+- [x] **Confidence-weighted LLM prompting** (v3.1.0) — per-candidate agreement percentages passed to Ollama prompt; reconstructor builds weights from variant occurrence counts.
 
-- [x] **Streaming Whisper transcription progress** (v3.0.0) — optional `segment_callback(index, total, text)` added to `transcribe()` and threaded through orchestrator; pipeline wires a handler so the UI progress bar advances per decoded segment.
+- [x] **Streaming Whisper transcription progress** (v3.1.0) — optional `segment_callback(index, total, text)` added to `transcribe()` and threaded through orchestrator; pipeline wires a handler so the UI progress bar advances per decoded segment.
 
-- [x] **Export to JSON transcript bundle** (v3.0.0) — `export_transcript_bundle()` writes `{stem}_bundle.json` with all variant transcripts, the word-vote sequence, and aggregate statistics; auto-generated after every pipeline run.
+- [x] **Export to JSON transcript bundle** (v3.1.0) — `export_transcript_bundle()` writes `{stem}_bundle.json` with all variant transcripts, the word-vote sequence, and aggregate statistics; auto-generated after every pipeline run.
 
-- [x] **CLI `--output-dir` flag** (v3.0.0) — `--output-dir / -o` added to `pipeline_runner.py` CLI; writes all outputs under the specified directory.
+- [x] **CLI `--output-dir` flag** (v3.1.0) — `--output-dir / -o` added to `pipeline_runner.py` CLI; writes all outputs under the specified directory.
 
-- [x] **Batch processor `output_dir` isolation** (v3.0.0) — `output_dir` parameter added to `run_batch()` and `--output-dir / -o` to the batch CLI; each file writes to an isolated `<dir>/<stem>/` subdirectory.
+- [x] **Batch processor `output_dir` isolation** (v3.1.0) — `output_dir` parameter added to `run_batch()` and `--output-dir / -o` to the batch CLI; each file writes to an isolated `<dir>/<stem>/` subdirectory.
 
-- [x] **Docker Compose environment documentation** (v3.0.0) — `CONSENSUS_MODELS`, `OLLAMA_BASE_URL`, `OLLAMA_MODEL`, and `OLLAMA_TIMEOUT_SECONDS` documented in `docker-compose.yml` with defaults and usage notes.
+- [x] **Docker Compose environment documentation** (v3.1.0) — `CONSENSUS_MODELS`, `OLLAMA_BASE_URL`, `OLLAMA_MODEL`, and `OLLAMA_TIMEOUT_SECONDS` documented in `docker-compose.yml` with defaults and usage notes.
 
-- [x] **`ROADMAP.md` automated freshness check** (v3.0.0) — `version_consistency_test.sh` extended with check 11 that warns when the roadmap `Last updated` date exceeds 30 days.
+- [x] **`ROADMAP.md` automated freshness check** (v3.1.0) — `version_consistency_test.sh` extended with check 11 that warns when the roadmap `Last updated` date exceeds 30 days.
 
 ---
 
