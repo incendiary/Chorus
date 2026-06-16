@@ -19,8 +19,6 @@ What is tested:
 
 from __future__ import annotations
 
-import json
-import re
 import struct
 import wave
 from pathlib import Path
@@ -264,7 +262,7 @@ class TestFullPipeline:
         variant_paths = results["variant_paths"]
         assert isinstance(variant_paths, dict)
         assert len(variant_paths) > 0
-        for key, path in variant_paths.items():
+        for _key, path in variant_paths.items():
             assert Path(path).exists()
 
 

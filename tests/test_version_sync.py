@@ -396,7 +396,7 @@ class TestRoadmapSync:
         if not tags or not completed_by_version:
             pytest.skip("Not enough git tags or roadmap items to validate")
 
-        tag_versions = set(t.lstrip("v") for t in tags)
+        tag_versions = {t.lstrip("v") for t in tags}
         roadmap_versions = set(completed_by_version.keys())
 
         current_version = _get_pyproject_version()

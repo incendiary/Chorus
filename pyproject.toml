@@ -50,6 +50,9 @@ target-version = "py311"
 select = ["E", "F", "W", "I", "N", "UP", "S", "B", "A", "C4", "PT"]
 ignore = [
   "S101",   # allow assert in tests
+  "E501",   # line length is governed by Black formatting
+  "PT019",  # allow fixture injection in tests for readability
+  "S310",   # local Ollama endpoint URLs are validated by configuration
 ]
 
 [tool.ruff.lint.per-file-ignores]

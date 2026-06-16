@@ -21,20 +21,20 @@ from audio_processor.filters import denoise_filter, dynamic_range_norm, high_pas
 SR = 16_000  # sample rate used throughout
 
 
-@pytest.fixture()
+@pytest.fixture
 def sine_audio() -> np.ndarray:
     """1-second 440 Hz sine wave, float32, normalised to [-1, 1]."""
     t = np.linspace(0, 1.0, SR, endpoint=False, dtype=np.float32)
     return (0.5 * np.sin(2 * np.pi * 440 * t)).astype(np.float32)
 
 
-@pytest.fixture()
+@pytest.fixture
 def silent_audio() -> np.ndarray:
     """1-second silence."""
     return np.zeros(SR, dtype=np.float32)
 
 
-@pytest.fixture()
+@pytest.fixture
 def short_audio() -> np.ndarray:
     """0.1-second noise burst — shorter than the denoise reference window."""
     rng = np.random.default_rng(42)

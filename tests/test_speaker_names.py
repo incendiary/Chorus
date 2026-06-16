@@ -13,14 +13,11 @@ Verifies:
 from __future__ import annotations
 
 import json
-from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
 from diarisation.diariser import (
     LabelledSegment,
-    SpeakerSegment,
     get_unique_speakers,
     load_speaker_names,
     render_diarised_md,

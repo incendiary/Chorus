@@ -196,6 +196,7 @@ class TestExportTranscriptBundle:
 
     def test_bundle_structure(self, tmp_path):
         import json
+
         from export_engine.exporter import export_transcript_bundle
 
         path = export_transcript_bundle(
@@ -225,11 +226,11 @@ class TestExportTranscriptBundle:
 
     def test_bundle_in_pipeline_output(self, tmp_path):
         """run_pipeline should return bundle_path in its result dict."""
-        from pathlib import Path
         from unittest.mock import patch
+
         from tests.test_integration import (
-            _mock_run_transcription_pass,
             _generate_sine_wav,
+            _mock_run_transcription_pass,
         )
 
         audio = _generate_sine_wav(tmp_path / "audio.wav")

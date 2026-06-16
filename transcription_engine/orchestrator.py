@@ -12,8 +12,8 @@ requiring JSON parsing.
 
 from __future__ import annotations
 
-import os
 import logging
+import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
@@ -21,8 +21,8 @@ from typing import Any
 from config import (
     CONSENSUS_MODEL_LABELS,
     CONSENSUS_MODELS,
-    TRANSCRIPTS_DIR,
     TRANSCRIPTION_PARALLELISM,
+    TRANSCRIPTS_DIR,
     VARIANT_LABELS,
     WHISPER_DEVICE,
     WHISPER_MODEL,
