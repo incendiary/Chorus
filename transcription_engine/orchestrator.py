@@ -156,6 +156,7 @@ def _transcribe_one(
     model_name: str,
     label: str,
     transcripts_dir: Path | None = None,
+    segment_callback: Any | None = None,
 ) -> tuple[str, str, dict[str, Any]]:
     """Run one transcription unit and return key/label/result."""
     result = transcribe(
@@ -166,6 +167,7 @@ def _transcribe_one(
         device=device,
         model_name=model_name,
         transcripts_dir=transcripts_dir,
+        segment_callback=segment_callback,
     )
     _write_txt_companion(
         stem=stem,
@@ -184,6 +186,7 @@ def run_transcription_pass(
     progress_callback=None,
     transcripts_dir: Path | None = None,
     model_names: tuple[str, ...] | None = None,
+    segment_callback: Any | None = None,
 ) -> dict[str, dict[str, Any]]:
     """
     Transcribe every audio variant and return all results.
@@ -203,6 +206,10 @@ def run_transcription_pass(
     model_names : tuple[str, ...], optional
         Ordered list of Whisper model names to run. When omitted, uses
         ``config.CONSENSUS_MODELS``.
+    segment_callback : callable, optional
+        If provided, called as
+        ``segment_callback(segment_index, total_segments, text)``
+        after each segment is decoded within a variant.
 
     Returns
     -------
@@ -234,6 +241,7 @@ def run_transcription_pass(
                 model_name=model_name,
                 label=label,
                 transcripts_dir=transcripts_dir,
+                segment_callback=segment_callback,
             )
             transcripts[result_key] = result
             if progress_callback:

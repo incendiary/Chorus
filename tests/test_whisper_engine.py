@@ -103,3 +103,39 @@ def test_transcribe_respects_explicit_model_name(tmp_path, monkeypatch):
     _, kwargs = model.calls[0]
     assert kwargs["language"] == "en"
     assert kwargs["word_timestamps"] is True
+
+
+def test_transcribe_segment_callback_fires(tmp_path, monkeypatch):
+    audio_path = tmp_path / "sample.wav"
+    audio_path.write_bytes(b"fake")
+
+    class SegmentModel(_DummyModel):
+        def transcribe(self, audio_path: str, **kwargs) -> dict:
+            base = super().transcribe(audio_path, **kwargs)
+            base["segments"] = [
+                {"start": 0.0, "end": 0.5, "text": "hello"},
+                {"start": 0.5, "end": 1.0, "text": "world"},
+            ]
+            return base
+
+    def fake_get_model(device=None, model_name=None):
+        return SegmentModel(), "cpu", model_name or "base"
+
+    monkeypatch.setattr(whisper_engine, "_get_model", fake_get_model)
+
+    fired: list[tuple[int, int, str]] = []
+
+    def cb(idx, total, text):
+        fired.append((idx, total, text))
+
+    whisper_engine.transcribe(
+        audio_path=audio_path,
+        variant_key="original",
+        stem="sample",
+        transcripts_dir=tmp_path,
+        segment_callback=cb,
+    )
+
+    assert len(fired) == 2
+    assert fired[0] == (0, 2, "hello")
+    assert fired[1] == (1, 2, "world")
