@@ -153,6 +153,7 @@ def run_batch(
     recursive: bool = False,
     enable_diarisation: bool = False,
     enable_nlp: bool = False,
+    output_dir: Path | None = None,
     progress_callback: Callable[[int, int, str], None] | None = None,
 ) -> list[BatchResult]:
     """
@@ -172,6 +173,10 @@ def run_batch(
         Run speaker diarisation on each file.
     enable_nlp : bool
         Run spaCy NLP reconstruction on LOW-confidence tokens.
+    output_dir : Path, optional
+        Root directory for all batch outputs.  When supplied, each file's
+        outputs are written to an isolated ``<output_dir>/<stem>/``
+        subdirectory to prevent cross-job collisions.
     progress_callback : callable, optional
         Called as ``progress_callback(current_index, total, filename)``
         after each file completes.
@@ -200,7 +205,16 @@ def run_batch(
 
         try:
             # ── Core pipeline ─────────────────────────────────────────────
-            pipeline_out = run_pipeline(audio_path, language=language)
+            file_output_dir: Path | None = None
+            if output_dir is not None:
+                from utils import sanitise_stem
+
+                file_output_dir = Path(output_dir) / sanitise_stem(
+                    audio_path.stem, fallback="audio"
+                )
+            pipeline_out = run_pipeline(
+                audio_path, language=language, output_dir=file_output_dir
+            )
             result.consensus_path = pipeline_out["consensus_path"]
 
             # ── Optional: NLP reconstruction ──────────────────────────────
@@ -357,6 +371,14 @@ Examples:
         action="store_true",
         help="Enable spaCy NLP reconstruction for LOW-confidence tokens.",
     )
+    parser.add_argument(
+        "--output-dir",
+        "-o",
+        default=None,
+        metavar="DIR",
+        help="Root output directory. Each file's outputs are written to an "
+        "isolated <DIR>/<stem>/ subdirectory.",
+    )
     return parser
 
 
@@ -370,6 +392,7 @@ if __name__ == "__main__":
     parser = _build_parser()
     args = parser.parse_args()
 
+    output_dir = Path(args.output_dir) if args.output_dir else None
     batch_results = run_batch(
         inputs=args.inputs,
         language=args.language,
@@ -377,6 +400,7 @@ if __name__ == "__main__":
         recursive=args.recursive,
         enable_diarisation=args.diarise,
         enable_nlp=args.nlp,
+        output_dir=output_dir,
     )
 
     print(f"\n{'─'*60}")
