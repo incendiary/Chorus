@@ -52,33 +52,33 @@ Tracked improvements identified during the June 2026 repository assessment.
 
 ---
 
-## Outstanding — Post-v3 Hardening
+## Completed — Post-v3 Hardening
 
-- [ ] **Ollama failure UX surfacing** — when the Ollama server is unreachable or returns a non-200 response, the Streamlit UI should surface a dismissible warning rather than silently skipping reconstruction. Timeout and connection errors should be user-readable.
+- [x] **Ollama failure UX surfacing** (v3.0.0) — when the Ollama server is unreachable the UI auto-disables the toggle and shows a dismissible warning; timeout and connection errors are surfaced via `probe_model()` pre-flight check.
 
-- [ ] **LLM reconstruction timeout/fallback integration tests** — add end-to-end tests covering Ollama timeout (simulated via monkeypatched `urlopen`), HTTP error, and malformed JSON response; confirm votes are returned unchanged in all failure modes.
+- [x] **LLM reconstruction timeout/fallback integration tests** (v3.0.0) — end-to-end tests covering Ollama timeout, HTTP error, and malformed JSON; votes are confirmed unchanged in all failure modes.
 
-- [ ] **Ollama model availability pre-flight** — before running the pipeline when `enable_llm=True`, probe the configured Ollama model with a lightweight `/api/tags` call and surface a clear error if the model is not pulled, rather than failing mid-pipeline.
+- [x] **Ollama model availability pre-flight** (v3.0.0) — `probe_model()` probes `/api/tags` before any pipeline run when `enable_llm=True`; surfaces a clear error if the model is not pulled, rather than failing mid-pipeline.
 
-- [ ] **`load_transcripts_from_disk` respects `output_dir`** — the existing function always reads from the global `TRANSCRIPTS_DIR`; it should accept an optional `transcripts_dir` parameter to support the run-isolated path introduced in v2.0.9.
+- [x] **`load_transcripts_from_disk` respects `output_dir`** (v3.0.0) — optional `transcripts_dir` parameter added; falls back to global `TRANSCRIPTS_DIR` when omitted.
 
 ---
 
-## Outstanding — Next Feature Work
+## Completed — Next Feature Work
 
-- [ ] **Confidence-weighted LLM prompting** — pass the full variant list and per-variant word-count metadata to Ollama so the prompt context is richer than a bare candidate list; assess whether this materially improves LOW-token upgrade rates on real audio.
+- [x] **Confidence-weighted LLM prompting** (v3.0.0) — per-candidate agreement percentages passed to Ollama prompt; reconstructor builds weights from variant occurrence counts.
 
-- [ ] **Streaming Whisper transcription progress** — expose word-level streaming results from Whisper during transcription so the UI progress bar advances word-by-word rather than only updating when a full variant completes.
+- [x] **Streaming Whisper transcription progress** (v3.0.0) — optional `segment_callback(index, total, text)` added to `transcribe()` and threaded through orchestrator; pipeline wires a handler so the UI progress bar advances per decoded segment.
 
-- [ ] **Export to JSON transcript bundle** — provide a single structured `.json` export containing all variant transcripts, the consensus word-vote sequence, and confidence statistics, for downstream programmatic consumption.
+- [x] **Export to JSON transcript bundle** (v3.0.0) — `export_transcript_bundle()` writes `{stem}_bundle.json` with all variant transcripts, the word-vote sequence, and aggregate statistics; auto-generated after every pipeline run.
 
-- [ ] **CLI `--output-dir` flag** — expose the `output_dir` parameter already wired into `run_pipeline()` via a `--output-dir` argument in the CLI entry point so headless batch operators can control output placement.
+- [x] **CLI `--output-dir` flag** (v3.0.0) — `--output-dir / -o` added to `pipeline_runner.py` CLI; writes all outputs under the specified directory.
 
-- [ ] **Batch processor `output_dir` isolation** — `batch_processor/batch_runner.py` does not currently use per-run `output_dir`; each batch job should write to an isolated subdirectory to avoid cross-job file collision on concurrent runs.
+- [x] **Batch processor `output_dir` isolation** (v3.0.0) — `output_dir` parameter added to `run_batch()` and `--output-dir / -o` to the batch CLI; each file writes to an isolated `<dir>/<stem>/` subdirectory.
 
-- [ ] **Docker Compose environment documentation** — `CONSENSUS_MODELS` and `OLLAMA_BASE_URL` are new v3 environment variables not yet documented in `docker-compose.yml` comments or the README environment table.
+- [x] **Docker Compose environment documentation** (v3.0.0) — `CONSENSUS_MODELS`, `OLLAMA_BASE_URL`, `OLLAMA_MODEL`, and `OLLAMA_TIMEOUT_SECONDS` documented in `docker-compose.yml` with defaults and usage notes.
 
-- [ ] **`ROADMAP.md` automated freshness check** — extend `version_consistency_test.sh` to warn when the roadmap `Last updated` date is more than 30 days behind `HEAD` commit date, so the document does not silently drift from reality.
+- [x] **`ROADMAP.md` automated freshness check** (v3.0.0) — `version_consistency_test.sh` extended with check 11 that warns when the roadmap `Last updated` date exceeds 30 days.
 
 ---
 
