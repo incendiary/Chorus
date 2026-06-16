@@ -141,6 +141,30 @@ def test_load_transcripts_from_disk_multimodel(monkeypatch, tmp_path):
     assert transcripts["small__original"]["text"] == payload["text"]
 
 
+def test_load_transcripts_from_disk_custom_dir(monkeypatch, tmp_path):
+    """transcripts_dir override should take precedence over TRANSCRIPTS_DIR."""
+    global_dir = tmp_path / "global"
+    custom_dir = tmp_path / "isolated_run"
+    global_dir.mkdir()
+    custom_dir.mkdir()
+    monkeypatch.setattr(orchestrator, "TRANSCRIPTS_DIR", global_dir)
+    monkeypatch.setattr(orchestrator, "CONSENSUS_MODELS", ("base",))
+
+    # Write a file only in the custom dir
+    (custom_dir / "sample_original.json").write_text(
+        '{"text": "isolated", "model": "base"}', encoding="utf-8"
+    )
+
+    transcripts = orchestrator.load_transcripts_from_disk("sample", transcripts_dir=custom_dir)
+
+    assert "original" in transcripts
+    assert transcripts["original"]["text"] == "isolated"
+
+    # Nothing should have been read from global dir
+    transcripts_global = orchestrator.load_transcripts_from_disk("sample")
+    assert "original" not in transcripts_global
+
+
 def test_run_transcription_pass_model_names_override(monkeypatch, tmp_path, variant_paths):
     monkeypatch.setattr(orchestrator, "TRANSCRIPTS_DIR", tmp_path)
     monkeypatch.setattr(orchestrator, "CONSENSUS_MODELS", ("base", "small"))
