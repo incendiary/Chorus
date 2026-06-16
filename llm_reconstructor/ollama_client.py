@@ -54,17 +54,49 @@ def probe_model() -> tuple[bool, str]:
     )
 
 
-def suggest_token(*, context: str, candidates: list[str]) -> str | None:
-    """Ask Ollama to pick the most plausible token from candidates."""
+def suggest_token(
+    *,
+    context: str,
+    candidates: list[str],
+    candidate_weights: dict[str, float] | None = None,
+) -> str | None:
+    """Ask Ollama to pick the most plausible token from candidates.
+
+    Parameters
+    ----------
+    context : str
+        The surrounding words used as context for the decision.
+    candidates : list[str]
+        Candidate token strings to choose from.
+    candidate_weights : dict[str, float], optional
+        Mapping of candidate → agreement fraction (0.0–1.0).  When
+        provided, each candidate is annotated with its observed agreement
+        percentage so the model can weight higher-attested forms more
+        heavily.
+    """
     if not candidates:
         return None
 
-    prompt = (
-        "Choose exactly one token from the candidate list that best fits the context. "
-        "Respond with only the token and nothing else.\n\n"
-        f"Context: {context}\n"
-        f"Candidates: {', '.join(candidates)}"
-    )
+    if candidate_weights:
+        cand_lines = ", ".join(
+            f"{c} ({candidate_weights.get(c, 0.0) * 100:.0f}% agreement)"
+            for c in candidates
+        )
+        prompt = (
+            "You are correcting a low-confidence word in an audio transcript. "
+            "Choose exactly one token from the candidates that best fits the context. "
+            "Prefer candidates with higher agreement percentages when in doubt. "
+            "Respond with only the token and nothing else.\n\n"
+            f"Context: {context}\n"
+            f"Candidates (with transcript agreement): {cand_lines}"
+        )
+    else:
+        prompt = (
+            "Choose exactly one token from the candidate list that best fits the context. "
+            "Respond with only the token and nothing else.\n\n"
+            f"Context: {context}\n"
+            f"Candidates: {', '.join(candidates)}"
+        )
 
     payload = {
         "model": OLLAMA_MODEL,

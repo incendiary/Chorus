@@ -34,7 +34,24 @@ def reconstruct_low_tokens_llm(votes: list[WordVote]) -> list[WordVote]:
         context_words = [votes[i].word for i in range(ctx_start, ctx_end) if i != idx]
         context = " ".join(context_words)
 
-        suggestion = suggest_token(context=context, candidates=candidates)
+        # Build per-candidate agreement fractions from vote counts.
+        # For LOW tokens count == 1; variants list may contain forms from
+        # other transcripts.  We estimate weight by variant occurrence.
+        total = max(vote.total, 1)
+        variant_counts: dict[str, int] = {}
+        for form in vote.variants:
+            key = form.strip().lower()
+            if key:
+                variant_counts[key] = variant_counts.get(key, 0) + 1
+        candidate_weights = {
+            c: round(variant_counts.get(c, 1) / total, 3) for c in candidates
+        }
+
+        suggestion = suggest_token(
+            context=context,
+            candidates=candidates,
+            candidate_weights=candidate_weights,
+        )
         if suggestion is None:
             continue
 
