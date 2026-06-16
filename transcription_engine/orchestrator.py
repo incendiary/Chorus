@@ -281,9 +281,12 @@ def run_transcription_pass(
     return transcripts
 
 
-def load_transcripts_from_disk(stem: str) -> dict[str, dict[str, Any]]:
+def load_transcripts_from_disk(
+    stem: str,
+    transcripts_dir: Path | None = None,
+) -> dict[str, dict[str, Any]]:
     """
-    Re-load previously generated transcript JSON files from TRANSCRIPTS_DIR.
+    Re-load previously generated transcript JSON files from disk.
 
     Useful for resuming a pipeline run without re-running Whisper.
 
@@ -291,6 +294,9 @@ def load_transcripts_from_disk(stem: str) -> dict[str, dict[str, Any]]:
     ----------
     stem : str
         Base filename stem.
+    transcripts_dir : Path, optional
+        Directory to read transcripts from.  When omitted, falls back to
+        ``config.TRANSCRIPTS_DIR`` (global default).
 
     Returns
     -------
@@ -299,13 +305,14 @@ def load_transcripts_from_disk(stem: str) -> dict[str, dict[str, Any]]:
     """
     import json
 
+    read_dir = transcripts_dir if transcripts_dir is not None else TRANSCRIPTS_DIR
     transcripts: dict[str, dict[str, Any]] = {}
     models = _configured_models()
     primary_model = models[0]
     for model_name in models:
         for variant_key in VARIANT_LABELS:
             key = _build_result_key(model_name, variant_key, primary_model)
-            path = TRANSCRIPTS_DIR / f"{stem}_{key}.json"
+            path = read_dir / f"{stem}_{key}.json"
             if path.exists():
                 with open(path, encoding="utf-8") as fh:
                     transcripts[key] = json.load(fh)
