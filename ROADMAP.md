@@ -48,6 +48,38 @@ Tracked improvements identified during the June 2026 repository assessment.
 
 - [x] **LLM reconstruction API and runtime integration** (v3.0.0) — added `llm_reconstructor` with local Ollama client, LOW-token recovery helpers, pipeline merge-stage wiring, and Streamlit toggle controls for optional LLM-assisted reconstruction.
 
+- [x] **DevOps practices bootstrap** (v3.0.0) — added root `VERSION` file as single version source of truth; three portable enforcement scripts (`check-version-sync.sh`, `check-clone-refs.sh`, `check-test-baseline.sh`) in `devops-practices/`; weekly scheduled CI run for drift detection; extended Python version-sync tests for `VERSION`/pyproject parity.
+
+---
+
+## Outstanding — Post-v3 Hardening
+
+- [ ] **Ollama failure UX surfacing** — when the Ollama server is unreachable or returns a non-200 response, the Streamlit UI should surface a dismissible warning rather than silently skipping reconstruction. Timeout and connection errors should be user-readable.
+
+- [ ] **LLM reconstruction timeout/fallback integration tests** — add end-to-end tests covering Ollama timeout (simulated via monkeypatched `urlopen`), HTTP error, and malformed JSON response; confirm votes are returned unchanged in all failure modes.
+
+- [ ] **Ollama model availability pre-flight** — before running the pipeline when `enable_llm=True`, probe the configured Ollama model with a lightweight `/api/tags` call and surface a clear error if the model is not pulled, rather than failing mid-pipeline.
+
+- [ ] **`load_transcripts_from_disk` respects `output_dir`** — the existing function always reads from the global `TRANSCRIPTS_DIR`; it should accept an optional `transcripts_dir` parameter to support the run-isolated path introduced in v2.0.9.
+
+---
+
+## Outstanding — Next Feature Work
+
+- [ ] **Confidence-weighted LLM prompting** — pass the full variant list and per-variant word-count metadata to Ollama so the prompt context is richer than a bare candidate list; assess whether this materially improves LOW-token upgrade rates on real audio.
+
+- [ ] **Streaming Whisper transcription progress** — expose word-level streaming results from Whisper during transcription so the UI progress bar advances word-by-word rather than only updating when a full variant completes.
+
+- [ ] **Export to JSON transcript bundle** — provide a single structured `.json` export containing all variant transcripts, the consensus word-vote sequence, and confidence statistics, for downstream programmatic consumption.
+
+- [ ] **CLI `--output-dir` flag** — expose the `output_dir` parameter already wired into `run_pipeline()` via a `--output-dir` argument in the CLI entry point so headless batch operators can control output placement.
+
+- [ ] **Batch processor `output_dir` isolation** — `batch_processor/batch_runner.py` does not currently use per-run `output_dir`; each batch job should write to an isolated subdirectory to avoid cross-job file collision on concurrent runs.
+
+- [ ] **Docker Compose environment documentation** — `CONSENSUS_MODELS` and `OLLAMA_BASE_URL` are new v3 environment variables not yet documented in `docker-compose.yml` comments or the README environment table.
+
+- [ ] **`ROADMAP.md` automated freshness check** — extend `version_consistency_test.sh` to warn when the roadmap `Last updated` date is more than 30 days behind `HEAD` commit date, so the document does not silently drift from reality.
+
 ---
 
 *Last updated: 16 June 2026*
