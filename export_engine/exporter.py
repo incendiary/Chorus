@@ -344,6 +344,7 @@ def export_srt(
             lines += [str(idx), f"{start_ts} --> {end_ts}", text, ""]
 
     out_path = CONSENSUS_DIR / f"{stem}_consensus.srt"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text("\n".join(lines), encoding="utf-8")
     logger.info("SRT export written → %s", out_path)
     return out_path
@@ -398,6 +399,7 @@ def export_vtt(
             lines += [f"{idx}", f"{start_ts} --> {end_ts}", text, ""]
 
     out_path = CONSENSUS_DIR / f"{stem}_consensus.vtt"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text("\n".join(lines), encoding="utf-8")
     logger.info("VTT export written → %s", out_path)
     return out_path
