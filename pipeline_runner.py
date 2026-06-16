@@ -122,6 +122,15 @@ def run_pipeline(
         frac = 0.30 + (step / total) * 0.50
         _progress(f"Transcribing: {label}", frac)
 
+    # Segment-level callback: fires once per decoded segment, providing
+    # finer-grained progress updates between variant-level steps.
+    def _segment_progress(seg_idx: int, seg_total: int, _text: str) -> None:
+        if seg_total < 1:
+            return
+        # We don't know total variants at this point; interpolate within current step range
+        seg_frac = (seg_idx + 1) / seg_total
+        _progress(f"Decoding segments… ({seg_idx + 1}/{seg_total})", seg_frac * 0.02 + 0.30)
+
     transcripts = run_transcription_pass(
         variant_paths=variant_paths,
         stem=stem,
@@ -129,6 +138,7 @@ def run_pipeline(
         progress_callback=_transcription_progress,
         transcripts_dir=transcripts_dir,
         model_names=consensus_models,
+        segment_callback=_segment_progress,
     )
     _progress("All transcription variants complete.", 0.80)
 

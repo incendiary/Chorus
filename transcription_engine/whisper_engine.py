@@ -9,6 +9,18 @@ cuda:0, cuda:1) without repeated load overhead.
 Model selection is controlled via config.WHISPER_MODEL (default: "base").
 The "base" model (~145 MB) provides an excellent trade-off between speed
 and word-error rate for English speech on CPU hardware.
+
+Segment-level progress
+──────────────────────
+``transcribe()`` accepts an optional *segment_callback* that is invoked after
+each segment is decoded:
+
+    def on_segment(segment_index: int, total_segments: int, text: str) -> None: ...
+
+Because OpenAI Whisper's Python API is synchronous and does not stream, the
+callback fires during a post-transcription pass over ``result["segments"]``.
+This allows callers to update progress bars incrementally once transcription
+completes, without requiring lower-level model patching.
 """
 
 from __future__ import annotations
@@ -79,6 +91,7 @@ def transcribe(
     device: str | None = None,
     model_name: str | None = None,
     transcripts_dir: Path | None = None,
+    segment_callback: Any | None = None,
 ) -> dict[str, Any]:
     """
     Transcribe a single audio file and persist the result as JSON.
@@ -106,6 +119,12 @@ def transcribe(
     model_name : str, optional
         Whisper model override (e.g. ``"small"``). If None,
         ``config.WHISPER_MODEL`` is used.
+    segment_callback : callable, optional
+        If provided, called as
+        ``segment_callback(segment_index, total_segments, text)``
+        for each segment after transcription completes.  Because the
+        OpenAI Whisper API is synchronous, this fires in a post-transcription
+        pass rather than during decoding.
 
     Returns
     -------
@@ -151,6 +170,14 @@ def transcribe(
         json.dump(result, fh, ensure_ascii=False, indent=2)
 
     logger.info("Transcript saved → %s", out_path)
+
+    # Post-transcription segment progress callback
+    if segment_callback is not None:
+        segments = result.get("segments", [])
+        total = len(segments)
+        for idx, seg in enumerate(segments):
+            segment_callback(idx, total, seg.get("text", "").strip())
+
     return result
 
 
