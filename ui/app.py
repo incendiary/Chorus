@@ -867,7 +867,8 @@ with st.sidebar:
         "🤖 LLM Reconstruction (Ollama)",
         help=(
             "Use a local Ollama model to resolve LOW-confidence tokens. "
-            "Requires Ollama running locally."
+            "Requires Ollama installed and running separately — "
+            "see the Help page (sidebar) for setup instructions."
         ),
     )
     if enable_llm:
@@ -875,11 +876,46 @@ with st.sidebar:
 
         _llm_ok, _llm_reason = probe_model()
         if not _llm_ok:
-            st.warning(
-                f"⚠️ LLM unavailable — {_llm_reason}",
-                icon="⚠️",
-            )
             enable_llm = False
+            st.session_state["show_ollama_dialog"] = True
+            st.session_state["ollama_fail_reason"] = _llm_reason
+
+    if st.session_state.get("show_ollama_dialog"):
+        from llm_reconstructor.ollama_client import probe_model as _probe
+
+        _reason = st.session_state.get("ollama_fail_reason", "Ollama is not reachable.")
+
+        @st.dialog("LLM Reconstruction — Setup Required")
+        def _ollama_setup_dialog():
+            st.error(_reason)
+            st.markdown(
+                "**To enable LLM reconstruction, install and start Ollama:**\n\n"
+                "```bash\n"
+                "brew install ollama          # macOS\n"
+                "ollama serve                 # keep this terminal open\n"
+                "ollama pull llama3.1:8b      # ~4.7 GB — run once\n"
+                "```\n\n"
+                "On 8 GB machines use `llama3.2:3b` instead. "
+                "See the **Help** page in the sidebar for full setup guidance."
+            )
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("Dismiss", use_container_width=True):
+                    st.session_state["show_ollama_dialog"] = False
+                    st.rerun()
+            with col2:
+                if st.button("Retry", type="primary", use_container_width=True):
+                    _ok, _new_reason = _probe()
+                    if _ok:
+                        st.session_state["show_ollama_dialog"] = False
+                        st.rerun()
+                    else:
+                        st.session_state["ollama_fail_reason"] = _new_reason
+                        st.rerun()
+
+        _ollama_setup_dialog()
+    else:
+        st.session_state.pop("ollama_fail_reason", None)
     enable_diarisation = st.checkbox(
         "🗣️ Speaker Diarisation",
         help="Identify multiple speakers (requires HUGGINGFACE_TOKEN).",
