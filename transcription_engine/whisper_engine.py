@@ -155,7 +155,19 @@ def transcribe(
     # Always enable word-level timestamps for richer export options
     decode_options["word_timestamps"] = True
 
-    result = model.transcribe(str(audio_path), **decode_options)
+    try:
+        result = model.transcribe(str(audio_path), **decode_options)
+    except TypeError as exc:
+        # Whisper's word-timestamp DTW alignment calls .double() (float64), which
+        # MPS does not support. Fall back to CPU and retry with the same options.
+        if "float64" not in str(exc) and "MPS" not in str(exc):
+            raise
+        logger.warning(
+            "MPS does not support float64 required for word-timestamp alignment — "
+            "retrying on CPU. Transcription will succeed; inference speed is reduced."
+        )
+        cpu_model, _, _ = _get_model(model_name=active_model, device="cpu")
+        result = cpu_model.transcribe(str(audio_path), **decode_options)
 
     # Augment result with metadata
     result["variant"] = variant_key

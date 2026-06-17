@@ -142,3 +142,61 @@ def test_transcribe_segment_callback_fires(tmp_path, monkeypatch):
     assert len(fired) == 2
     assert fired[0] == (0, 2, "hello")
     assert fired[1] == (1, 2, "world")
+
+
+def test_transcribe_mps_float64_fallback_retries_on_cpu(tmp_path, monkeypatch):
+    audio_path = tmp_path / "sample.wav"
+    audio_path.write_bytes(b"fake")
+
+    cpu_model = _DummyModel(text="cpu result")
+    call_count = {"n": 0}
+
+    class MpsModel(_DummyModel):
+        def transcribe(self, audio_path: str, **kwargs) -> dict:
+            call_count["n"] += 1
+            raise TypeError(
+                "Cannot convert a MPS Tensor to float64 dtype as the MPS "
+                "framework doesn't support float64."
+            )
+
+    mps_model = MpsModel()
+
+    def fake_get_model(device=None, model_name=None):
+        if device == "cpu":
+            return cpu_model, "cpu", model_name or "base"
+        return mps_model, "mps", model_name or "base"
+
+    monkeypatch.setattr(whisper_engine, "_get_model", fake_get_model)
+
+    result = whisper_engine.transcribe(
+        audio_path=audio_path,
+        variant_key="original",
+        stem="sample",
+        device="mps",
+        transcripts_dir=tmp_path,
+    )
+
+    assert result["text"] == "cpu result"
+    assert call_count["n"] == 1
+
+
+def test_transcribe_non_mps_type_error_is_reraised(tmp_path, monkeypatch):
+    audio_path = tmp_path / "sample.wav"
+    audio_path.write_bytes(b"fake")
+
+    class BrokenModel(_DummyModel):
+        def transcribe(self, audio_path: str, **kwargs) -> dict:
+            raise TypeError("some unrelated type error")
+
+    def fake_get_model(device=None, model_name=None):
+        return BrokenModel(), "cpu", model_name or "base"
+
+    monkeypatch.setattr(whisper_engine, "_get_model", fake_get_model)
+
+    with pytest.raises(TypeError, match="unrelated"):
+        whisper_engine.transcribe(
+            audio_path=audio_path,
+            variant_key="original",
+            stem="sample",
+            transcripts_dir=tmp_path,
+        )
