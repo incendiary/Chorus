@@ -48,6 +48,36 @@ from utils import sanitise_stem  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
+_LOG_BUFFER_KEY = "log_buffer"
+_LOG_BUFFER_MAX = 500
+
+
+class _SessionLogHandler(logging.Handler):
+    """Appends log records to st.session_state for the in-app Logs page."""
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            import streamlit as _st
+
+            buf = _st.session_state.setdefault(_LOG_BUFFER_KEY, [])
+            buf.append(
+                {
+                    "time": self.formatTime(record, "%H:%M:%S"),
+                    "level": record.levelname,
+                    "logger": record.name,
+                    "message": record.getMessage(),
+                }
+            )
+            if len(buf) > _LOG_BUFFER_MAX:
+                del buf[: len(buf) - _LOG_BUFFER_MAX]
+        except Exception:  # noqa: BLE001, S110
+            pass  # log handler must never crash the UI
+
+
+_session_handler = _SessionLogHandler()
+_session_handler.setLevel(logging.INFO)
+logging.getLogger().addHandler(_session_handler)
+
 SUMMARY_SUCCESS_MSG = (
     "All files completed successfully. Review confidence sections below, "
     "then download archives."
@@ -200,6 +230,20 @@ st.markdown(
     .stProgress > div > div > div { background-color: var(--chorus-primary); }
     .metric-card { background:var(--chorus-surface); border-radius:8px; padding:1rem;
                    text-align:center; border:1px solid var(--chorus-border); }
+
+    /* Streamlit chrome — sidebar and primary accent */
+    section[data-testid="stSidebar"] { background-color: var(--chorus-surface) !important; }
+    section[data-testid="stSidebar"] [data-testid="stSidebarContent"] {
+        border-right: 1px solid var(--chorus-border);
+    }
+    .stButton > button {
+        border-color: var(--chorus-primary) !important;
+        color: var(--chorus-primary) !important;
+    }
+    .stButton > button:hover {
+        background-color: var(--chorus-primary) !important;
+        color: white !important;
+    }
 
     /* Improve keyboard navigation discoverability */
     button:focus-visible,
@@ -708,7 +752,8 @@ with st.sidebar:
         ),
     )
     st.caption(
-        "Tip: choose higher-contrast presets when reviewing low-confidence segments for longer sessions."
+        "Themes apply to the header, confidence highlights, sidebar, and buttons. "
+        "Tip: choose higher-contrast presets when reviewing low-confidence segments."
     )
 
     # ── Model & Device ────────────────────────────────────────────────────────
