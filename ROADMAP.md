@@ -82,4 +82,33 @@ Tracked improvements identified during the June 2026 repository assessment.
 
 ---
 
-*Last updated: 16 June 2026*
+## Completed — v3.1.1 Hardening (June 2026)
+
+- [x] **MPS float64 CPU fallback** (v3.1.1) — Whisper's word-timestamp DTW alignment requires float64, which Apple MPS does not support. `transcription_engine/whisper_engine.py` now catches the `TypeError`, loads the model on CPU via the existing `(model, device)` cache, and retries the affected pass. All other passes continue on MPS.
+
+- [x] **Ollama setup dialog popup** (v3.1.1) — replaced the silent `st.warning` on failed LLM checkbox with a `@st.dialog` modal that surfaces the specific failure reason (connection refused / model not pulled) and provides a step-by-step fix with Dismiss and Retry buttons.
+
+- [x] **Help & FAQ page** (v3.1.1) — added `ui/pages/1_Help.py`: what Chorus does, quick start, confidence tiers, audio format table, Ollama setup walkthrough (macOS, Linux/Docker), export format reference, and FAQ.
+
+- [x] **In-app logging page** (v3.1.1) — added `ui/pages/2_Logs.py`: session-state log buffer (capped at 500 entries) wired to root logger via `_SessionLogHandler`; filterable by level with clear and download buttons.
+
+- [x] **Theme selector** (v3.1.1) — added `.streamlit/config.toml` (`base = "light"`) and extended CSS overrides to `section[data-testid="stSidebar"]` and `.stButton > button` so themes affect Streamlit's native elements, not only custom HTML blocks.
+
+- [x] **Ollama environment variables documented** (v3.1.1) — `OLLAMA_BASE_URL`, `OLLAMA_MODEL`, and `OLLAMA_TIMEOUT_SECONDS` added to `.env.example` with model guidance and quick-start commands.
+
+- [x] **Past Jobs page** (v3.1.2) — added `ui/pages/3_Past_Jobs.py`: scans `outputs/consensus/` for completed runs, presents them newest-first as expandable cards with per-format download buttons and a "Download All" ZIP option. No pipeline re-execution; reads existing files from disk.
+
+---
+
+## Upcoming
+
+- [ ] **Record original source filename in all output artefacts** — the original source filename (with extension, before sanitisation) is not currently stored anywhere. Only a sanitised stem is written. This means documents cannot be traced back to their source file without relying on the timestamped stem. Required changes:
+  - Store `source_filename: str` in `bundle.json` `meta` block at pipeline run time.
+  - Include a **Source file** field in the `consensus.md` header block.
+  - Include a **Source file** field in the AI context pack (`ai_context.md`) header.
+  - Pass the value to PDF and DOCX exports as document title metadata.
+  - Update `ui/pages/3_Past_Jobs.py` to read `source_filename` from `bundle.json` and display it as the primary run identifier (falling back to the stem-derived name for runs produced before this change).
+
+---
+
+*Last updated: 18 June 2026*
