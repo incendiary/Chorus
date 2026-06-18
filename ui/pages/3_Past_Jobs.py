@@ -108,10 +108,13 @@ def _format_mtime(p: Path) -> str:
     return dt.strftime("%-d %B %Y at %H:%M")
 
 
-def _display_name(anchor: Path, full_stem: str, base_stem: str | None) -> str:
-    """Derive a human-readable run name from the anchor filename."""
+def _parse_run_meta(full_stem: str, base_stem: str | None) -> tuple[str, str, str]:
+    """Return (source_name, date_str, time_str) parsed from the stem.
+
+    source_name is the sanitised source filename without extension or run ID.
+    Falls back gracefully when the stem does not follow the expected pattern.
+    """
     parts = full_stem.split("_", 2)
-    # Expected prefix: YYYY-MM-DD_HH-MM_<source>
     if (
         len(parts) >= 2
         and len(parts[0]) == 10
@@ -127,10 +130,8 @@ def _display_name(anchor: Path, full_stem: str, base_stem: str | None) -> str:
             source = parts[2].replace("_", " ").strip()
         else:
             source = ""
-        return (
-            f"{date_str} {time_str} — {source}" if source else f"{date_str} {time_str}"
-        )
-    return full_stem.replace("_", " ")
+        return source, date_str, time_str
+    return full_stem.replace("_", " "), "", ""
 
 
 # ── Main render ───────────────────────────────────────────────────────────────
@@ -160,11 +161,28 @@ for anchor in anchors:
     full_stem = anchor.name[: -len("_consensus.md")]
     base_stem = _find_base_stem(anchor, full_stem)
     run_files = _collect_run_files(anchor)
-    name = _display_name(anchor, full_stem, base_stem)
+    source_name, date_str, time_str = _parse_run_meta(full_stem, base_stem)
     mtime = _format_mtime(anchor)
-    expander_label = f"**{name}** — completed {mtime}"
+
+    # Source name leads; date/time is secondary context.
+    if source_name and date_str:
+        expander_label = f"**{source_name}** — {date_str} {time_str}"
+    else:
+        expander_label = f"**{full_stem}**"
 
     with st.expander(expander_label, expanded=False):
+        # Source + completion timestamp — visible immediately on expand.
+        meta_cols = st.columns([2, 2])
+        with meta_cols[0]:
+            st.markdown(f"**Source:** {source_name or '—'}")
+        with meta_cols[1]:
+            st.markdown(f"**Completed:** {mtime}")
+
+        st.caption(
+            "Source filename is the sanitised name from the stem. "
+            "Exact original filename with extension will be stored in a future release."
+        )
+
         col_zip, _spacer = st.columns([1, 3])
         with col_zip:
             st.download_button(
