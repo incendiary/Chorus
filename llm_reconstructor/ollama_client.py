@@ -11,8 +11,31 @@ from config import OLLAMA_BASE_URL, OLLAMA_MODEL, OLLAMA_TIMEOUT_SECONDS
 logger = logging.getLogger(__name__)
 
 
-def probe_model() -> tuple[bool, str]:
-    """Check whether the configured Ollama model is available.
+def list_models() -> list[str]:
+    """Return the names of all locally pulled Ollama models, sorted.
+
+    Returns an empty list if Ollama is unreachable or returns no models.
+    """
+    tags_url = f"{OLLAMA_BASE_URL.rstrip('/')}/api/tags"
+    req = request.Request(url=tags_url, method="GET")
+    try:
+        with request.urlopen(req, timeout=OLLAMA_TIMEOUT_SECONDS) as resp:
+            body = resp.read().decode("utf-8")
+        data = json.loads(body)
+        return sorted(
+            m.get("name", "") for m in data.get("models", []) if m.get("name")
+        )
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def probe_model(model: str | None = None) -> tuple[bool, str]:
+    """Check whether the given (or configured) Ollama model is available.
+
+    Parameters
+    ----------
+    model : str, optional
+        Model name to probe. Defaults to ``OLLAMA_MODEL`` from config.
 
     Returns
     -------
@@ -20,6 +43,7 @@ def probe_model() -> tuple[bool, str]:
         ``(True, "")`` when the model is available, or
         ``(False, reason)`` with a human-readable reason string.
     """
+    target = model or OLLAMA_MODEL
     tags_url = f"{OLLAMA_BASE_URL.rstrip('/')}/api/tags"
     req = request.Request(url=tags_url, method="GET")
     try:
@@ -38,18 +62,17 @@ def probe_model() -> tuple[bool, str]:
         return False, "Ollama /api/tags response was not valid JSON"
 
     pulled = [m.get("name", "") for m in data.get("models", [])]
-    # Match on exact name or name-without-tag (e.g. "llama3.1:8b" matches "llama3.1")
-    base = OLLAMA_MODEL.split(":")[0]
-    if any(OLLAMA_MODEL == p or base == p.split(":")[0] for p in pulled):
+    base = target.split(":")[0]
+    if any(target == p or base == p.split(":")[0] for p in pulled):
         return True, ""
 
     if pulled:
         return False, (
-            f"Model '{OLLAMA_MODEL}' is not pulled. "
+            f"Model '{target}' is not pulled. "
             f"Available: {', '.join(pulled)}. "
-            f"Run: ollama pull {OLLAMA_MODEL}"
+            f"Run: ollama pull {target}"
         )
-    return False, (f"No models are pulled in Ollama. Run: ollama pull {OLLAMA_MODEL}")
+    return False, (f"No models are pulled in Ollama. Run: ollama pull {target}")
 
 
 def suggest_token(
@@ -57,6 +80,7 @@ def suggest_token(
     context: str,
     candidates: list[str],
     candidate_weights: dict[str, float] | None = None,
+    model: str | None = None,
 ) -> str | None:
     """Ask Ollama to pick the most plausible token from candidates.
 
@@ -97,7 +121,7 @@ def suggest_token(
         )
 
     payload = {
-        "model": OLLAMA_MODEL,
+        "model": model or OLLAMA_MODEL,
         "prompt": prompt,
         "stream": False,
         "options": {"temperature": 0},

@@ -12,7 +12,9 @@ logger = logging.getLogger(__name__)
 CONTEXT_WINDOW = 4
 
 
-def reconstruct_low_tokens_llm(votes: list[WordVote]) -> list[WordVote]:
+def reconstruct_low_tokens_llm(
+    votes: list[WordVote], model: str | None = None
+) -> list[WordVote]:
     """Attempt to upgrade LOW-confidence words using a local Ollama model."""
     if not votes:
         return []
@@ -51,6 +53,7 @@ def reconstruct_low_tokens_llm(votes: list[WordVote]) -> list[WordVote]:
             context=context,
             candidates=candidates,
             candidate_weights=candidate_weights,
+            model=model,
         )
         if suggestion is None:
             continue
