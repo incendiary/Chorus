@@ -294,7 +294,7 @@ class TestOptionalPipelineFeatures:
 
         with patch(
             "llm_reconstructor.reconstructor.reconstruct_low_tokens_llm",
-            side_effect=lambda votes: votes,
+            side_effect=lambda votes, model=None: votes,
         ) as mock_reconstruct:
             results = run_pipeline(
                 audio_path=synthetic_audio,

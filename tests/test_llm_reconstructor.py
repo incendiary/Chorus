@@ -255,7 +255,7 @@ def test_reconstruct_low_tokens_passes_weights_to_suggest(monkeypatch):
 
     received_weights: list[dict] = []
 
-    def capturing_suggest(*, context, candidates, candidate_weights=None):
+    def capturing_suggest(*, context, candidates, candidate_weights=None, model=None):
         received_weights.append(candidate_weights or {})
         return candidates[0]
 
