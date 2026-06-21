@@ -105,10 +105,4 @@ Tracked improvements identified during the June 2026 repository assessment.
 - [ ] **Record original source filename in all output artefacts** — the original source filename (with extension, before sanitisation) is not currently stored anywhere. Only a sanitised stem is written. This means documents cannot be traced back to their source file without relying on the timestamped stem. Required changes:
   - Store `source_filename: str` in `bundle.json` `meta` block at pipeline run time.
   - Include a **Source file** field in the `consensus.md` header block.
-  - Include a **Source file** field in the AI context pack (`ai_context.md`) header.
-  - Pass the value to PDF and DOCX exports as document title metadata.
-  - Update `ui/pages/3_Past_Jobs.py` to read `source_filename` from `bundle.json` and display it as the primary run identifier (falling back to the stem-derived name for runs produced before this change).
-
----
-
-*Last updated: 18 June 2026*
+  - Include a **Source file** field in the AI context pack (`
