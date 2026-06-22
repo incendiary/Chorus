@@ -93,6 +93,7 @@ def run_pipeline(
     audio_path = Path(audio_path)
     ensure_output_dirs()
     stem = sanitise_stem(audio_path.stem, fallback="audio")
+    source_filename = audio_path.name  # Original filename with extension for traceability
     t_start = time.perf_counter()
 
     # Derive per-stage output dirs from optional override
@@ -177,12 +178,15 @@ def run_pipeline(
         transcripts_meta=transcripts,
         elapsed_seconds=round(time.perf_counter() - t_start, 2),
         alignment_strategy=alignment_strategy,
+        source_filename=source_filename,
+        output_dir=consensus_dir,
     )
 
     bundle_path = export_transcript_bundle(
         transcripts=transcripts,
         votes=votes,
         stem=stem,
+        source_filename=source_filename,
         output_dir=consensus_dir,
     )
 
@@ -207,7 +211,9 @@ def run_pipeline(
             # Load any previously saved speaker names for this stem
             speaker_map = load_speaker_names(stem)
 
-            diarised_path = render_diarised_md(labelled, stem, speaker_map=speaker_map)
+            diarised_path = render_diarised_md(
+                labelled, stem, speaker_map=speaker_map, output_dir=consensus_dir
+            )
 
             # Update AI context pack with speaker information
             ai_context_path = generate_ai_context_pack(
@@ -217,6 +223,8 @@ def run_pipeline(
                 elapsed_seconds=round(time.perf_counter() - t_start, 2),
                 alignment_strategy=alignment_strategy,
                 speaker_labels=speaker_labels,
+                source_filename=source_filename,
+                output_dir=consensus_dir,
                 speaker_names=speaker_map,
             )
         except Exception as exc:

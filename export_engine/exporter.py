@@ -86,7 +86,7 @@ def _md_to_html(md_text: str) -> str:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def export_pdf(consensus_md_path: Path, stem: str) -> Path:
+def export_pdf(consensus_md_path: Path, stem: str, output_dir: Path | None = None, source_filename: str | None = None) -> Path:
     """
     Export the consensus Markdown document to PDF via WeasyPrint.
 
@@ -171,7 +171,9 @@ def export_pdf(consensus_md_path: Path, stem: str) -> Path:
 <body>{html_body}</body>
 </html>"""
 
-    out_path = CONSENSUS_DIR / f"{stem}_consensus.pdf"
+    target_dir = output_dir or CONSENSUS_DIR
+    target_dir.mkdir(parents=True, exist_ok=True)
+    out_path = target_dir / f"{stem}_consensus.pdf"
     HTML(string=full_html).write_pdf(str(out_path), stylesheets=[css])
     logger.info("PDF export written → %s", out_path)
     return out_path
@@ -182,7 +184,7 @@ def export_pdf(consensus_md_path: Path, stem: str) -> Path:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def export_docx(consensus_md_path: Path, stem: str) -> Path:
+def export_docx(consensus_md_path: Path, stem: str, output_dir: Path | None = None, source_filename: str | None = None) -> Path:
     """
     Export the consensus Markdown document to a styled DOCX file.
 
@@ -274,7 +276,9 @@ def export_docx(consensus_md_path: Path, stem: str) -> Path:
                 else:
                     run.text = token
 
-    out_path = CONSENSUS_DIR / f"{stem}_consensus.docx"
+    target_dir = output_dir or CONSENSUS_DIR
+    target_dir.mkdir(parents=True, exist_ok=True)
+    out_path = target_dir / f"{stem}_consensus.docx"
     doc.save(str(out_path))
     logger.info("DOCX export written → %s", out_path)
     return out_path
@@ -297,7 +301,7 @@ def _extract_word_timestamps(whisper_result: dict[str, Any]) -> list[dict[str, A
 
 
 def export_srt(
-    whisper_result: dict[str, Any], stem: str, word_level: bool = True
+    whisper_result: dict[str, Any], stem: str, word_level: bool = True, output_dir: Path | None = None
 ) -> Path:
     """
     Export Whisper data as a SubRip (.srt) subtitle file.
@@ -343,8 +347,9 @@ def export_srt(
             text = _strip_md_markup(seg["text"].strip())
             lines += [str(idx), f"{start_ts} --> {end_ts}", text, ""]
 
-    out_path = CONSENSUS_DIR / f"{stem}_consensus.srt"
-    out_path.parent.mkdir(parents=True, exist_ok=True)
+    target_dir = output_dir or CONSENSUS_DIR
+    target_dir.mkdir(parents=True, exist_ok=True)
+    out_path = target_dir / f"{stem}_consensus.srt"
     out_path.write_text("\n".join(lines), encoding="utf-8")
     logger.info("SRT export written → %s", out_path)
     return out_path
@@ -356,7 +361,7 @@ def export_srt(
 
 
 def export_vtt(
-    whisper_result: dict[str, Any], stem: str, word_level: bool = True
+    whisper_result: dict[str, Any], stem: str, word_level: bool = True, output_dir: Path | None = None
 ) -> Path:
     """
     Export Whisper data as a WebVTT (.vtt) subtitle file.
@@ -398,8 +403,9 @@ def export_vtt(
             text = _strip_md_markup(seg["text"].strip())
             lines += [f"{idx}", f"{start_ts} --> {end_ts}", text, ""]
 
-    out_path = CONSENSUS_DIR / f"{stem}_consensus.vtt"
-    out_path.parent.mkdir(parents=True, exist_ok=True)
+    target_dir = output_dir or CONSENSUS_DIR
+    target_dir.mkdir(parents=True, exist_ok=True)
+    out_path = target_dir / f"{stem}_consensus.vtt"
     out_path.write_text("\n".join(lines), encoding="utf-8")
     logger.info("VTT export written → %s", out_path)
     return out_path
@@ -415,6 +421,7 @@ def export_all(
     whisper_result: dict[str, Any],
     stem: str,
     formats: list[str] | None = None,
+    output_dir: Path | None = None,
 ) -> dict[str, Path | None]:
     """
     Export the consensus document in all requested formats.
@@ -440,10 +447,10 @@ def export_all(
     results: dict[str, Path | None] = {}
 
     dispatch = {
-        "pdf": lambda: export_pdf(consensus_md_path, stem),
-        "docx": lambda: export_docx(consensus_md_path, stem),
-        "srt": lambda: export_srt(whisper_result, stem),
-        "vtt": lambda: export_vtt(whisper_result, stem),
+        "pdf": lambda: export_pdf(consensus_md_path, stem, output_dir=output_dir),
+        "docx": lambda: export_docx(consensus_md_path, stem, output_dir=output_dir),
+        "srt": lambda: export_srt(whisper_result, stem, output_dir=output_dir),
+        "vtt": lambda: export_vtt(whisper_result, stem, output_dir=output_dir),
     }
 
     for fmt in formats:
@@ -468,6 +475,7 @@ def export_all(
 def export_plain_text(
     consensus_md_path: Path,
     stem: str,
+    output_dir: Path | None = None,
     include_low: bool = True,
 ) -> Path:
     """
@@ -522,7 +530,9 @@ def export_plain_text(
     filename = (
         f"{stem}_most_likely.txt" if include_low else f"{stem}_most_likely_clean.txt"
     )
-    out_path = CONSENSUS_DIR / filename
+    target_dir = output_dir or CONSENSUS_DIR
+    target_dir.mkdir(parents=True, exist_ok=True)
+    out_path = target_dir / filename
     out_path.write_text(body, encoding="utf-8")
     logger.info("Plain-text export written → %s", out_path)
     return out_path
