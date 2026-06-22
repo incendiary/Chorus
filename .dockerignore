@@ -1,54 +1,31 @@
-# ─────────────────────────────────────────────────────────────────────────────
-# .dockerignore — Exclude files from the Docker build context
-# ─────────────────────────────────────────────────────────────────────────────
-
-# Python artefacts
-__pycache__/
-*.py[cod]
-*.pyo
-*.pyd
-.Python
-*.egg-info/
-dist/
-build/
-.eggs/
-
-# Virtual environments
-.venv/
-venv/
-env/
-
-# Output directories (mounted as volumes at runtime)
-outputs/
-
-# Development and test artefacts
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
-htmlcov/
-.coverage
-*.log
-
-# IDE configuration
-.idea/
-.vscode/
-*.swp
-*.swo
-
-# Git
-.git/
+.git
 .gitignore
-
-# Secrets
-.env
-
-# Documentation build artefacts
-docs/_build/
-site/
-
-# macOS
+.github
+.pre-commit-config.yaml
+.venv
+__pycache__
+*.pyc
+*.pyo
+*.egg-info
+.pytest_cache
+.coverage
+htmlcov
+dist
+build
+*.egg
 .DS_Store
-
-# Publish / test helper scripts (not needed inside the image)
-docker-publish.sh
-docker-test.sh
+*.log
+tests/
+docs/
+.env
+.env.local
+.editorconfig
+CONTRIBUTING.md
+LICENSE
+*.md
+node_modules
+.proxyai/
+.serena/
+outputs/
+.mypy_cache
+.ruff_cache

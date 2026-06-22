@@ -46,9 +46,10 @@ nltk.download('stopwords', quiet=True)"
 # ── Stage 2: Runtime ─────────────────────────────────────────────────────────
 FROM python:3.11-slim-bookworm AS runtime
 
+ARG VERSION=dev
 LABEL maintainer="Chorus Engine"
 LABEL description="Multi-pass consensus audio transcription engine"
-LABEL version="1.0.0"
+LABEL version="${VERSION}"
 
 # Install runtime system dependencies (FFmpeg is mandatory)
 RUN apt-get update && apt-get install -y --no-install-recommends \
