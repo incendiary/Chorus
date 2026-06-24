@@ -610,6 +610,87 @@ class TestOutputDirIsolation:
         assert result_a["consensus_path"].parent == out_a / "consensus"
         assert result_b["consensus_path"].parent == out_b / "consensus"
 
+    @pytest.mark.usefixtures("_patch_transcription")
+    def test_same_stem_two_runs_isolation(self, tmp_path):
+        """Two runs with identical stem but different output_dir must not collide."""
+        from pipeline_runner import run_pipeline
+
+        # Create two audio files with the same stem but in different dirs
+        audio_1 = tmp_path / "input_1" / "test_recording.wav"
+        audio_2 = tmp_path / "input_2" / "test_recording.wav"
+        audio_1.parent.mkdir(parents=True)
+        audio_2.parent.mkdir(parents=True)
+
+        _generate_sine_wav(audio_1, duration_s=1.0)
+        _generate_sine_wav(audio_2, duration_s=1.0)
+
+        out_1 = tmp_path / "run_1"
+        out_2 = tmp_path / "run_2"
+
+        result_1 = run_pipeline(
+            audio_path=audio_1, language="en", output_dir=out_1
+        )
+        result_2 = run_pipeline(
+            audio_path=audio_2, language="en", output_dir=out_2
+        )
+
+        # Consensus files must be in different directories despite same stem
+        assert result_1["consensus_path"].parent == out_1 / "consensus"
+        assert result_2["consensus_path"].parent == out_2 / "consensus"
+        assert result_1["consensus_path"] != result_2["consensus_path"]
+
+        # Bundle files must also be isolated
+        bundle_1 = out_1 / "consensus" / "test_recording_bundle.json"
+        bundle_2 = out_2 / "consensus" / "test_recording_bundle.json"
+        assert bundle_1.exists()
+        assert bundle_2.exists()
+        assert bundle_1 != bundle_2
+
+    @pytest.mark.usefixtures("_patch_transcription")
+    def test_source_filename_in_bundle(self, tmp_path):
+        """Bundle JSON should preserve original source filename."""
+        import json
+        from pipeline_runner import run_pipeline
+
+        original_audio = tmp_path / "my_recording_2026-02-09.wav"
+        _generate_sine_wav(original_audio, duration_s=1.0)
+
+        out_dir = tmp_path / "output"
+        results = run_pipeline(
+            audio_path=original_audio,
+            language="en",
+            output_dir=out_dir,
+        )
+
+        bundle_path = results.get("bundle_path")
+        assert bundle_path is not None
+        assert bundle_path.exists()
+
+        bundle_data = json.loads(bundle_path.read_text(encoding="utf-8"))
+        assert bundle_data["meta"]["source_filename"] == "my_recording_2026-02-09.wav"
+
+    @pytest.mark.usefixtures("_patch_transcription")
+    def test_source_filename_in_consensus_md(self, tmp_path):
+        """Consensus markdown should include Source file field."""
+        from pipeline_runner import run_pipeline
+
+        original_audio = tmp_path / "interview_alice_bob_final.m4a"
+        _generate_sine_wav(original_audio, duration_s=1.0)
+
+        out_dir = tmp_path / "output"
+        results = run_pipeline(
+            audio_path=original_audio,
+            language="en",
+            output_dir=out_dir,
+        )
+
+        consensus_path = results["consensus_path"]
+        text = consensus_path.read_text(encoding="utf-8")
+
+        # Should contain the original filename in the header
+        assert "Source file" in text
+        assert "interview_alice_bob_final.m4a" in text
+
 
 class TestConsensusModelForwarding:
     """Test consensus model selection wiring into transcription stage."""

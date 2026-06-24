@@ -625,13 +625,14 @@ def export_transcript_bundle(
     votes: list[Any],
     stem: str,
     *,
+    source_filename: str | None = None,
     output_dir: Path | None = None,
 ) -> Path:
     """
     Write a structured JSON transcript bundle for programmatic consumption.
 
     The bundle contains:
-    - ``meta``           — stem, chorus version, timestamp
+    - ``meta``           — stem, chorus version, timestamp, source filename
     - ``variants``       — all variant transcript dicts (text, language, model, device)
     - ``consensus``      — word-vote sequence with tier/confidence per word
     - ``statistics``     — HIGH/MEDIUM/LOW word counts and percentages
@@ -644,6 +645,8 @@ def export_transcript_bundle(
         Ordered consensus vote sequence from the alignment stage.
     stem : str
         Base filename stem.
+    source_filename : str, optional
+        Original source filename (with extension) for traceability.
     output_dir : Path, optional
         Directory to write the bundle.  Defaults to ``CONSENSUS_DIR``.
 
@@ -666,6 +669,7 @@ def export_transcript_bundle(
     bundle: dict[str, Any] = {
         "meta": {
             "stem": stem,
+            "source_filename": source_filename,
             "generated_at": datetime.now(UTC).isoformat(),
         },
         "variants": {

@@ -164,6 +164,7 @@ def run_pipeline(
         enable_llm=enable_llm,
         ollama_model=ollama_model,
         consensus_dir=consensus_dir,
+        source_filename=source_filename,
     )
     _progress("Consensus document generated.", 0.95)
 
