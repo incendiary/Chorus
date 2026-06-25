@@ -34,6 +34,9 @@ dev = [
   "pytest",
   "pytest-cov",
   "detect-secrets",
+  "bandit",
+  "safety",
+  "pip-audit",
 ]
 
 # ── Black ─────────────────────────────────────────────────────────────────────
@@ -63,6 +66,18 @@ ignore = [
 [tool.isort]
 profile = "black"
 line_length = 88
+
+# ── bandit ────────────────────────────────────────────────────────────────────
+[tool.bandit]
+exclude_dirs = [".venv", "tests", ".git"]
+severity_level = "medium"
+confidence_level = "high"
+skips = [
+  # B101: Allow assert in tests (handled by pytest)
+  "B101",
+  # B601: Paramiko is used for SSH (secure by design)
+  # Not applicable to this project
+]
 
 # ── pytest ────────────────────────────────────────────────────────────────────
 [tool.pytest.ini_options]

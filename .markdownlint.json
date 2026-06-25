@@ -1,0 +1,14 @@
+{
+  "default": true,
+  "line-length": {
+    "line_length": 120
+  },
+  "no-hard-tabs": {
+    "tabsize": 2
+  },
+  "heading-increment": true,
+  "no-trailing-punctuation": false,
+  "ul-indent": {
+    "indent": 2
+  }
+}
