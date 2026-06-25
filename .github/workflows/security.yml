@@ -1,0 +1,75 @@
+name: Security Scanning
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Weekly security audit (Mondays at 09:00 UTC)
+    - cron: '0 9 * * 1'
+
+jobs:
+  gitleaks:
+    name: GitLeaks — Secret Detection
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        with:
+          verbose: true
+          fail: true
+
+  dependency-check:
+    name: Python Dependency Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: pip install -r requirements.txt safety pip-audit
+      
+      - name: Run safety check (EOL/vulnerable deps)
+        run: safety check --json || true
+      
+      - name: Run pip-audit
+        run: pip-audit --desc
+
+  bandit:
+    name: Bandit — Python Security Analysis
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      
+      - name: Install bandit
+        run: pip install bandit
+      
+      - name: Run bandit on source
+        run: bandit -r chorus/ batch_processor/ consensus_merger/ audio_processor/ --format json --output bandit-report.json || true
+      
+      - name: Upload bandit report
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: bandit-report
+          path: bandit-report.json
+
+  pre-commit:
+    name: Pre-commit Hooks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      
+      - uses: pre-commit/action@v3.0.0

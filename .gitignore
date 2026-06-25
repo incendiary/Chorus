@@ -55,6 +55,14 @@ test-results/
 dmypy.json
 pyrightconfig.json
 
+# ── Security Scanning ─────────────────────────────────────────────────────────
+bandit-report.json
+.bandit
+gitleaks-report.json
+safety-report.json
+pip-audit-report.json
+.secrets.baseline
+
 # ── Chorus Runtime Outputs ────────────────────────────────────────────────────
 outputs/
 sample_audio/
