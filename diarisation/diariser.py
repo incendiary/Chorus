@@ -269,6 +269,7 @@ def render_diarised_md(
     labelled: list[LabelledSegment],
     stem: str,
     speaker_map: dict[str, str] | None = None,
+    output_dir: Path | None = None,
 ) -> Path:
     """
     Write a speaker-labelled Markdown transcript to CONSENSUS_DIR.
@@ -318,7 +319,9 @@ def render_diarised_md(
         "",
     ]
 
-    out_path = CONSENSUS_DIR / f"{stem}_diarised.md"
+    target_dir = output_dir or CONSENSUS_DIR
+    target_dir.mkdir(parents=True, exist_ok=True)
+    out_path = target_dir / f"{stem}_diarised.md"
     out_path.write_text("\n".join(lines), encoding="utf-8")
     logger.info("Diarised transcript written → %s", out_path)
     return out_path
@@ -368,7 +371,7 @@ def load_speaker_names(stem: str) -> dict[str, str]:
         return {}
 
 
-def save_speaker_names(stem: str, speaker_map: dict[str, str]) -> Path:
+def save_speaker_names(stem: str, speaker_map: dict[str, str], output_dir: Path | None = None) -> Path:
     """
     Save a speaker name mapping to the sidecar JSON file.
 
@@ -393,8 +396,9 @@ def save_speaker_names(stem: str, speaker_map: dict[str, str]) -> Path:
         k: v.strip() for k, v in speaker_map.items() if v.strip() and v.strip() != k
     }
 
-    path = _speaker_names_path(stem)
-    CONSENSUS_DIR.mkdir(parents=True, exist_ok=True)
+    target_dir = output_dir or CONSENSUS_DIR
+    target_dir.mkdir(parents=True, exist_ok=True)
+    path = target_dir / f"{_speaker_names_path(stem).name}"
     path.write_text(
         json.dumps(cleaned, indent=2, ensure_ascii=False) + "\n",
         encoding="utf-8",

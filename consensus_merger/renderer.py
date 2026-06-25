@@ -69,6 +69,7 @@ def render_consensus(
     stem: str,
     transcripts_meta: dict[str, dict],
     consensus_dir: Path | None = None,
+    source_filename: str | None = None,
 ) -> Path:
     """
     Render the consensus Markdown document and write it to consensus_dir.
@@ -99,11 +100,15 @@ def render_consensus(
         "# Chorus — Consensus Transcript",
         "",
         f"> **Generated:** {now}  ",
+    ]
+    if source_filename:
+        lines.append(f"> **Source file:** `{source_filename}`  ")
+    lines.extend([
         f"> **Source stem:** `{stem}`  ",
         f"> **Whisper model:** `{next(iter(transcripts_meta.values())).get('model', 'unknown')}`  ",  # noqa: E501
         f"> **Language detected:** `{next(iter(transcripts_meta.values())).get('language', 'unknown')}`",  # noqa: E501
         "",
-    ]
+    ])
 
     # ── Variant summary table ────────────────────────────────────────────────
     lines += [

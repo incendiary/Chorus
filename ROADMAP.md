@@ -100,9 +100,54 @@ Tracked improvements identified during the June 2026 repository assessment.
 
 ---
 
+## Completed — v3.1.3 Output Isolation & Traceability
+
+- [x] **Record original source filename in all output artefacts** — the original source filename (with extension, before sanitisation) is now captured at pipeline entry and threaded through all stages:
+  - `source_filename` captured from `audio_path.name` in `pipeline_runner.py`.
+  - Stored in `bundle.json` `meta` block via updated `export_transcript_bundle()`.
+  - Included in `consensus.md` header via updated `renderer.render_consensus()`.
+  - Passed to `merger.merge_transcripts_with_votes()` for end-to-end traceability.
+  - Three integration tests added: output directory isolation, bundle metadata preservation, consensus markdown header verification.
+
 ## Upcoming
 
-- [ ] **Record original source filename in all output artefacts** — the original source filename (with extension, before sanitisation) is not currently stored anywhere. Only a sanitised stem is written. This means documents cannot be traced back to their source file without relying on the timestamped stem. Required changes:
-  - Store `source_filename: str` in `bundle.json` `meta` block at pipeline run time.
-  - Include a **Source file** field in the `consensus.md` header block.
-  - Include a **Source file** field in the AI context pack (`
+- [ ] **Suppress or optimise MPS float64 warnings** — on macOS with Apple Silicon, Whisper's word-level timestamp alignment requires float64, which Metal Performance Shaders does not support. The CPU fallback works correctly but generates a `UserWarning`. Investigate options:
+  - Detect MPS availability earlier and suppress the redundant retry message.
+  - Consider upstream Whisper patches to avoid float64 requirement entirely.
+  - Document the performance trade-off in the Help page for macOS users.
+
+- [ ] **Streamline spaCy model setup** — the NLP reconstruction path requires `en_core_web_md` to be downloaded separately via `python -m spacy download en_core_web_md`. Currently this surfaces as a silent fallback warning at runtime. Improve UX:
+  - Auto-download missing models on first use (with progress indication).
+  - Alternatively, document as a post-install setup step in README and Help page.
+  - Consider baking models into Docker image for containerised deployments.
+
+- [ ] **LLM context document** — create a comprehensive Markdown guide (`docs/CHORUS_FOR_LLMS.md`) that explains the project to language models in a format suitable for supplying alongside outputs:
+  - Project overview: what Chorus does, why, and high-level architecture.
+  - Output format reference: descriptions of all generated files (consensus.md, bundle.json, ai_context.md, diarised.md, etc).
+  - Confidence tier semantics: how to interpret HIGH/MEDIUM/LOW tiers, what they indicate about transcript reliability.
+  - Word-vote structure: explanation of the consensus algorithm and how variants influence confidence scores.
+  - Export formats: guide to PDF, DOCX, SRT, VTT metadata and markup conventions.
+  - Instructions for LLM-assisted analysis: examples of how to prompt an LLM to use Chorus outputs for downstream tasks (summarisation, fact-checking, speaker intent analysis).
+  - Metadata fields in bundle.json and how to extract structured data programmatically.
+
+- [ ] **Live log window with user-configurable line count** — the Logs page currently requires scrolling through all entries. Improve UX by adding a sticky corner control:
+  - Configurable input field (default: 50 lines) in the top-right corner of the log display.
+  - Live window that shows only the last N lines, dynamically updating as the user changes N.
+  - Preserve the existing "Download" and "Clear" buttons and full-log accessibility.
+  - Consider adding a "Follow tail" toggle to auto-scroll to newest entries as they arrive.
+
+- [ ] **Resolve librosa audioread deprecation** — librosa 0.10.0 deprecated `librosa.core.audio.__audioread_load`, which will be removed in v1.0. Currently the audio processor falls back to this path when PySoundFile/soundfile is unavailable. Remediate:
+  - Ensure soundfile is a hard dependency with clear installation instructions (optional in macOS; may require system libraries on Linux).
+  - Migrate from deprecated `__audioread_load` to the current librosa API.
+  - Add explicit, user-friendly error handling when audio loading fails, with recovery suggestions.
+  - Pin librosa version or conditionally use new API if available to future-proof against v1.0.
+
+- [ ] **Human-readable "best guess" transcript export** — current plain-text exports include markup (`[word?]` for LOW-confidence, omitted words, or verbose statistics). Create a new export that is truly human-readable:
+  - Single, clean plain-text file (`{stem}_best_guess.txt`) with no annotations, brackets, or metadata.
+  - Contains only HIGH-confidence words and the single best-guess word for MEDIUM/LOW-confidence positions (selected by highest agreement across variants).
+  - Natural flow and paragraph breaks preserved from the consensus document.
+  - Suitable for distribution to non-technical users, archival, or downstream NLP processing without prior explanation.
+
+---
+
+*Last updated: 24 June 2026*
