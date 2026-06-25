@@ -46,6 +46,7 @@ def merge_transcripts_with_votes(
     strategy: str | None = None,
     enable_nlp: bool = False,
     enable_llm: bool = False,
+    ollama_model: str | None = None,
     consensus_dir: Path | None = None,
 ) -> tuple[Path, list[WordVote]]:
     """Run consensus alignment/render and return both output path and votes."""
@@ -63,7 +64,7 @@ def merge_transcripts_with_votes(
     if enable_llm:
         from llm_reconstructor.reconstructor import reconstruct_low_tokens_llm
 
-        votes = reconstruct_low_tokens_llm(votes)
+        votes = reconstruct_low_tokens_llm(votes, model=ollama_model)
 
     out_path = render_consensus(votes, stem, transcripts, consensus_dir=consensus_dir)
     return out_path, votes

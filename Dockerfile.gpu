@@ -40,12 +40,9 @@ RUN pip install --no-cache-dir \
     torchaudio==2.2.0+cu121 \
     --index-url https://download.pytorch.org/whl/cu121
 
-# Install remaining dependencies
+# Install remaining dependencies (includes pyannote-audio==4.0.4 from requirements.txt)
 COPY requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir -r /tmp/requirements.txt
-
-# Install pyannote.audio for speaker diarisation
-RUN pip install --no-cache-dir pyannote.audio==3.1.1
 
 # Pre-download NLTK data
 RUN python3 -c "\
@@ -58,9 +55,10 @@ nltk.download('stopwords', quiet=True)"
 # ── Stage 2: Runtime ─────────────────────────────────────────────────────────
 FROM nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu22.04 AS runtime-gpu
 
+ARG VERSION=dev
 LABEL maintainer="Chorus Engine"
 LABEL description="Chorus — GPU-accelerated consensus transcription engine"
-LABEL version="1.0.0-gpu"
+LABEL version="${VERSION}"
 
 ENV DEBIAN_FRONTEND=noninteractive
 

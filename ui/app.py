@@ -428,6 +428,33 @@ st.markdown(
 # ─────────────────────────────────────────────────────────────────────────────
 
 
+def _pick_best_ollama_model(models: list[str]) -> str:
+    """Return the model name best suited for low-confidence word correction.
+
+    Scoring rules (higher is better):
+    - Penalise specialised models (coder / code / math in the name): -10
+    - Prefer larger param counts parsed from the name: 14b=14, 8b=8, 7b=7, etc.
+    - Prefer known general-purpose families: llama=3, qwen=2, mistral=1
+    """
+    import re
+
+    def _score(name: str) -> int:
+        n = name.lower()
+        score = 0
+        if any(tag in n for tag in ("coder", "code", "math")):
+            score -= 10
+        m = re.search(r"(\d+)b", n)
+        if m:
+            score += int(m.group(1))
+        for rank, family in enumerate(("llama", "qwen", "mistral", "gemma"), start=1):
+            if family in n:
+                score += 4 - rank
+                break
+        return score
+
+    return max(models, key=_score)
+
+
 @st.cache_data
 def _hw_recommendation() -> tuple[str, str]:
     """Return (recommended_mode_label, reason_caption) based on available RAM."""
@@ -871,14 +898,40 @@ with st.sidebar:
             "see the Help page (sidebar) for setup instructions."
         ),
     )
+    ollama_model: str | None = None
     if enable_llm:
-        from llm_reconstructor.ollama_client import probe_model
+        from llm_reconstructor.ollama_client import list_models, probe_model
 
         _llm_ok, _llm_reason = probe_model()
         if not _llm_ok:
             enable_llm = False
             st.session_state["show_ollama_dialog"] = True
             st.session_state["ollama_fail_reason"] = _llm_reason
+        else:
+            _available = list_models()
+            if _available:
+                _default = _pick_best_ollama_model(_available)
+                _prev = st.session_state.get("ollama_model")
+                _default_idx = (
+                    _available.index(_prev)
+                    if _prev in _available
+                    else _available.index(_default)
+                )
+                _labels = [
+                    f"{m} (recommended)" if m == _default else m for m in _available
+                ]
+                _chosen_label = st.selectbox(
+                    "Ollama model",
+                    options=_labels,
+                    index=_default_idx,
+                    help=(
+                        "All locally pulled models are available. "
+                        "The recommended model is best suited for "
+                        "low-confidence word correction."
+                    ),
+                )
+                ollama_model = _available[_labels.index(_chosen_label)]
+                st.session_state["ollama_model"] = ollama_model
 
     if st.session_state.get("show_ollama_dialog"):
         from llm_reconstructor.ollama_client import probe_model as _probe
@@ -1105,6 +1158,7 @@ if uploaded_files:
                 consensus_models=consensus_models,
                 enable_nlp=enable_nlp,
                 enable_llm=enable_llm,
+                ollama_model=ollama_model,
                 enable_diarisation=enable_diarisation,
                 alignment_strategy=alignment_choice,
                 progress_callback=_progress,

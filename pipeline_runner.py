@@ -43,6 +43,7 @@ def run_pipeline(
     consensus_models: tuple[str, ...] | None = None,
     enable_nlp: bool = False,
     enable_llm: bool = False,
+    ollama_model: str | None = None,
     enable_diarisation: bool = False,
     alignment_strategy: str | None = None,
     progress_callback: Callable[[str, float], None] | None = None,
@@ -160,6 +161,7 @@ def run_pipeline(
         strategy=alignment_strategy,
         enable_nlp=enable_nlp,
         enable_llm=enable_llm,
+        ollama_model=ollama_model,
         consensus_dir=consensus_dir,
     )
     _progress("Consensus document generated.", 0.95)
