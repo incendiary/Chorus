@@ -1,0 +1,121 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Chorus Engine + Ollama — Docker Compose Stack
+# ─────────────────────────────────────────────────────────────────────────────
+# Runs Chorus Engine alongside a local Ollama LLM server for automated
+# LOW-token recovery and intelligent reconstruction.
+#
+# Usage:
+#   docker-compose -f docker-compose.yml -f docker-compose.ollama.yml up -d
+#   # or pull in the .env settings automatically:
+#   docker-compose -f docker-compose.ollama.yml up --build
+#
+# Services:
+#   - chorus       : Streamlit UI + transcription pipeline (http://localhost:8501)
+#   - ollama       : Local LLM server + model repository (http://localhost:11434)
+# ─────────────────────────────────────────────────────────────────────────────
+
+version: "3.9"
+
+services:
+
+  # ── Ollama — Local LLM Server ──────────────────────────────────────────────
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama-server
+    
+    ports:
+      - "127.0.0.1:11434:11434"       # Ollama API (localhost only)
+    
+    environment:
+      OLLAMA_HOST: "0.0.0.0:11434"
+      # Request timeout for pull/run operations
+      OLLAMA_REQUEST_TIMEOUT: "120s"
+    
+    volumes:
+      # Persist downloaded models on the host
+      - ollama_models:/root/.ollama
+    
+    restart: unless-stopped
+    
+    # Resource limits — increase for faster inference
+    deploy:
+      resources:
+        reservations:
+          # Request GPU if available
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+        limits:
+          memory: 8G
+        reservations:
+          memory: 4G
+    
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ── Chorus Engine (modified from docker-compose.yml) ─────────────────────────
+  chorus:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    image: chorus-engine:latest
+    container_name: chorus-engine
+    
+    ports:
+      - "127.0.0.1:8501:8501"       # Streamlit UI
+    
+    depends_on:
+      ollama:
+        condition: service_healthy
+    
+    environment:
+      # Whisper configuration
+      WHISPER_MODEL:    "${WHISPER_MODEL:-base}"
+      WHISPER_DEVICE:   "${WHISPER_DEVICE:-cpu}"
+      WHISPER_LANGUAGE: "${WHISPER_LANGUAGE:-}"
+      
+      # Multi-model consensus
+      CONSENSUS_MODELS: "${CONSENSUS_MODELS:-}"
+      
+      # LLM reconstruction via Ollama (point to service hostname)
+      OLLAMA_BASE_URL:          "http://ollama:11434"
+      OLLAMA_MODEL:             "${OLLAMA_MODEL:-llama3.1:8b}"
+      OLLAMA_TIMEOUT_SECONDS:   "${OLLAMA_TIMEOUT_SECONDS:-30}"
+      
+      # Streamlit
+      STREAMLIT_SERVER_PORT:                  "8501"
+      STREAMLIT_SERVER_ADDRESS:               "127.0.0.1"
+      STREAMLIT_SERVER_HEADLESS:              "true"
+      STREAMLIT_BROWSER_GATHER_USAGE_STATS:   "false"
+    
+    volumes:
+      - whisper_cache:/home/chorus/.cache/whisper
+      - ./outputs:/app/outputs
+      - ./sample_audio:/app/sample_audio
+    
+    restart: unless-stopped
+    
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 1G
+
+volumes:
+  whisper_cache:
+    name: chorus_whisper_cache
+  ollama_models:
+    name: ollama_models
