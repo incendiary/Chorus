@@ -149,10 +149,14 @@ def discover_audio_files(
 def run_batch(
     inputs: list[str | Path],
     language: str | None = None,
+    consensus_models: tuple[str, ...] | None = None,
     export_formats: list[str] | None = None,
     recursive: bool = False,
+    alignment_strategy: str | None = None,
     enable_diarisation: bool = False,
     enable_nlp: bool = False,
+    enable_llm: bool = False,
+    ollama_model: str | None = None,
     output_dir: Path | None = None,
     progress_callback: Callable[[int, int, str], None] | None = None,
 ) -> list[BatchResult]:
@@ -165,14 +169,22 @@ def run_batch(
         File paths, directory paths, or glob patterns.
     language : str, optional
         BCP-47 language code hint for Whisper.
+    consensus_models : tuple[str, ...], optional
+        Ordered Whisper model names to include in consensus transcription.
     export_formats : list[str], optional
         Subset of ``["pdf", "docx", "srt", "vtt"]``.  If None, no export.
     recursive : bool
         Scan directories recursively.
+    alignment_strategy : str, optional
+        Consensus alignment strategy: "sequence" or "positional".
     enable_diarisation : bool
         Run speaker diarisation on each file.
     enable_nlp : bool
         Run spaCy NLP reconstruction on LOW-confidence tokens.
+    enable_llm : bool
+        Run local LLM reconstruction (Ollama) on LOW-confidence tokens.
+    ollama_model : str, optional
+        Ollama model name for LLM reconstruction.
     output_dir : Path, optional
         Root directory for all batch outputs.  When supplied, each file's
         outputs are written to an isolated ``<output_dir>/<stem>/``
@@ -213,48 +225,33 @@ def run_batch(
                     audio_path.stem, fallback="audio"
                 )
             pipeline_out = run_pipeline(
-                audio_path, language=language, output_dir=file_output_dir
+                audio_path,
+                language=language,
+                consensus_models=consensus_models,
+                alignment_strategy=alignment_strategy,
+                enable_nlp=enable_nlp,
+                enable_llm=enable_llm,
+                ollama_model=ollama_model,
+                enable_diarisation=enable_diarisation,
+                output_dir=file_output_dir,
             )
             result.consensus_path = pipeline_out["consensus_path"]
+            result.export_paths = pipeline_out.get("export_paths", {})
 
-            # ── Optional: NLP reconstruction ──────────────────────────────
-            if enable_nlp:
-                from consensus_merger.alignment import align_transcripts
-                from consensus_merger.renderer import render_consensus
-                from nlp_reconstructor.reconstructor import reconstruct_low_tokens
-
-                transcripts = pipeline_out["transcripts"]
-                text_map = {k: v.get("text", "") for k, v in transcripts.items()}
-                votes = align_transcripts(text_map)
-                votes = reconstruct_low_tokens(votes)
-                result.consensus_path = render_consensus(
-                    votes, audio_path.stem, transcripts
-                )
-
-            # ── Optional: Speaker diarisation ─────────────────────────────
-            if enable_diarisation:
-                from diarisation.diariser import (
-                    diarise,
-                    label_transcript,
-                    render_diarised_md,
-                )
-
-                speaker_segs = diarise(pipeline_out["variant_paths"]["original"])
-                labelled = label_transcript(
-                    speaker_segs,
-                    pipeline_out["transcripts"]["original"],
-                )
-                render_diarised_md(labelled, audio_path.stem)
-
-            # ── Optional: Export ──────────────────────────────────────────
+            # ── Optional: Export additional formats ────────────────────────
+            # (pipeline handles NLP, LLM, and diarisation; export_all used here
+            #  only for additional formats beyond those auto-generated)
             if export_formats and result.consensus_path:
                 from export_engine.exporter import export_all
 
-                result.export_paths = export_all(
-                    consensus_md_path=result.consensus_path,
-                    whisper_result=pipeline_out["transcripts"]["original"],
-                    stem=audio_path.stem,
-                    formats=export_formats,
+                result.export_paths.update(
+                    export_all(
+                        consensus_md_path=result.consensus_path,
+                        whisper_result=pipeline_out["transcripts"]["original"],
+                        stem=pipeline_out.get("stem", audio_path.stem),
+                        formats=export_formats,
+                        output_dir=file_output_dir / "consensus" if file_output_dir else None,
+                    ) or {}
                 )
 
             result.success = True
@@ -348,6 +345,18 @@ Examples:
         help="BCP-47 language code hint (e.g. 'en'). Omit for auto-detect.",
     )
     parser.add_argument(
+        "--consensus-models",
+        nargs="*",
+        default=None,
+        help="Whisper model names for consensus (space-separated, e.g. 'base small medium').",
+    )
+    parser.add_argument(
+        "--alignment-strategy",
+        choices=["sequence", "positional"],
+        default=None,
+        help="Consensus alignment strategy.",
+    )
+    parser.add_argument(
         "--export",
         "-e",
         nargs="*",
@@ -372,6 +381,16 @@ Examples:
         help="Enable spaCy NLP reconstruction for LOW-confidence tokens.",
     )
     parser.add_argument(
+        "--llm",
+        action="store_true",
+        help="Enable local LLM (Ollama) reconstruction for LOW-confidence tokens.",
+    )
+    parser.add_argument(
+        "--ollama-model",
+        default=None,
+        help="Ollama model name for LLM reconstruction (e.g. 'mistral', 'neural-chat').",
+    )
+    parser.add_argument(
         "--output-dir",
         "-o",
         default=None,
@@ -393,13 +412,18 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     output_dir = Path(args.output_dir) if args.output_dir else None
+    consensus_models = tuple(args.consensus_models) if args.consensus_models else None
     batch_results = run_batch(
         inputs=args.inputs,
         language=args.language,
+        consensus_models=consensus_models,
         export_formats=args.export,
         recursive=args.recursive,
+        alignment_strategy=args.alignment_strategy,
         enable_diarisation=args.diarise,
         enable_nlp=args.nlp,
+        enable_llm=args.llm,
+        ollama_model=args.ollama_model,
         output_dir=output_dir,
     )
 
