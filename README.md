@@ -55,6 +55,7 @@ This is the recommended approach. The Docker image encapsulates the Python envir
    ```bash
    cp .env.example .env
    # Edit .env to change WHISPER_MODEL (default is "base")
+   # See docs/CONFIGURATION.md for a full explanation of every option.
    ```
 
 3. **Build and start the application:**
@@ -401,6 +402,17 @@ chorus-engine/
 ├── docker-compose.gpu.yml    # GPU override (NVIDIA device reservations)
 └── requirements.txt          # Pinned Python dependencies
 ```
+
+---
+
+## Documentation
+
+| Document | Description |
+|---|---|
+| [docs/CONFIGURATION.md](docs/CONFIGURATION.md) | Full reference for every configurable option — Whisper models, alignment strategy, noise mode, parallelism, LLM reconstruction, and more. |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Internal module design and data-flow walkthrough. |
+| [docs/DOCKER.md](docs/DOCKER.md) | Docker build, tagging, and publish workflow. |
+| [docs/SCALABILITY.md](docs/SCALABILITY.md) | Scaling guidance for large batch workloads. |
 
 ---
 
