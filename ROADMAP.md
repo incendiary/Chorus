@@ -176,4 +176,48 @@ Tracked improvements identified during the June 2026 repository assessment.
 
 ---
 
+## Planned — v4.0.0 "Trustworthy outputs, stable surface"
+
+The next **major** release. It earns the major bump because **WP1 introduces breaking
+changes** to import paths, packaging, and the reconstruction module layout. The theme:
+make Chorus installable and integrable as a library, guarantee output isolation, and
+test the surfaces users actually touch.
+
+Each work package below has a detailed, self-contained specification under
+[`docs/tasks/`](docs/tasks/README.md), written so a single agent can execute it
+independently. **Recommended order: WP2 → WP1 → WP3 → WP4.** Do not bump `VERSION`
+inside a work-package PR — the release owner cuts `4.0.0` once all four merge (see the
+"Release cut" section of the task index).
+
+### WP1 — Packaging & stable public API (BREAKING) · [spec](docs/tasks/WP1-packaging-and-public-api.md)
+
+- [ ] **Declare runtime dependencies in `pyproject.toml`** — `dependencies = []` today, so `pip install chorus-engine` installs no runtime deps. (RA-1.1)
+- [ ] **Establish a stable top-level `chorus` public API** — re-export `run_pipeline`, `run_batch`, and the supported entry points; commit to keeping them stable. (RA-1.2)
+- [ ] **Consolidate `nlp_reconstructor` + `llm_reconstructor` into one `reconstruction` package** — single strategy-based interface; breaking import change. (RA-1.3)
+- [ ] **Retire the deprecated librosa audioread fallback** — make `soundfile` an explicit dependency and use the non-deprecated load path. (RA-1.4)
+
+### WP2 — Output-routing correctness · [spec](docs/tasks/WP2-output-routing-correctness.md)
+
+- [ ] **Thread `output_dir` through `build_export_zip`** — fixes `exporter.py:600/605/610` reading sidecars from the global `CONSENSUS_DIR`. (RA-2.1)
+- [ ] **Make speaker-name persistence honour `output_dir`** — fixes `diariser.py:337` hardcoding `CONSENSUS_DIR`. (RA-2.2)
+- [ ] **Add a global-directory leak regression guard** — assert an isolated run writes nothing to the global `CONSENSUS_DIR`. (RA-2.3)
+
+### WP3 — User-facing test parity & CI hardening · [spec](docs/tasks/WP3-test-parity-and-ci.md)
+
+- [ ] **Batch processor test coverage** — `batch_runner.py` is at ~0 %; cover isolation, partial failure, and empty input. (RA-3.1)
+- [ ] **Streamlit UI smoke/behaviour tests** — `ui/app.py` at 0 %; use `streamlit.testing.v1.AppTest`. (RA-3.2)
+- [ ] **Make `pip-audit` blocking in CI** — remove the `|| true` that swallows CVE findings. (RA-3.3)
+
+### WP4 — Headline user features · [spec](docs/tasks/WP4-headline-features.md)
+
+- [ ] **Human-readable "best-guess" transcript export** — clean `{stem}_best_guess.txt`, no markup. (RA-4.1)
+- [ ] **LLM context document** — `docs/CHORUS_FOR_LLMS.md` explaining the project and outputs to language models. (RA-4.2)
+- [ ] **Streamline spaCy model setup** — actionable guidance instead of a silent fallback warning. (RA-4.3)
+
+> The three pre-existing "Upcoming" items above (best-guess export, LLM context doc,
+> spaCy setup) are now folded into WP4. The MPS float64 warning cleanup remains a
+> standalone 3.x maintenance item and is **not** required for 4.0.0.
+
+---
+
 *Last updated: 29 June 2026*
