@@ -46,7 +46,7 @@ This is the recommended approach. The Docker image encapsulates the Python envir
 1. **Clone the repository:**
 
    ```bash
-   git clone -b v3.1.2 https://github.com/incendiary/Chorus.git
+   git clone -b v3.2.0 https://github.com/incendiary/Chorus.git
    cd Chorus
    ```
 
@@ -151,6 +151,131 @@ If Chorus is run natively on Apple Silicon and the MPS device fails to load (e.g
 
 ---
 
+## Local LLM Integration with Ollama
+
+Chorus integrates with [Ollama](https://ollama.ai) for optional local LLM-based token reconstruction. This improves LOW-confidence word recovery without cloud dependencies.
+
+### Survey Your System
+
+To determine which Ollama models are appropriate for your hardware:
+
+```bash
+bash devops-practices/survey-ollama-env.sh
+```
+
+This script probes your system for:
+- Available RAM and CPU cores
+- GPU availability (NVIDIA CUDA, Apple Silicon MPS, etc.)
+- Ollama installation status
+- Free disk space
+
+Then recommends suitable models based on your resources.
+
+### Install Ollama
+
+1. **Download and install:**
+   - [macOS](https://ollama.ai/download/Ollama-darwin.zip)
+   - [Linux](https://ollama.ai/download/ollama-linux-amd64.tgz)
+   - [Windows (preview)](https://ollama.ai/download/OllamaSetup.exe)
+
+2. **Verify installation:**
+   ```bash
+   ollama --version
+   ```
+
+### Recommended Models (2024)
+
+Select based on available RAM and your quality/speed trade-off:
+
+| Model | RAM | Speed | Quality | Use Case |
+|-------|-----|-------|---------|----------|
+| **TinyLlama 1.1B** | 2GB | ⚡⚡⚡ Fast | ⭐ Low | Minimal systems (<4GB) |
+| **Neural Chat 7B (q4)** | 4GB | ⚡⚡ Balanced | ⭐⭐⭐ Good | Best value (4-8GB systems) |
+| **Mistral 7B** | 5GB | ⚡⚡ Balanced | ⭐⭐⭐ Good | Speed/quality balance |
+| **Llama2 7B (q4)** | 4GB | ⚡⚡ Balanced | ⭐⭐⭐ Good | Strong reasoning |
+| **Llama2 7B** | 15GB | ⚡ Slower | ⭐⭐⭐⭐ Excellent | Full precision (8GB+ RAM) |
+| **Neural Chat 13B** | 28GB | ⚡ Slower | ⭐⭐⭐⭐ Excellent | High accuracy (16GB+ RAM) |
+| **Dolphin Mixtral 8x7B** | 20GB | ⚡ Slower | ⭐⭐⭐⭐ Excellent | MoE power user (16GB+ RAM) |
+
+**Note:** Model sizes shown are approximate. Quantized models (q4, q3) reduce VRAM by ~50% but slightly lower quality.
+
+### Quick Start
+
+1. **Start Ollama server** (runs on `http://localhost:11434`):
+   ```bash
+   ollama serve
+   ```
+
+2. **Pull a recommended model** (in another terminal):
+   ```bash
+   # Fast & efficient (recommended for most)
+   ollama pull mistral
+   
+   # Or smaller for low-RAM systems
+   ollama pull neural-chat:7b-v3.1-q4_0
+   ```
+
+3. **Start Chorus with Ollama** (uses the model for token recovery):
+   ```bash
+   docker-compose -f docker-compose.yml -f docker-compose.ollama.yml up
+   ```
+
+4. **In the Chorus UI:**
+   - Toggle **"Enable LLM reconstruction"** under Advanced Options
+   - Select your model from the dropdown (auto-populated from Ollama)
+   - Process audio as usual — LOW-confidence words are reconstructed by the LLM
+
+### Environment Variables
+
+Configure Ollama via `.env`:
+
+```bash
+# Ollama server endpoint
+OLLAMA_BASE_URL=http://localhost:11434  # Default (native or Docker host)
+# OLLAMA_BASE_URL=http://ollama:11434   # Use with docker-compose.ollama.yml
+
+# Model to use for token reconstruction
+OLLAMA_MODEL=mistral                    # Default: Mistral 7B
+
+# Timeout for inference (seconds)
+OLLAMA_TIMEOUT_SECONDS=30               # Default: 20
+```
+
+### Performance Tips
+
+- **CPU only:** Use quantized models (q4_0, q4_K_M, q3_K_M) for 2-4× speedup with minimal quality loss
+- **GPU acceleration:** Ollama auto-detects NVIDIA CUDA and Apple MPS. No configuration needed.
+- **Multiple models:** Pre-pull multiple models to avoid download delays during processing:
+  ```bash
+  ollama pull mistral
+  ollama pull neural-chat:7b-v3.1
+  ```
+- **Model tuning:** Lower `OLLAMA_TIMEOUT_SECONDS` if responses are slow, or increase for high-latency networks
+
+### Troubleshooting
+
+**"Connection refused" (Ollama not running):**
+```bash
+ollama serve  # Start server in a new terminal
+```
+
+**"Model not found" (model not pulled):**
+```bash
+ollama pull <model-name>
+ollama list  # See installed models
+```
+
+**Out of memory:**
+Use a quantized model (q4_0) or smaller model size. Check system RAM with:
+```bash
+bash devops-practices/survey-ollama-env.sh
+```
+
+**Slow inference:**
+Enable GPU acceleration or use a smaller model. Native inference is much faster than Docker.
+
+---
+
 ## Deploy from GHCR
 
 Pre-built images are published to [GitHub Container Registry](https://ghcr.io/incendiary/chorus) on every tagged release. No local build step required.
@@ -158,15 +283,15 @@ Pre-built images are published to [GitHub Container Registry](https://ghcr.io/in
 ### CPU
 
 ```bash
-docker pull ghcr.io/incendiary/chorus:v3.1.2
-docker run --rm -p 8501:8501 ghcr.io/incendiary/chorus:v3.1.2
+docker pull ghcr.io/incendiary/chorus:v3.2.0
+docker run --rm -p 8501:8501 ghcr.io/incendiary/chorus:v3.2.0
 ```
 
 ### GPU (NVIDIA CUDA)
 
 ```bash
-docker pull ghcr.io/incendiary/chorus:v3.1.2-gpu
-docker run --rm -p 8501:8501 --gpus all ghcr.io/incendiary/chorus:v3.1.2-gpu
+docker pull ghcr.io/incendiary/chorus:v3.2.0-gpu
+docker run --rm -p 8501:8501 --gpus all ghcr.io/incendiary/chorus:v3.2.0-gpu
 ```
 
 Access the UI at [http://localhost:8501](http://localhost:8501).
