@@ -40,11 +40,12 @@ from config import (  # noqa: E402
     WHISPER_DEVICE,
     WHISPER_MODEL,
 )
-from ui.hardware_survey import (
+from ui.hardware_survey import (  # noqa: E402  # type: ignore[import]
     detect_hardware,
     recommend_settings,
+    recommend_settings_background,
     summarise,
-)  # noqa: E402  # type: ignore[import]
+)
 from export_engine.exporter import (  # noqa: E402
     export_all,
     export_plain_text,
@@ -806,15 +807,36 @@ with st.sidebar:
     if "cfg_parallelism" not in st.session_state:
         st.session_state["cfg_parallelism"] = "auto"
 
-    # Survey button — detects hardware and writes recommended values to session state.
-    if st.button("🔍 Detect recommended settings", use_container_width=True):
+    # Preset selector — surveys hardware and applies conservative or maximum settings.
+    _preset_col, _apply_col = st.columns([3, 1])
+    with _preset_col:
+        _preset = st.selectbox(
+            "Settings preset",
+            options=["Max", "Background"],
+            index=0,
+            label_visibility="collapsed",
+            help=(
+                "**Max:** largest viable model and full parallelism — "
+                "machine is dedicated to Chorus while running.\n\n"
+                "**Background:** one model tier lower, parallelism pinned to 1 — "
+                "machine stays responsive for other work."
+            ),
+        )
+    with _apply_col:
+        _apply = st.button("🔍 Apply", use_container_width=True)
+
+    if _apply:
         with st.spinner("Surveying hardware…"):
             _hw = detect_hardware()
-            _rec = recommend_settings(_hw)
+            _rec = (
+                recommend_settings(_hw)
+                if _preset == "Max"
+                else recommend_settings_background(_hw)
+            )
         st.session_state["cfg_model"] = _rec["whisper_model"]
         st.session_state["cfg_device"] = _rec["device"]
         st.session_state["cfg_parallelism"] = _rec["parallelism"]
-        st.session_state["survey_summary"] = summarise(_hw, _rec)
+        st.session_state["survey_summary"] = f"**{_preset}** — {summarise(_hw, _rec)}"
         st.rerun()
 
     if st.session_state.get("survey_summary"):

@@ -51,6 +51,25 @@ def recommend_settings(hw: dict) -> dict:
     }
 
 
+_MODEL_TIERS = ["tiny", "base", "small", "medium", "large"]
+
+
+def recommend_settings_background(hw: dict) -> dict:
+    """Conservative settings that keep the machine usable while Chorus runs.
+
+    One Whisper model tier below max, parallelism pinned to 1 so transcription
+    passes run sequentially and don't saturate CPU/memory.
+    """
+    max_rec = recommend_settings(hw)
+    max_idx = _MODEL_TIERS.index(max_rec["whisper_model"])
+    bg_model = _MODEL_TIERS[max(0, max_idx - 1)]
+    return {
+        "whisper_model": bg_model,
+        "device": max_rec["device"],
+        "parallelism": "1",
+    }
+
+
 def summarise(hw: dict, rec: dict) -> str:
     """Return a short human-readable summary of detection results."""
     gpu_label = {
