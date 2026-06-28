@@ -783,12 +783,18 @@ with st.sidebar:
 
     # ── Model & Device ────────────────────────────────────────────────────────
     st.subheader("Model & Device")
-    model_options = ["tiny", "base", "small", "medium"]
+    model_options = ["tiny", "base", "small", "medium", "large"]
+    _safe_index = (
+        model_options.index(WHISPER_MODEL) if WHISPER_MODEL in model_options else 1
+    )
     model_choice = st.selectbox(
         "Model size",
         options=model_options,
-        index=model_options.index(WHISPER_MODEL),
-        help="Larger models are more accurate but slower. 'base' is recommended for local CPU use.",  # noqa: E501
+        index=_safe_index,
+        help=(
+            "Larger models are more accurate but slower. 'base' is recommended for CPU. "
+            "'large' requires ~10 GB RAM and a GPU for practical use — see docs/CONFIGURATION.md."
+        ),
     )
 
     default_consensus = [m for m in CONSENSUS_MODELS if m in model_options] or [
