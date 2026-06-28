@@ -161,22 +161,25 @@ fi
 echo "Reasoning: $REASONING"
 echo -e "\n${GREEN}Recommended models for your system:${NC}"
 
-# Define model info
-declare -A MODEL_INFO=(
-  ["tiny-llama:latest"]="TinyLlama 1.1B — Ultra-fast, low memory (~2GB)"
-  ["neural-chat:7b-v3.1-q4_0"]="Neural Chat 7B (4-bit) — Fast, high quality (~4GB)"
-  ["mistral:latest"]="Mistral 7B — Best speed/quality balance (~5GB)"
-  ["llama2:7b-q4_K_M"]="Llama2 7B (quantized) — Excellent reasoning (~4GB)"
-  ["llama2:7b"]="Llama2 7B (full) — High quality (~15GB)"
-  ["neural-chat:7b-v3.1"]="Neural Chat 7B — Quality conversation (~15GB)"
-  ["dolphin-mixtral:latest"]="Dolphin Mixtral 8x7B — Powerful MoE (~20GB)"
-  ["neural-chat:13b"]="Neural Chat 13B — High accuracy (~28GB)"
-  ["llama2:13b"]="Llama2 13B — Strong reasoning (~28GB)"
-  ["llama2:70b-q3_K_M"]="Llama2 70B (3-bit) — Expert level (~24GB)"
-)
+# Define model info (bash 3.2 compatible - no associative arrays)
+get_model_info() {
+  case "$1" in
+    "tiny-llama:latest") echo "TinyLlama 1.1B — Ultra-fast, low memory (~2GB)" ;;
+    "neural-chat:7b-v3.1-q4_0") echo "Neural Chat 7B (4-bit) — Fast, high quality (~4GB)" ;;
+    "mistral:latest") echo "Mistral 7B — Best speed/quality balance (~5GB)" ;;
+    "llama2:7b-q4_K_M") echo "Llama2 7B (quantized) — Excellent reasoning (~4GB)" ;;
+    "llama2:7b") echo "Llama2 7B (full) — High quality (~15GB)" ;;
+    "neural-chat:7b-v3.1") echo "Neural Chat 7B — Quality conversation (~15GB)" ;;
+    "dolphin-mixtral:latest") echo "Dolphin Mixtral 8x7B — Powerful MoE (~20GB)" ;;
+    "neural-chat:13b") echo "Neural Chat 13B — High accuracy (~28GB)" ;;
+    "llama2:13b") echo "Llama2 13B — Strong reasoning (~28GB)" ;;
+    "llama2:70b-q3_K_M") echo "Llama2 70B (3-bit) — Expert level (~24GB)" ;;
+    *) echo "Unknown model" ;;
+  esac
+}
 
 for model in "${RECOMMENDED_MODELS[@]}"; do
-  VRAM_EST="${MODEL_INFO[$model]:-Unknown}"
+  VRAM_EST=$(get_model_info "$model")
   echo "  • $model"
   echo "    $VRAM_EST"
 done
