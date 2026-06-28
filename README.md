@@ -46,7 +46,7 @@ This is the recommended approach. The Docker image encapsulates the Python envir
 1. **Clone the repository:**
 
    ```bash
-   git clone -b v3.2.0 https://github.com/incendiary/Chorus.git
+   git clone -b v3.2.1 https://github.com/incendiary/Chorus.git
    cd Chorus
    ```
 
@@ -299,15 +299,15 @@ Pre-built images are published to [GitHub Container Registry](https://ghcr.io/in
 ### CPU
 
 ```bash
-docker pull ghcr.io/incendiary/chorus:v3.2.0
-docker run --rm -p 8501:8501 ghcr.io/incendiary/chorus:v3.2.0
+docker pull ghcr.io/incendiary/chorus:v3.2.1
+docker run --rm -p 8501:8501 ghcr.io/incendiary/chorus:v3.2.1
 ```
 
 ### GPU (NVIDIA CUDA)
 
 ```bash
-docker pull ghcr.io/incendiary/chorus:v3.2.0-gpu
-docker run --rm -p 8501:8501 --gpus all ghcr.io/incendiary/chorus:v3.2.0-gpu
+docker pull ghcr.io/incendiary/chorus:v3.2.1-gpu
+docker run --rm -p 8501:8501 --gpus all ghcr.io/incendiary/chorus:v3.2.1-gpu
 ```
 
 Access the UI at [http://localhost:8501](http://localhost:8501).

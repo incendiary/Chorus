@@ -130,11 +130,7 @@ Tracked improvements identified during the June 2026 repository assessment.
   - Instructions for LLM-assisted analysis: examples of how to prompt an LLM to use Chorus outputs for downstream tasks (summarisation, fact-checking, speaker intent analysis).
   - Metadata fields in bundle.json and how to extract structured data programmatically.
 
-- [ ] **Live log window with user-configurable line count** — the Logs page currently requires scrolling through all entries. Improve UX by adding a sticky corner control:
-  - Configurable input field (default: 50 lines) in the top-right corner of the log display.
-  - Live window that shows only the last N lines, dynamically updating as the user changes N.
-  - Preserve the existing "Download" and "Clear" buttons and full-log accessibility.
-  - Consider adding a "Follow tail" toggle to auto-scroll to newest entries as they arrive.
+- [x] **Live log window with user-configurable line count** (v3.2.1) — tail-N number input (default 50) added to the Logs page toolbar; shows only the last N entries. Consecutive identical messages deduplicated with ×N repeat badge. Existing Download and Clear buttons preserved.
 
 - [ ] **Resolve librosa audioread deprecation** — librosa 0.10.0 deprecated `librosa.core.audio.__audioread_load`, which will be removed in v1.0. Currently the audio processor falls back to this path when PySoundFile/soundfile is unavailable. Remediate:
   - Ensure soundfile is a hard dependency with clear installation instructions (optional in macOS; may require system libraries on Linux).
@@ -150,4 +146,16 @@ Tracked improvements identified during the June 2026 repository assessment.
 
 ---
 
-*Last updated: 24 June 2026*
+## Completed — v3.2.1 UI Fixes & Code Quality
+
+- [x] **Black formatting drift resolved** (v3.2.1) — 9 files flagged by CI Black check reformatted. No logic changes; CI Black step now passes on main.
+
+- [x] **Past Jobs duplicate element key crash** (v3.2.1) — `StreamlitDuplicateElementKey` raised when the same source file was processed more than once. Download button keys now include `full_stem` to ensure per-run uniqueness.
+
+- [x] **Past Jobs delete with confirmation** (v3.2.1) — inline delete button added to each run expander. Confirmation prompt shows file count before deletion; removes all associated artefacts from disk.
+
+- [x] **Past Jobs grouped by date** (v3.2.1) — runs now rendered under date subheadings (newest first) instead of a flat list.
+
+---
+
+*Last updated: 28 June 2026*
