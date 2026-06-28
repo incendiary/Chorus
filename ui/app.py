@@ -31,13 +31,20 @@ _ROOT = Path(__file__).resolve().parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
+import config  # noqa: E402
 from config import (  # noqa: E402
     ALIGNMENT_STRATEGY,
     CONSENSUS_MODELS,
     NOISE_FLOOR_MODE,
     VARIANT_LABELS,
+    WHISPER_DEVICE,
     WHISPER_MODEL,
 )
+from ui.hardware_survey import (
+    detect_hardware,
+    recommend_settings,
+    summarise,
+)  # noqa: E402  # type: ignore[import]
 from export_engine.exporter import (  # noqa: E402
     export_all,
     export_plain_text,
@@ -783,21 +790,47 @@ with st.sidebar:
 
     # ── Model & Device ────────────────────────────────────────────────────────
     st.subheader("Model & Device")
-    model_options = ["tiny", "base", "small", "medium", "large"]
-    _safe_index = (
-        model_options.index(WHISPER_MODEL) if WHISPER_MODEL in model_options else 1
-    )
+
+    # Initialise session-state defaults on first load so the survey button can
+    # overwrite them and trigger a rerun that pre-selects the new values.
+    _model_options = ["tiny", "base", "small", "medium", "large"]
+    _device_options = ["auto", "cpu", "cuda", "mps"]
+    if "cfg_model" not in st.session_state:
+        st.session_state["cfg_model"] = (
+            WHISPER_MODEL if WHISPER_MODEL in _model_options else "base"
+        )
+    if "cfg_device" not in st.session_state:
+        st.session_state["cfg_device"] = (
+            WHISPER_DEVICE if WHISPER_DEVICE in _device_options else "auto"
+        )
+    if "cfg_parallelism" not in st.session_state:
+        st.session_state["cfg_parallelism"] = "auto"
+
+    # Survey button — detects hardware and writes recommended values to session state.
+    if st.button("🔍 Detect recommended settings", use_container_width=True):
+        with st.spinner("Surveying hardware…"):
+            _hw = detect_hardware()
+            _rec = recommend_settings(_hw)
+        st.session_state["cfg_model"] = _rec["whisper_model"]
+        st.session_state["cfg_device"] = _rec["device"]
+        st.session_state["cfg_parallelism"] = _rec["parallelism"]
+        st.session_state["survey_summary"] = summarise(_hw, _rec)
+        st.rerun()
+
+    if st.session_state.get("survey_summary"):
+        st.info(st.session_state["survey_summary"])
+
     model_choice = st.selectbox(
         "Model size",
-        options=model_options,
-        index=_safe_index,
+        options=_model_options,
+        key="cfg_model",
         help=(
             "Larger models are more accurate but slower. 'base' is recommended for CPU. "
-            "'large' requires ~10 GB RAM and a GPU for practical use — see docs/CONFIGURATION.md."
+            "'large' requires ~10 GB RAM and a GPU — see docs/CONFIGURATION.md."
         ),
     )
 
-    default_consensus = [m for m in CONSENSUS_MODELS if m in model_options] or [
+    default_consensus = [m for m in CONSENSUS_MODELS if m in _model_options] or [
         model_choice
     ]
     if model_choice not in default_consensus:
@@ -805,7 +838,7 @@ with st.sidebar:
 
     consensus_model_choice = st.multiselect(
         "Consensus models",
-        options=model_options,
+        options=_model_options,
         default=default_consensus,
         help=(
             "Choose one or more models for consensus voting. The first selected model "
@@ -821,22 +854,54 @@ with st.sidebar:
         ]
     consensus_models = tuple(dict.fromkeys(consensus_model_choice))
 
-    # Warn if model changed and is already loaded
-    if model_choice != WHISPER_MODEL:
-        st.warning(
-            "⚠️ Model changed — restart required to load the new model.",
-            icon="⚠️",
+    device_choice = st.selectbox(
+        "Compute device",
+        options=_device_options,
+        key="cfg_device",
+        format_func=lambda x: {
+            "auto": "Auto-detect (recommended)",
+            "cpu": "CPU",
+            "cuda": "NVIDIA CUDA (GPU)",
+            "mps": "Apple MPS (Apple Silicon)",
+        }.get(x, x),
+        help=(
+            "**Auto:** probes CUDA → MPS → CPU and selects the best available.\n\n"
+            "**CPU:** works everywhere; slowest.\n\n"
+            "**CUDA:** NVIDIA GPU. Requires NVIDIA Container Toolkit (Docker) or native drivers.\n\n"
+            "**MPS:** Apple Silicon GPU. Native macOS only — not available inside Docker. "
+            "Note: a CPU fallback is triggered automatically for float64 operations."
+        ),
+    )
+
+    parallelism_raw = st.session_state.get("cfg_parallelism", "auto")
+    _par_is_auto = parallelism_raw == "auto"
+    parallelism_auto = st.checkbox(
+        "Auto parallelism",
+        value=_par_is_auto,
+        help=(
+            "Let Chorus choose the worker count based on device and available capacity. "
+            "Disable to pin an exact number of parallel transcription passes."
+        ),
+    )
+    if parallelism_auto:
+        st.session_state["cfg_parallelism"] = "auto"
+        parallelism_choice = "auto"
+    else:
+        _par_default = int(parallelism_raw) if parallelism_raw.isdigit() else 2
+        parallelism_choice = str(
+            st.number_input(
+                "Worker count",
+                min_value=1,
+                max_value=16,
+                value=_par_default,
+                step=1,
+                help=(
+                    "Number of concurrent transcription passes. "
+                    "Pin to 1 on low-RAM machines to avoid memory pressure."
+                ),
+            )
         )
-
-    # Show detected compute device
-    from config import WHISPER_DEVICE  # noqa: E402
-
-    device_icons = {
-        "cuda": "🟢 CUDA (GPU)",
-        "mps": "🟠 MPS (Apple Silicon)",
-        "cpu": "⚪ CPU",
-    }
-    st.caption(f"**Device:** {device_icons.get(WHISPER_DEVICE, WHISPER_DEVICE)}")
+        st.session_state["cfg_parallelism"] = parallelism_choice
 
     # ── Language ──────────────────────────────────────────────────────────────
     st.subheader("Language")
@@ -1111,6 +1176,14 @@ if uploaded_files:
         os.environ["WHISPER_MODEL"] = model_choice
         os.environ["CONSENSUS_MODELS"] = ",".join(consensus_models)
         os.environ["NOISE_FLOOR_MODE"] = noise_mode_choice
+
+        # Apply device and parallelism overrides to the live config module so the
+        # transcription engine and orchestrator pick them up without a restart.
+        _effective_device = device_choice if device_choice != "auto" else WHISPER_DEVICE
+        config.WHISPER_DEVICE = _effective_device
+        os.environ["WHISPER_DEVICE"] = _effective_device
+        config.TRANSCRIPTION_PARALLELISM = parallelism_choice
+        os.environ["TRANSCRIPTION_PARALLELISM"] = parallelism_choice
 
         formats_to_export = [
             fmt
