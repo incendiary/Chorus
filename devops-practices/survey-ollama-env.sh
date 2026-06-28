@@ -158,6 +158,59 @@ if [[ "$GPU_TYPE" != "none" ]]; then
   fi
 fi
 
+# ── Whisper model recommendation ─────────────────────────────────────────────
+# Derive a recommended WHISPER_MODEL based on available RAM and GPU.
+# Thresholds mirror the guidance in docs/CONFIGURATION.md.
+
+WHISPER_RECOMMENDED="base"
+WHISPER_REASONING=""
+
+if [[ "$GPU_TYPE" == "NVIDIA CUDA" ]]; then
+  if [[ "$GPU_VRAM_GB" -ge 10 ]]; then
+    WHISPER_RECOMMENDED="large"
+    WHISPER_REASONING="NVIDIA GPU with ${GPU_VRAM_GB}GB VRAM — large model fully supported"
+  elif [[ "$GPU_VRAM_GB" -ge 5 ]]; then
+    WHISPER_RECOMMENDED="medium"
+    WHISPER_REASONING="NVIDIA GPU with ${GPU_VRAM_GB}GB VRAM — medium is the best practical fit"
+  elif [[ "$GPU_VRAM_GB" -ge 2 ]]; then
+    WHISPER_RECOMMENDED="small"
+    WHISPER_REASONING="NVIDIA GPU with ${GPU_VRAM_GB}GB VRAM — small balances speed and accuracy"
+  else
+    WHISPER_RECOMMENDED="base"
+    WHISPER_REASONING="NVIDIA GPU with low VRAM — base recommended to avoid OOM"
+  fi
+elif [[ "$GPU_TYPE" == "Apple Silicon (MPS)" ]]; then
+  # Unified memory is shared; leave headroom for the OS and audio pipeline.
+  if [[ "$TOTAL_MEM_GB" -ge 32 ]]; then
+    WHISPER_RECOMMENDED="large"
+    WHISPER_REASONING="Apple Silicon with ${TOTAL_MEM_GB}GB unified memory — large model fits comfortably"
+  elif [[ "$TOTAL_MEM_GB" -ge 16 ]]; then
+    WHISPER_RECOMMENDED="medium"
+    WHISPER_REASONING="Apple Silicon with ${TOTAL_MEM_GB}GB unified memory — medium recommended"
+  elif [[ "$TOTAL_MEM_GB" -ge 8 ]]; then
+    WHISPER_RECOMMENDED="small"
+    WHISPER_REASONING="Apple Silicon with ${TOTAL_MEM_GB}GB unified memory — small is the safe choice (large may OOM)"
+  else
+    WHISPER_RECOMMENDED="base"
+    WHISPER_REASONING="Apple Silicon with ${TOTAL_MEM_GB}GB unified memory — base keeps headroom for the OS"
+  fi
+else
+  # CPU-only path
+  if [[ "$TOTAL_MEM_GB" -ge 16 ]]; then
+    WHISPER_RECOMMENDED="medium"
+    WHISPER_REASONING="CPU-only with ${TOTAL_MEM_GB}GB RAM — medium works but expect slower transcription"
+  elif [[ "$TOTAL_MEM_GB" -ge 8 ]]; then
+    WHISPER_RECOMMENDED="small"
+    WHISPER_REASONING="CPU-only with ${TOTAL_MEM_GB}GB RAM — small gives a good accuracy/speed balance"
+  elif [[ "$TOTAL_MEM_GB" -ge 4 ]]; then
+    WHISPER_RECOMMENDED="base"
+    WHISPER_REASONING="CPU-only with ${TOTAL_MEM_GB}GB RAM — base is the practical default"
+  else
+    WHISPER_RECOMMENDED="tiny"
+    WHISPER_REASONING="Low RAM (${TOTAL_MEM_GB}GB) — tiny minimises memory footprint"
+  fi
+fi
+
 echo "Reasoning: $REASONING"
 echo -e "\n${GREEN}Recommended models for your system:${NC}"
 
@@ -183,6 +236,15 @@ for model in "${RECOMMENDED_MODELS[@]}"; do
   echo "  • $model"
   echo "    $VRAM_EST"
 done
+
+echo ""
+echo -e "${GREEN}Recommended Whisper model for transcription:${NC}"
+echo "  WHISPER_MODEL=${WHISPER_RECOMMENDED}"
+echo "  Reason: $WHISPER_REASONING"
+echo ""
+echo "  Set this in your .env file, or export it before starting Chorus:"
+echo "    export WHISPER_MODEL='${WHISPER_RECOMMENDED}'"
+echo "  See docs/CONFIGURATION.md for full model comparison."
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Setup Instructions & Interactive Actions
@@ -293,6 +355,7 @@ echo -e "${BLUE}Summary${NC}"
 echo -e "${BLUE}═══════════════════════════════════════════════════════════════${NC}"
 echo "System: $UNAME | RAM: ${TOTAL_MEM_GB}GB | CPU: $CPU_CORES cores | GPU: $GPU_TYPE"
 echo "Ollama: $([ "$OLLAMA_INSTALLED" = true ] && echo "Installed" || echo "Not installed") | Status: $([ "$OLLAMA_RUNNING" = true ] && echo "Running" || echo "Not running")"
-echo "Recommended model: $PRIMARY_MODEL"
+echo "Recommended Ollama model: $PRIMARY_MODEL"
+echo "Recommended Whisper model: $WHISPER_RECOMMENDED  (${WHISPER_REASONING})"
 echo ""
 echo -e "${GREEN}✓ Survey complete!${NC}"
