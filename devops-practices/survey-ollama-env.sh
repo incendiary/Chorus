@@ -264,10 +264,24 @@ fi
 echo ""
 echo -e "${GREEN}Ready to use Chorus with Ollama!${NC}"
 echo ""
+echo -e "${YELLOW}Recommended models to pull:${NC}"
+for model in "${RECOMMENDED_MODELS[@]:0:3}"; do
+  echo "  ollama pull $model"
+done
+echo ""
+echo -e "${YELLOW}Starting Chorus (Docker)${NC}"
 echo "To start Chorus with LLM reconstruction enabled:"
+echo ""
 echo "  export OLLAMA_MODEL='$PRIMARY_MODEL'"
 echo "  export OLLAMA_BASE_URL='http://localhost:11434'"
 echo "  docker-compose -f docker-compose.yml -f docker-compose.ollama.yml up"
+echo ""
+echo -e "${YELLOW}Starting Chorus (Bare Metal/Native)${NC}"
+echo "To start Chorus with LLM reconstruction enabled:"
+echo ""
+echo "  export OLLAMA_MODEL='$PRIMARY_MODEL'"
+echo "  export OLLAMA_BASE_URL='http://localhost:11434'"
+echo "  streamlit run ui/app.py"
 echo ""
 
 # ─────────────────────────────────────────────────────────────────────────────
