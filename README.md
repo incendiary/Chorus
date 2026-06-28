@@ -155,21 +155,37 @@ If Chorus is run natively on Apple Silicon and the MPS device fails to load (e.g
 
 Chorus integrates with [Ollama](https://ollama.ai) for optional local LLM-based token reconstruction. This improves LOW-confidence word recovery without cloud dependencies.
 
-### Survey Your System
+### Survey Your System & Auto-Setup Ollama
 
-To determine which Ollama models are appropriate for your hardware:
+Run this interactive script to survey your hardware and optionally set up Ollama:
 
 ```bash
 bash devops-practices/survey-ollama-env.sh
 ```
 
-This script probes your system for:
-- Available RAM and CPU cores
-- GPU availability (NVIDIA CUDA, Apple Silicon MPS, etc.)
-- Ollama installation status
-- Free disk space
+This script:
+1. **Surveys your system** for available RAM, CPU cores, GPU (NVIDIA CUDA, Apple Silicon MPS, etc.), and free disk space
+2. **Recommends models** based on your hardware constraints
+3. **Offers to start Ollama** if not running (`ollama serve`)
+4. **Offers to pull recommended models** (e.g., `ollama pull mistral:latest`)
+5. **Shows model pull commands** for all top recommendations
+6. **Provides ready-to-run commands** for both Docker and bare-metal deployments
 
-Then recommends suitable models based on your resources.
+Example output:
+```
+Recommended models to pull:
+  ollama pull mistral:latest
+  ollama pull llama2:13b
+  ollama pull neural-chat:7b-v3.1
+
+Starting Chorus (Docker)
+  export OLLAMA_MODEL='mistral:latest'
+  docker-compose -f docker-compose.yml -f docker-compose.ollama.yml up
+
+Starting Chorus (Bare Metal/Native)
+  export OLLAMA_MODEL='mistral:latest'
+  streamlit run ui/app.py
+```
 
 ### Install Ollama
 
