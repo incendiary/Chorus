@@ -17,7 +17,8 @@ accessible via environment variable are marked **(env only)**.
 | Best accuracy, fast machine | `WHISPER_MODEL=medium`, consensus `small,medium`, `sequence` alignment |
 | Meeting with multiple speakers | Add diarisation; use `medium` model |
 | Low-RAM machine (< 8 GB) | `WHISPER_MODEL=tiny` or `base`; `TRANSCRIPTION_PARALLELISM=1` |
-| Apple Silicon, native install | Leave device blank (auto-selects MPS); use `small` or `medium` |
+| Apple Silicon 16 GB, native install | Leave device blank (auto-selects MPS); use `small` or `medium` |
+| Apple Silicon 32 GB + Ollama LLM | Use `large` model + large Ollama model — Whisper cache is released before Ollama loads |
 | Non-English audio | Set `WHISPER_LANGUAGE` to the BCP-47 code; use `medium` or `large` |
 
 ---
@@ -153,10 +154,11 @@ speech or music starts immediately.
 
 ## Compute Device
 
-**`WHISPER_DEVICE`** **(env only)** — values: `cpu` | `cuda` | `mps` | *(blank for auto)*
+**`WHISPER_DEVICE`** **(UI + env)** — values: `auto` | `cpu` | `cuda` | `mps`
 
-Controls which hardware PyTorch uses for Whisper inference. Leave blank to use
-auto-detection (recommended).
+Controls which hardware PyTorch uses for Whisper inference. The UI sidebar exposes a
+**Compute device** selectbox; the `auto` option (default) probes the system and selects
+the best available device automatically.
 
 ### Auto-detection order
 
@@ -181,7 +183,8 @@ A warning is logged when this fallback occurs — it is expected behaviour, not 
 
 ### Manual override
 
-Set `WHISPER_DEVICE` in `.env` to force a specific device:
+Select from the **Compute device** dropdown in the sidebar, or set in `.env` for
+headless/Docker deployments:
 
 ```bash
 WHISPER_DEVICE=cpu    # Force CPU regardless of GPU availability
@@ -193,11 +196,14 @@ WHISPER_DEVICE=mps    # Force Apple MPS (native macOS only)
 
 ## Transcription Parallelism
 
-**`TRANSCRIPTION_PARALLELISM`** **(env only)** — values: `auto` (default) | integer (e.g. `1`, `2`, `4`)
+**`TRANSCRIPTION_PARALLELISM`** **(UI + env)** — values: `auto` (default) | integer (e.g. `1`, `2`, `4`)
 
 Controls how many audio variant passes run concurrently. Chorus uses a thread pool to
 run multiple Whisper transcription passes in parallel, assigning each worker to a
 device (or a specific CUDA device in multi-GPU setups).
+
+The UI sidebar exposes an **Auto parallelism** toggle. Unchecking it reveals a
+**Worker count** input (1–16) for explicit control.
 
 ### Auto mode (default)
 
@@ -207,7 +213,7 @@ it exploits parallelism more aggressively.
 
 ### Manual override
 
-Pin to a specific count when auto is not appropriate:
+Use the Worker count input in the sidebar, or set in `.env` for headless deployments:
 
 ```bash
 TRANSCRIPTION_PARALLELISM=1   # Strictly sequential; minimum memory footprint
@@ -325,6 +331,42 @@ If Ollama is unreachable, times out, or returns a malformed response, Chorus ret
 the original LOW-confidence token unchanged and continues. The pipeline never fails due
 to LLM reconstruction errors.
 
+### Memory sequencing — Whisper and Ollama
+
+Whisper and Ollama are strictly sequential: Whisper finishes all transcription passes
+before Ollama is invoked. However, Whisper's model remains cached in the Chorus process
+by default, so both models would occupy memory simultaneously during reconstruction.
+
+When LLM reconstruction is enabled, Chorus explicitly clears the Whisper model cache
+immediately after transcription completes. This means peak memory is whichever model
+is larger, not the sum.
+
+**Practical example — Apple Silicon 32 GB:**
+
+| Configuration | Without cache release | With cache release |
+|---|---|---|
+| Whisper `large` + `neural-chat:13b` | ~31 GB peak | ~28 GB peak |
+| Whisper `medium` + `llama3.1:8b` | ~6.5 GB peak | ~5 GB peak |
+
+This makes large-model combinations viable on 32 GB unified memory machines. Whisper
+reloads from disk on subsequent pipeline runs within the same session (the model weights
+remain on disk; only the in-memory copy is freed).
+
+---
+
+## Hardware Survey
+
+The **🔍 Detect recommended settings** button in the UI sidebar surveys your hardware
+in-process (RAM, CPU cores, GPU via PyTorch) and pre-populates the model, device, and
+parallelism controls with the best fit for your machine. Recommendations use the same
+thresholds as the `devops-practices/survey-ollama-env.sh` script.
+
+The same logic is available from the command line:
+
+```bash
+bash devops-practices/survey-ollama-env.sh
+```
+
 ---
 
 ## Speaker Diarisation
@@ -386,9 +428,9 @@ A complete reference of all environment variables recognised by Chorus.
 |---|---|---|---|
 | `WHISPER_MODEL` | `base` | ✓ | Primary Whisper model: `tiny` / `base` / `small` / `medium` / `large` |
 | `CONSENSUS_MODELS` | *(same as `WHISPER_MODEL`)* | ✓ | Comma-separated list of models for multi-model consensus passes |
-| `WHISPER_DEVICE` | *(auto)* | — | Compute device: `cpu` / `cuda` / `mps` |
+| `WHISPER_DEVICE` | *(auto)* | ✓ | Compute device: `auto` / `cpu` / `cuda` / `mps` |
 | `WHISPER_LANGUAGE` | *(auto-detect)* | ✓ | BCP-47 language code (e.g. `en`, `fr`) |
-| `TRANSCRIPTION_PARALLELISM` | `auto` | — | Worker pool size: `auto` or an integer |
+| `TRANSCRIPTION_PARALLELISM` | `auto` | ✓ | Worker pool size: `auto` or an integer |
 | `ALIGNMENT_STRATEGY` | `sequence` | ✓ | Consensus alignment: `sequence` (Needleman-Wunsch) or `positional` |
 | `NOISE_FLOOR_MODE` | `vad` | ✓ | Noise floor detection: `vad` (auto) or `fixed` (first 0.5 s) |
 | `OLLAMA_BASE_URL` | `http://localhost:11434` | — | Ollama server endpoint |
