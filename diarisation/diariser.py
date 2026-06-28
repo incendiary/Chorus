@@ -371,7 +371,9 @@ def load_speaker_names(stem: str) -> dict[str, str]:
         return {}
 
 
-def save_speaker_names(stem: str, speaker_map: dict[str, str], output_dir: Path | None = None) -> Path:
+def save_speaker_names(
+    stem: str, speaker_map: dict[str, str], output_dir: Path | None = None
+) -> Path:
     """
     Save a speaker name mapping to the sidecar JSON file.
 

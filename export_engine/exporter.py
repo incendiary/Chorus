@@ -86,7 +86,12 @@ def _md_to_html(md_text: str) -> str:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def export_pdf(consensus_md_path: Path, stem: str, output_dir: Path | None = None, source_filename: str | None = None) -> Path:
+def export_pdf(
+    consensus_md_path: Path,
+    stem: str,
+    output_dir: Path | None = None,
+    source_filename: str | None = None,
+) -> Path:
     """
     Export the consensus Markdown document to PDF via WeasyPrint.
 
@@ -117,8 +122,7 @@ def export_pdf(consensus_md_path: Path, stem: str, output_dir: Path | None = Non
     md_text = consensus_md_path.read_text(encoding="utf-8")
     html_body = _md_to_html(md_text)
 
-    css = CSS(
-        string="""
+    css = CSS(string="""
         @page { margin: 2cm; }
         body {
             font-family: 'Georgia', serif;
@@ -162,8 +166,7 @@ def export_pdf(consensus_md_path: Path, stem: str, output_dir: Path | None = Non
             font-size: 10pt;
         }
         hr { border: none; border-top: 1px solid #dee2e6; margin: 1.5em 0; }
-    """
-    )
+    """)
 
     full_html = f"""<!DOCTYPE html>
 <html lang="en">
@@ -184,7 +187,12 @@ def export_pdf(consensus_md_path: Path, stem: str, output_dir: Path | None = Non
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def export_docx(consensus_md_path: Path, stem: str, output_dir: Path | None = None, source_filename: str | None = None) -> Path:
+def export_docx(
+    consensus_md_path: Path,
+    stem: str,
+    output_dir: Path | None = None,
+    source_filename: str | None = None,
+) -> Path:
     """
     Export the consensus Markdown document to a styled DOCX file.
 
@@ -301,7 +309,10 @@ def _extract_word_timestamps(whisper_result: dict[str, Any]) -> list[dict[str, A
 
 
 def export_srt(
-    whisper_result: dict[str, Any], stem: str, word_level: bool = True, output_dir: Path | None = None
+    whisper_result: dict[str, Any],
+    stem: str,
+    word_level: bool = True,
+    output_dir: Path | None = None,
 ) -> Path:
     """
     Export Whisper data as a SubRip (.srt) subtitle file.
@@ -361,7 +372,10 @@ def export_srt(
 
 
 def export_vtt(
-    whisper_result: dict[str, Any], stem: str, word_level: bool = True, output_dir: Path | None = None
+    whisper_result: dict[str, Any],
+    stem: str,
+    word_level: bool = True,
+    output_dir: Path | None = None,
 ) -> Path:
     """
     Export Whisper data as a WebVTT (.vtt) subtitle file.

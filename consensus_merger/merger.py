@@ -68,7 +68,11 @@ def merge_transcripts_with_votes(
         votes = reconstruct_low_tokens_llm(votes, model=ollama_model)
 
     out_path = render_consensus(
-        votes, stem, transcripts, consensus_dir=consensus_dir, source_filename=source_filename
+        votes,
+        stem,
+        transcripts,
+        consensus_dir=consensus_dir,
+        source_filename=source_filename,
     )
     return out_path, votes
 

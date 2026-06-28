@@ -103,12 +103,14 @@ def render_consensus(
     ]
     if source_filename:
         lines.append(f"> **Source file:** `{source_filename}`  ")
-    lines.extend([
-        f"> **Source stem:** `{stem}`  ",
-        f"> **Whisper model:** `{next(iter(transcripts_meta.values())).get('model', 'unknown')}`  ",  # noqa: E501
-        f"> **Language detected:** `{next(iter(transcripts_meta.values())).get('language', 'unknown')}`",  # noqa: E501
-        "",
-    ])
+    lines.extend(
+        [
+            f"> **Source stem:** `{stem}`  ",
+            f"> **Whisper model:** `{next(iter(transcripts_meta.values())).get('model', 'unknown')}`  ",  # noqa: E501
+            f"> **Language detected:** `{next(iter(transcripts_meta.values())).get('language', 'unknown')}`",  # noqa: E501
+            "",
+        ]
+    )
 
     # ── Variant summary table ────────────────────────────────────────────────
     lines += [

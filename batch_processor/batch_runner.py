@@ -250,8 +250,11 @@ def run_batch(
                         whisper_result=pipeline_out["transcripts"]["original"],
                         stem=pipeline_out.get("stem", audio_path.stem),
                         formats=export_formats,
-                        output_dir=file_output_dir / "consensus" if file_output_dir else None,
-                    ) or {}
+                        output_dir=(
+                            file_output_dir / "consensus" if file_output_dir else None
+                        ),
+                    )
+                    or {}
                 )
 
             result.success = True

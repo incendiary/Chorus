@@ -93,7 +93,9 @@ def run_pipeline(
     audio_path = Path(audio_path)
     ensure_output_dirs()
     stem = sanitise_stem(audio_path.stem, fallback="audio")
-    source_filename = audio_path.name  # Original filename with extension for traceability
+    source_filename = (
+        audio_path.name
+    )  # Original filename with extension for traceability
     t_start = time.perf_counter()
 
     # Derive per-stage output dirs from optional override

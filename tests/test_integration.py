@@ -627,12 +627,8 @@ class TestOutputDirIsolation:
         out_1 = tmp_path / "run_1"
         out_2 = tmp_path / "run_2"
 
-        result_1 = run_pipeline(
-            audio_path=audio_1, language="en", output_dir=out_1
-        )
-        result_2 = run_pipeline(
-            audio_path=audio_2, language="en", output_dir=out_2
-        )
+        result_1 = run_pipeline(audio_path=audio_1, language="en", output_dir=out_1)
+        result_2 = run_pipeline(audio_path=audio_2, language="en", output_dir=out_2)
 
         # Consensus files must be in different directories despite same stem
         assert result_1["consensus_path"].parent == out_1 / "consensus"
