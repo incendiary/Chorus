@@ -185,35 +185,88 @@ for model in "${RECOMMENDED_MODELS[@]}"; do
 done
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Setup Instructions
+# Setup Instructions & Interactive Actions
 # ─────────────────────────────────────────────────────────────────────────────
 
-echo -e "\n${YELLOW}[6/6] Setup Instructions${NC}"
+echo -e "\n${YELLOW}[6/6] Setup & Installation${NC}"
 
+PRIMARY_MODEL="${RECOMMENDED_MODELS[0]}"
+
+# Step 1: Ollama Installation
 if [[ "$OLLAMA_INSTALLED" == false ]]; then
-  echo -e "${RED}Ollama is not installed.${NC}"
+  echo -e "${RED}✗ Ollama is not installed.${NC}"
   echo ""
-  echo "Install Ollama:"
+  echo "Manual installation required:"
   echo "  1. Visit: https://ollama.ai/download"
-  echo "  2. Download and install for your OS"
-  echo "  3. Start the server: ollama serve"
+  echo "  2. Download for your OS ($UNAME)"
+  echo "  3. Follow installation instructions"
+  echo "  4. Then re-run this script"
+  echo ""
+else
+  echo -e "${GREEN}✓ Ollama is installed${NC}"
 fi
 
+# Step 2: Start Ollama Server
+if [[ "$OLLAMA_INSTALLED" == true ]]; then
+  if [[ "$OLLAMA_RUNNING" == false ]]; then
+    echo ""
+    echo -e "${YELLOW}Ollama server is not running.${NC}"
+    read -p "Would you like to start Ollama server now? (y/n) " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+      echo "Starting Ollama server..."
+      nohup ollama serve > /tmp/ollama.log 2>&1 &
+      OLLAMA_PID=$!
+      echo "Ollama started with PID $OLLAMA_PID"
+      echo "Waiting for server to start..."
+      sleep 3
+
+      # Verify it started
+      if curl -s http://localhost:11434/api/tags &> /dev/null; then
+        echo -e "${GREEN}✓ Ollama server is running${NC}"
+        OLLAMA_RUNNING=true
+      else
+        echo -e "${RED}✗ Failed to start Ollama. Try manually: ollama serve${NC}"
+      fi
+    fi
+  else
+    echo -e "${GREEN}✓ Ollama server is running${NC}"
+  fi
+fi
+
+# Step 3: Pull Recommended Model
+if [[ "$OLLAMA_RUNNING" == true ]]; then
+  echo ""
+  echo -e "${YELLOW}Checking for recommended model: $PRIMARY_MODEL${NC}"
+
+  INSTALLED_MODELS=$(curl -s http://localhost:11434/api/tags 2>/dev/null | grep -o '"name":"[^"]*"' | cut -d'"' -f4 | tr '\n' ' ')
+
+  if echo "$INSTALLED_MODELS" | grep -q "${PRIMARY_MODEL%:*}"; then
+    echo -e "${GREEN}✓ Model is already installed${NC}"
+  else
+    echo -e "${YELLOW}Model not found locally.${NC}"
+    read -p "Would you like to pull $PRIMARY_MODEL now? (y/n) " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+      echo "Pulling $PRIMARY_MODEL (this may take a few minutes)..."
+      ollama pull "$PRIMARY_MODEL"
+
+      if [ $? -eq 0 ]; then
+        echo -e "${GREEN}✓ Model pulled successfully${NC}"
+      else
+        echo -e "${RED}✗ Failed to pull model. Try manually: ollama pull $PRIMARY_MODEL${NC}"
+      fi
+    fi
+  fi
+fi
+
+# Step 4: Ready for Chorus
 echo ""
-echo -e "${GREEN}To pull and use a recommended model:${NC}"
+echo -e "${GREEN}Ready to use Chorus with Ollama!${NC}"
 echo ""
-PRIMARY_MODEL="${RECOMMENDED_MODELS[0]}"
-echo "  # Start Ollama server (if not already running)"
-echo "  ollama serve"
-echo ""
-echo "  # In another terminal, pull the model"
-echo "  ollama pull $PRIMARY_MODEL"
-echo ""
-echo "  # Set environment variable for Chorus"
+echo "To start Chorus with LLM reconstruction enabled:"
 echo "  export OLLAMA_MODEL='$PRIMARY_MODEL'"
 echo "  export OLLAMA_BASE_URL='http://localhost:11434'"
-echo ""
-echo -e "${GREEN}Then start Chorus:${NC}"
 echo "  docker-compose -f docker-compose.yml -f docker-compose.ollama.yml up"
 echo ""
 
@@ -225,7 +278,7 @@ echo -e "${BLUE}═════════════════════�
 echo -e "${BLUE}Summary${NC}"
 echo -e "${BLUE}═══════════════════════════════════════════════════════════════${NC}"
 echo "System: $UNAME | RAM: ${TOTAL_MEM_GB}GB | CPU: $CPU_CORES cores | GPU: $GPU_TYPE"
-echo "Ollama: $([ "$OLLAMA_INSTALLED" = true ] && echo "Installed" || echo "Not installed")"
-echo "Recommended primary model: $PRIMARY_MODEL"
+echo "Ollama: $([ "$OLLAMA_INSTALLED" = true ] && echo "Installed" || echo "Not installed") | Status: $([ "$OLLAMA_RUNNING" = true ] && echo "Running" || echo "Not running")"
+echo "Recommended model: $PRIMARY_MODEL"
 echo ""
 echo -e "${GREEN}✓ Survey complete!${NC}"
