@@ -158,4 +158,22 @@ Tracked improvements identified during the June 2026 repository assessment.
 
 ---
 
-*Last updated: 28 June 2026*
+## Completed — v3.3.0 UI Controls & Configuration
+
+- [x] **`large` Whisper model added to UI selector** (v3.3.0) — previously only accessible via `WHISPER_MODEL` env var. Now available in the sidebar Model size dropdown alongside tiny/base/small/medium.
+
+- [x] **Compute device exposed in UI** (v3.3.0) — `WHISPER_DEVICE` was env-only. Now a sidebar selectbox: Auto-detect / CPU / NVIDIA CUDA / Apple MPS. Changes take effect immediately without restart.
+
+- [x] **Transcription parallelism exposed in UI** (v3.3.0) — `TRANSCRIPTION_PARALLELISM` was env-only. Now an Auto toggle + Worker count input (1–16) in the sidebar.
+
+- [x] **Hardware survey presets** (v3.3.0) — sidebar preset dropdown (Max / Background) with Apply button. Detects RAM, CPU, and GPU in-process via `ui/hardware_survey.py` (PyTorch + sysctl/procfs). Max applies the largest viable model and auto parallelism; Background steps one model tier down and pins parallelism to 1 for a responsive machine.
+
+- [x] **Whisper model recommendation in survey script** (v3.3.0) — `devops-practices/survey-ollama-env.sh` now recommends a `WHISPER_MODEL` value alongside Ollama models, using the same hardware thresholds as the in-app survey.
+
+- [x] **Whisper cache released before Ollama LLM reconstruction** (v3.3.0) — `clear_model_cache()` called after transcription completes when `enable_llm=True`. Prevents Whisper and Ollama models from holding unified memory simultaneously. Makes Whisper `large` + `neural-chat:13b` viable on 32 GB Apple Silicon (~28 GB peak vs ~31 GB previously).
+
+- [x] **Full configuration reference** (v3.3.0) — `docs/CONFIGURATION.md` added: covers all 11 user-configurable options with trade-off explanations, hardware recommendations, quick-start table, and env var summary.
+
+---
+
+*Last updated: 29 June 2026*
