@@ -148,6 +148,16 @@ def run_pipeline(
     )
     _progress("All transcription variants complete.", 0.80)
 
+    # Release Whisper models from memory before LLM reconstruction so that
+    # Ollama (a separate process) can claim the freed RAM/unified memory.
+    # On 32 GB Apple Silicon, large (~3 GB) + neural-chat:13b (~28 GB) = 31 GB;
+    # clearing first keeps peak to whichever is larger, not the sum.
+    if enable_llm:
+        from transcription_engine.whisper_engine import clear_model_cache
+
+        clear_model_cache()
+        _progress("Whisper model released; handing off to LLM…", 0.82)
+
     # ── Stage 3: Consensus Merge ─────────────────────────────────────────────
     _progress("Running consensus analysis…", 0.85)
 
