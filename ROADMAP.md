@@ -176,4 +176,17 @@ Tracked improvements identified during the June 2026 repository assessment.
 
 ---
 
+---
+
+## In Progress — v4.0.0 Trustworthy Outputs, Stable Surface
+
+- [x] **WP2: Output-routing correctness** — Fixed three critical bugs where output_dir isolation was not honoured:
+  - RA-2.1: Threaded output_dir through export_zip() so ZIP bundles read sidecars from the correct directory, not the global CONSENSUS_DIR
+  - RA-2.2: Updated speaker-name persistence (_speaker_names_path, load_speaker_names, save_speaker_names) to honour output_dir
+  - RA-2.3: Added regression test to verify isolated runs do not leak files to the global directory
+  - **Files changed:** export_engine/exporter.py, diarisation/diariser.py, pipeline_runner.py, ui/app.py, tests/test_exporter.py, tests/test_integration.py
+  - **Tests:** 191 → 195 passing (+4 new tests for output_dir isolation)
+
+---
+
 *Last updated: 29 June 2026*
