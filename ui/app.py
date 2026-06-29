@@ -40,18 +40,18 @@ from config import (  # noqa: E402
     WHISPER_DEVICE,
     WHISPER_MODEL,
 )
-from ui.hardware_survey import (  # noqa: E402  # type: ignore[import]
-    detect_hardware,
-    recommend_settings,
-    recommend_settings_background,
-    summarise,
-)
 from export_engine.exporter import (  # noqa: E402
     export_all,
     export_plain_text,
     export_zip,
 )
 from pipeline_runner import run_pipeline  # noqa: E402
+from ui.hardware_survey import (  # noqa: E402  # type: ignore[import]
+    detect_hardware,
+    recommend_settings,
+    recommend_settings_background,
+    summarise,
+)
 from utils import sanitise_stem  # noqa: E402
 
 logger = logging.getLogger(__name__)
@@ -1330,6 +1330,7 @@ if uploaded_files:
                     transcripts["original"],
                     original_stem,
                     include_formats=formats_to_export or None,
+                    output_dir=None,
                 )
             st.download_button(
                 label="⬇️ Download Full Output Archive (.zip)",
