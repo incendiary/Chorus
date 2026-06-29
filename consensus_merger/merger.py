@@ -58,14 +58,14 @@ def merge_transcripts_with_votes(
     votes = align_transcripts(non_empty, strategy=strategy)
 
     if enable_nlp:
-        from nlp_reconstructor.reconstructor import reconstruct_low_tokens
+        from reconstruction import reconstruct
 
-        votes = reconstruct_low_tokens(votes)
+        votes = reconstruct(votes, strategy="nlp")
 
     if enable_llm:
-        from llm_reconstructor.reconstructor import reconstruct_low_tokens_llm
+        from reconstruction import reconstruct
 
-        votes = reconstruct_low_tokens_llm(votes, model=ollama_model)
+        votes = reconstruct(votes, strategy="llm", model=ollama_model)
 
     out_path = render_consensus(
         votes,

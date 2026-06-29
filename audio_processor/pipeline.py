@@ -19,12 +19,52 @@ import logging
 from pathlib import Path
 
 import librosa
+import numpy as np
 import soundfile as sf
 
 from audio_processor.filters import denoise_filter, dynamic_range_norm, high_pass_focus
 from config import TARGET_SAMPLE_RATE, VARIANT_LABELS, VARIANTS_DIR
 
 logger = logging.getLogger(__name__)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Audio loading
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _load_audio(input_path: Path) -> tuple[np.ndarray, int]:
+    """Decode *input_path* to a mono, float32 signal at ``TARGET_SAMPLE_RATE``.
+
+    Audio is decoded through ``soundfile`` (PySoundFile) so that the deprecated
+    ``librosa`` ``audioread`` fallback is never taken; ``librosa`` is used only
+    for its non-deprecated resampling routine.  The signal is mixed down to mono
+    and resampled to the target rate to preserve the previous behaviour exactly.
+
+    Raises
+    ------
+    RuntimeError
+        If the file cannot be decoded (for example, a corrupt or unsupported
+        file).  The message names the offending file and suggests a remedy.
+    """
+    try:
+        audio, native_sr = sf.read(str(input_path), dtype="float32", always_2d=False)
+    except Exception as exc:  # noqa: BLE001
+        raise RuntimeError(
+            f"Failed to decode audio file: {input_path}. The file may be corrupt "
+            "or in an unsupported format; please supply a valid WAV, FLAC, or "
+            "MP3 file."
+        ) from exc
+
+    # Mix down to mono by averaging channels when the source is multi-channel.
+    if audio.ndim > 1:
+        audio = audio.mean(axis=1)
+
+    # Resample to the target rate using librosa's non-deprecated resampler.
+    if native_sr != TARGET_SAMPLE_RATE:
+        audio = librosa.resample(audio, orig_sr=native_sr, target_sr=TARGET_SAMPLE_RATE)
+
+    return np.ascontiguousarray(audio, dtype="float32"), TARGET_SAMPLE_RATE
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -65,10 +105,7 @@ def process_audio(
         raise FileNotFoundError(f"Audio file not found: {input_path}")
 
     logger.info("Loading audio: %s", input_path)
-    try:
-        audio, sr = librosa.load(str(input_path), sr=TARGET_SAMPLE_RATE, mono=True)
-    except Exception as exc:  # noqa: BLE001
-        raise RuntimeError(f"Failed to decode audio file: {input_path}") from exc
+    audio, sr = _load_audio(input_path)
 
     logger.info(
         "Loaded %.2f s @ %d Hz (%.1f MB)", len(audio) / sr, sr, audio.nbytes / 1e6

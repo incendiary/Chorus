@@ -9,17 +9,37 @@ description = "Chorus — A containerised, multi-pass consensus audio transcript
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
-dependencies = []
+# Runtime dependencies. These mirror the pinned entries in ``requirements.txt``,
+# which remains the canonical pin file referenced by the Dockerfiles and CI.
+# Keep the two lists in step when bumping a pin.
+dependencies = [
+  "openai-whisper==20250625",
+  "librosa==0.11.0",
+  "soundfile==0.14.0",
+  "pydub==0.25.1",
+  "scipy==1.17.1",
+  "numpy==2.4.6",
+  "nltk==3.9.4",
+  "streamlit==1.58.0",
+  "watchdog==6.0.0",
+  "psutil==7.2.2",
+  "pyannote-audio==4.0.4",
+  "spacy==3.8.13",
+  "weasyprint==69.0",
+  "python-docx==1.2.0",
+  "Markdown==3.10.2",
+  "tqdm==4.68.3",
+]
 
 [tool.setuptools.packages.find]
 where = ["."]
 include = [
+  "chorus*",
   "audio_processor*",
   "transcription_engine*",
   "consensus_merger*",
   "diarisation*",
-  "nlp_reconstructor*",
-  "llm_reconstructor*",
+  "reconstruction*",
   "export_engine*",
   "batch_processor*",
   "ui*",

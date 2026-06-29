@@ -40,18 +40,18 @@ from config import (  # noqa: E402
     WHISPER_DEVICE,
     WHISPER_MODEL,
 )
-from ui.hardware_survey import (  # noqa: E402  # type: ignore[import]
-    detect_hardware,
-    recommend_settings,
-    recommend_settings_background,
-    summarise,
-)
 from export_engine.exporter import (  # noqa: E402
     export_all,
     export_plain_text,
     export_zip,
 )
 from pipeline_runner import run_pipeline  # noqa: E402
+from ui.hardware_survey import (  # noqa: E402  # type: ignore[import]
+    detect_hardware,
+    recommend_settings,
+    recommend_settings_background,
+    summarise,
+)
 from utils import sanitise_stem  # noqa: E402
 
 logger = logging.getLogger(__name__)
@@ -991,7 +991,7 @@ with st.sidebar:
     )
     ollama_model: str | None = None
     if enable_llm:
-        from llm_reconstructor.ollama_client import list_models, probe_model
+        from reconstruction.ollama_client import list_models, probe_model
 
         _llm_ok, _llm_reason = probe_model()
         if not _llm_ok:
@@ -1025,7 +1025,7 @@ with st.sidebar:
                 st.session_state["ollama_model"] = ollama_model
 
     if st.session_state.get("show_ollama_dialog"):
-        from llm_reconstructor.ollama_client import probe_model as _probe
+        from reconstruction.ollama_client import probe_model as _probe
 
         _reason = st.session_state.get("ollama_fail_reason", "Ollama is not reachable.")
 

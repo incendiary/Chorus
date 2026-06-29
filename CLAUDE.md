@@ -9,7 +9,7 @@ The **Chorus Engine** is a local, containerised Python application that automate
 2. **`transcription_engine/`**: Wraps a local instance of OpenAI's Whisper model. Orchestrates sequential transcription over the original audio and the three cleaned variants.
 3. **`consensus_merger/`**: Performs a word-for-word sliding-window consensus analysis across the four transcript variants. Calculates confidence weights and renders a unified Markdown document with tier-based highlighting.
 4. **`diarisation/`**: Integrates `pyannote.audio` to identify and separate multiple speakers, fusing them with Whisper segment timestamps.
-5. **`nlp_reconstructor/`**: Uses `spaCy` grammatical and semantic analysis to reconstruct LOW-confidence tokens.
+5. **`reconstruction/`**: Reconstructs LOW-confidence tokens through one of two interchangeable strategies, selected via a single `reconstruct(votes, *, strategy)` entry point: `"nlp"` uses `spaCy` grammatical and semantic analysis, and `"llm"` uses a local Ollama model.
 6. **`export_engine/`**: Converts the consensus Markdown into PDF, DOCX, SRT, and VTT formats.
 7. **`batch_processor/`**: CLI tool for unattended processing of multiple files or entire directories.
 8. **`ui/`**: A Streamlit interface providing an interactive dashboard to trigger the pipeline and review/download variants.
@@ -58,7 +58,7 @@ Before pushing any code to the repository, you must execute and pass the followi
 
 2. **Null/Empty States**:
    - Verify that the `consensus_merger` handles empty transcripts (e.g., silence) without throwing `ZeroDivisionError` or index out-of-bounds exceptions.
-   - Ensure the `nlp_reconstructor` falls back safely if `spaCy` models are missing or return no valid tokens.
+   - Ensure the `reconstruction` package falls back safely if `spaCy` models are missing or return no valid tokens.
 
 3. **Performance Benchmarks**:
    - Verify that the `audio_processor` cleaning filters process a standard 5-minute audio file within acceptable memory limits (under 500MB peak RAM).

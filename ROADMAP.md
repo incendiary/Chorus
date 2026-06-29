@@ -132,7 +132,7 @@ Tracked improvements identified during the June 2026 repository assessment.
 
 - [x] **Live log window with user-configurable line count** (v3.2.1) — tail-N number input (default 50) added to the Logs page toolbar; shows only the last N entries. Consecutive identical messages deduplicated with ×N repeat badge. Existing Download and Clear buttons preserved.
 
-- [ ] **Resolve librosa audioread deprecation** — librosa 0.10.0 deprecated `librosa.core.audio.__audioread_load`, which will be removed in v1.0. Currently the audio processor falls back to this path when PySoundFile/soundfile is unavailable. Remediate:
+- [x] **Resolve librosa audioread deprecation** (addressed by WP1 RA-1.4) — librosa 0.10.0 deprecated `librosa.core.audio.__audioread_load`, which will be removed in v1.0. The audio processor now decodes through `soundfile` and uses librosa only for non-deprecated resampling, so the audioread fallback is never taken. Original remediation notes:
   - Ensure soundfile is a hard dependency with clear installation instructions (optional in macOS; may require system libraries on Linux).
   - Migrate from deprecated `__audioread_load` to the current librosa API.
   - Add explicit, user-friendly error handling when audio loading fails, with recovery suggestions.
@@ -191,10 +191,10 @@ inside a work-package PR — the release owner cuts `4.0.0` once all four merge 
 
 ### WP1 — Packaging & stable public API (BREAKING) · [spec](docs/tasks/WP1-packaging-and-public-api.md)
 
-- [ ] **Declare runtime dependencies in `pyproject.toml`** — `dependencies = []` today, so `pip install chorus-engine` installs no runtime deps. (RA-1.1)
-- [ ] **Establish a stable top-level `chorus` public API** — re-export `run_pipeline`, `run_batch`, and the supported entry points; commit to keeping them stable. (RA-1.2)
-- [ ] **Consolidate `nlp_reconstructor` + `llm_reconstructor` into one `reconstruction` package** — single strategy-based interface; breaking import change. (RA-1.3)
-- [ ] **Retire the deprecated librosa audioread fallback** — make `soundfile` an explicit dependency and use the non-deprecated load path. (RA-1.4)
+- [x] **Declare runtime dependencies in `pyproject.toml`** — `dependencies = []` today, so `pip install chorus-engine` installs no runtime deps. (RA-1.1) — files: `pyproject.toml`.
+- [x] **Establish a stable top-level `chorus` public API** — re-export `run_pipeline`, `run_batch`, and the supported entry points; commit to keeping them stable. (RA-1.2) — files: `chorus/__init__.py`, `pyproject.toml`, `tests/test_public_api.py`, `README.md`.
+- [x] **Consolidate `nlp_reconstructor` + `llm_reconstructor` into one `reconstruction` package** — single strategy-based interface; breaking import change. (RA-1.3) — files: `reconstruction/` (`__init__.py`, `nlp.py`, `llm.py`, `ollama_client.py`), `consensus_merger/merger.py`, `pipeline_runner.py`, `ui/app.py`, `pyproject.toml`, `tests/test_reconstructor.py`, `tests/test_llm_reconstructor.py`, `tests/test_integration.py`, `CLAUDE.md`, `README.md`.
+- [x] **Retire the deprecated librosa audioread fallback** — make `soundfile` an explicit dependency and use the non-deprecated load path. (RA-1.4) — files: `audio_processor/pipeline.py`, `requirements.txt`, `pyproject.toml`, `tests/test_audio_processor.py`.
 
 ### WP2 — Output-routing correctness · [spec](docs/tasks/WP2-output-routing-correctness.md)
 

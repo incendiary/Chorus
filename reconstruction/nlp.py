@@ -1,5 +1,5 @@
 """
-nlp_reconstructor/reconstructor.py — spaCy-powered NLP reconstruction.
+reconstruction/nlp.py — spaCy-powered NLP reconstruction.
 
 Applies grammatical and contextual analysis to LOW-confidence tokens in the
 consensus vote sequence.  The reconstruction pipeline proceeds as follows:
