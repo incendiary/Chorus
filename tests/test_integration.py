@@ -695,10 +695,13 @@ class TestOutputDirIsolation:
         """
         Regression test: isolated output_dir runs should not write to global CONSENSUS_DIR.
 
-        This test verifies that an isolated run does not contaminate the global outputs
-        directory with sidecars (speakers.json, ai_context.md, diarised.md).
+        A default run always generates the AI-context pack, so this test exercises the
+        ``_ai_context.md`` routing end-to-end: it asserts the pack lands in the isolated
+        directory and that nothing leaks to the global one. The diarisation-gated
+        sidecars (``_speakers.json``, ``_diarised.md``) are covered directly by
+        ``tests/test_speaker_names.py::TestSpeakerNamesOutputDirIsolation``, which does
+        not require mocking pyannote.
         """
-        from config import CONSENSUS_DIR
         from pipeline_runner import run_pipeline
 
         # Mock the global CONSENSUS_DIR to an empty temp directory
@@ -726,6 +729,14 @@ class TestOutputDirIsolation:
         # Verify consensus was created in isolated dir
         assert results["consensus_path"].exists()
         assert results["consensus_path"].parent == isolated_dir / "consensus"
+
+        # The AI-context pack is always produced; confirm it landed in the isolated
+        # directory. This keeps the leak check below non-vacuous — if the pack stopped
+        # being generated, this assertion would fail rather than passing silently.
+        ai_context_path = results.get("ai_context_path")
+        assert ai_context_path is not None
+        assert ai_context_path.exists()
+        assert isolated_dir in ai_context_path.parents
 
         # Verify global CONSENSUS_DIR gained no new files
         final_files = (
