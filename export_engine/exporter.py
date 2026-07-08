@@ -122,7 +122,8 @@ def export_pdf(
     md_text = consensus_md_path.read_text(encoding="utf-8")
     html_body = _md_to_html(md_text)
 
-    css = CSS(string="""
+    css = CSS(
+        string="""
         @page { margin: 2cm; }
         body {
             font-family: 'Georgia', serif;
@@ -166,7 +167,8 @@ def export_pdf(
             font-size: 10pt;
         }
         hr { border: none; border-top: 1px solid #dee2e6; margin: 1.5em 0; }
-    """)
+    """
+    )
 
     full_html = f"""<!DOCTYPE html>
 <html lang="en">

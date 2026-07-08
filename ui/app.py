@@ -394,7 +394,9 @@ st.markdown(
         }
     }
 </style>
-""".replace("__CHORUS_PRIMARY__", _theme["primary"])
+""".replace(
+        "__CHORUS_PRIMARY__", _theme["primary"]
+    )
     .replace("__CHORUS_SURFACE__", _theme["surface"])
     .replace("__CHORUS_BORDER__", _theme["border"])
     .replace("__CHORUS_HEADER_A__", _theme["header_a"])
@@ -1075,13 +1077,15 @@ with st.sidebar:
     st.divider()
     st.markdown("**Confidence Thresholds**")
     st.caption("Configurable in `config.py`")
-    st.markdown("""
+    st.markdown(
+        """
 | Tier | Threshold |
 |------|-----------|
 | 🟢 HIGH   | ≥ 75 % agreement |
 | 🟡 MEDIUM | 50 % agreement   |
 | 🔴 LOW    | 25 % agreement   |
-""")
+"""
+    )
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Main area — Upload & Run
@@ -1101,12 +1105,14 @@ with col_upload:
 
 with col_info:
     st.subheader("Pipeline Stages")
-    st.markdown("""
+    st.markdown(
+        """
 1. 🎛️ **Audio Processing** — 3 cleaning filters applied
 2. 🤖 **Transcription** — Whisper runs on each variant
 3. 🗳️ **Consensus Merge** — Word-level voting & confidence scoring
 4. 📄 **Output** — Annotated Markdown + plain-text transcript
-""")
+"""
+    )
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Run pipeline
