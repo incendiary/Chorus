@@ -11,12 +11,7 @@ from __future__ import annotations
 
 import re
 
-from export_engine.exporter import (
-    _seconds_to_srt_ts,
-    _seconds_to_vtt_ts,
-    export_srt,
-    export_vtt,
-)
+from export_engine.exporter import _seconds_to_srt_ts, _seconds_to_vtt_ts, export_srt, export_vtt
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Timestamp helpers
@@ -228,10 +223,7 @@ class TestExportTranscriptBundle:
         """run_pipeline should return bundle_path in its result dict."""
         from unittest.mock import patch
 
-        from tests.test_integration import (
-            _generate_sine_wav,
-            _mock_run_transcription_pass,
-        )
+        from tests.test_integration import _generate_sine_wav, _mock_run_transcription_pass
 
         audio = _generate_sine_wav(tmp_path / "audio.wav")
         with patch(

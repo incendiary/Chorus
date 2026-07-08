@@ -14,10 +14,7 @@ from __future__ import annotations
 import time
 
 from consensus_merger.alignment import align_transcripts
-from consensus_merger.sequence_alignment import (
-    _needleman_wunsch,
-    align_transcripts_sequence,
-)
+from consensus_merger.sequence_alignment import _needleman_wunsch, align_transcripts_sequence
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Needleman-Wunsch pairwise tests

@@ -227,7 +227,7 @@ Select based on available RAM and your quality/speed trade-off:
    ```bash
    # Fast & efficient (recommended for most)
    ollama pull mistral
-   
+
    # Or smaller for low-RAM systems
    ollama pull neural-chat:7b-v3.1-q4_0
    ```

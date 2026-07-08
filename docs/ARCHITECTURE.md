@@ -58,19 +58,19 @@ Chorus is a multi-pass consensus audio transcription engine:
 Audio File
   ↓ [Audio Processor]
   → 4 audio variants
-  
+
   ↓ [Transcription]
   → 4 transcripts (one per variant)
-  
+
   ↓ [Alignment + Voting]
   → Word-level confidence tiers
-  
+
   ↓ [Optional Reconstruction]
   → Improved consensus
-  
+
   ↓ [Export]
   → PDF, DOCX, SRT, VTT, JSON, Markdown
-  
+
   ↓ [Optional Diarisation]
   → Speaker-labelled transcript
 ```
