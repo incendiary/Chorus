@@ -40,15 +40,14 @@ services:
     # Resource limits — increase for faster inference
     deploy:
       resources:
+        limits:
+          memory: 8G
         reservations:
           # Request GPU if available
           devices:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
-        limits:
-          memory: 8G
-        reservations:
           memory: 4G
 
     healthcheck:

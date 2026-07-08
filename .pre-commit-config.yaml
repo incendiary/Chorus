@@ -30,7 +30,7 @@ repos:
     hooks:
       - id: isort
         name: isort — Sort Python imports
-        args: [--profile=black, --line-length=100]
+        args: [--profile=black, --line-length=88]
         types: [python]
 
   # Trailing whitespace and EOF normalization

@@ -40,7 +40,11 @@ from config import (  # noqa: E402
     WHISPER_DEVICE,
     WHISPER_MODEL,
 )
-from export_engine.exporter import export_all, export_plain_text, export_zip  # noqa: E402
+from export_engine.exporter import (  # noqa: E402
+    export_all,
+    export_plain_text,
+    export_zip,
+)
 from pipeline_runner import run_pipeline  # noqa: E402
 from ui.hardware_survey import (  # noqa: E402  # type: ignore[import]
     detect_hardware,
@@ -1371,7 +1375,10 @@ if uploaded_files:
                 # ── Editable speaker name table ───────────────────────────────
                 speaker_labels = results.get("speaker_labels", [])
                 if speaker_labels:
-                    from diarisation.diariser import load_speaker_names, save_speaker_names
+                    from diarisation.diariser import (
+                        load_speaker_names,
+                        save_speaker_names,
+                    )
 
                     # Load existing names (previously saved or empty)
                     existing_names = load_speaker_names(original_stem)
