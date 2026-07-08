@@ -9,7 +9,9 @@
 #   - Disk space
 #   - Ollama installation status
 #
-# Based on findings, it recommends appropriate Ollama models and configuration.
+# Based on findings, it recommends appropriate Ollama models and configuration,
+# lets you select which models to pull, and optionally writes recommendations
+# directly to your .env file.
 #
 # Usage:
 #   bash devops-practices/survey-ollama-env.sh
@@ -23,6 +25,24 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+# set_env_var KEY VALUE FILE — replace existing key or append a new one
+set_env_var() {
+  local key="$1" value="$2" file="$3"
+  if grep -q "^${key}=" "$file" 2>/dev/null; then
+    sed -i.bak "s|^${key}=.*|${key}=${value}|" "$file" && rm -f "${file}.bak"
+  else
+    printf '%s=%s\n' "$key" "$value" >>"$file"
+  fi
+}
+
+# resolve_repo_root — walk up from the script's directory to the repo root
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(dirname "$SCRIPT_DIR")"
+ENV_FILE="$REPO_ROOT/.env"
+ENV_EXAMPLE="$REPO_ROOT/.env.example"
 
 echo -e "${BLUE}═══════════════════════════════════════════════════════════════${NC}"
 echo -e "${BLUE}Chorus Ollama Environment Survey${NC}"
@@ -60,7 +80,6 @@ GPU_TYPE="none"
 GPU_VRAM_GB=0
 
 if [[ "$UNAME" == "Darwin" ]]; then
-  # Check for Apple Silicon
   if system_profiler SPHardwareDataType 2>/dev/null | grep -q "Apple M"; then
     GPU_TYPE="Apple Silicon (MPS)"
     TOTAL_MEM_GB_UNIFIED=$TOTAL_MEM_GB
@@ -68,8 +87,7 @@ if [[ "$UNAME" == "Darwin" ]]; then
     echo "  Unified memory: ${TOTAL_MEM_GB_UNIFIED}GB (shared with CPU)"
   fi
 elif [[ "$UNAME" == "Linux" ]]; then
-  # Check for NVIDIA GPU
-  if command -v nvidia-smi &> /dev/null; then
+  if command -v nvidia-smi &>/dev/null; then
     GPU_TYPE="NVIDIA CUDA"
     GPU_VRAM_MB=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null | head -1)
     GPU_VRAM_GB=$((GPU_VRAM_MB / 1024))
@@ -92,13 +110,13 @@ echo -e "\n${YELLOW}[3/6] Ollama Installation Status${NC}"
 OLLAMA_INSTALLED=false
 OLLAMA_RUNNING=false
 
-if command -v ollama &> /dev/null; then
+if command -v ollama &>/dev/null; then
   OLLAMA_INSTALLED=true
   echo "✓ Ollama is installed"
   OLLAMA_VERSION=$(ollama --version 2>/dev/null || echo "unknown")
   echo "  Version: $OLLAMA_VERSION"
 
-  if curl -s http://localhost:11434/api/tags &> /dev/null; then
+  if curl -s http://localhost:11434/api/tags &>/dev/null; then
     OLLAMA_RUNNING=true
     echo "✓ Ollama server is running (http://localhost:11434)"
     INSTALLED_MODELS=$(curl -s http://localhost:11434/api/tags | grep -o '"name":"[^"]*"' | cut -d'"' -f4 | tr '\n' ', ' | sed 's/,$//')
@@ -135,7 +153,6 @@ echo -e "\n${YELLOW}[5/6] Model Recommendations${NC}"
 RECOMMENDED_MODELS=()
 REASONING=""
 
-# Decision logic based on available resources
 if [[ "$TOTAL_MEM_GB" -lt 4 ]]; then
   RECOMMENDED_MODELS=("tiny-llama:latest" "neural-chat:7b-v3.1-q4_0")
   REASONING="Low RAM (< 4GB): Recommend small, quantized models"
@@ -150,7 +167,6 @@ else
   REASONING="Excellent RAM (16GB+): Large models and quantized versions"
 fi
 
-# GPU adjustments
 if [[ "$GPU_TYPE" != "none" ]]; then
   if [[ "$GPU_VRAM_GB" -ge 8 ]] || [[ "$GPU_TYPE" == "Apple Silicon (MPS)" ]]; then
     RECOMMENDED_MODELS+=("neural-chat:13b")
@@ -159,8 +175,6 @@ if [[ "$GPU_TYPE" != "none" ]]; then
 fi
 
 # ── Whisper model recommendation ─────────────────────────────────────────────
-# Derive a recommended WHISPER_MODEL based on available RAM and GPU.
-# Thresholds mirror the guidance in docs/CONFIGURATION.md.
 
 WHISPER_RECOMMENDED="base"
 WHISPER_REASONING=""
@@ -180,7 +194,6 @@ if [[ "$GPU_TYPE" == "NVIDIA CUDA" ]]; then
     WHISPER_REASONING="NVIDIA GPU with low VRAM — base recommended to avoid OOM"
   fi
 elif [[ "$GPU_TYPE" == "Apple Silicon (MPS)" ]]; then
-  # Unified memory is shared; leave headroom for the OS and audio pipeline.
   if [[ "$TOTAL_MEM_GB" -ge 32 ]]; then
     WHISPER_RECOMMENDED="large"
     WHISPER_REASONING="Apple Silicon with ${TOTAL_MEM_GB}GB unified memory — large model fits comfortably"
@@ -195,7 +208,6 @@ elif [[ "$GPU_TYPE" == "Apple Silicon (MPS)" ]]; then
     WHISPER_REASONING="Apple Silicon with ${TOTAL_MEM_GB}GB unified memory — base keeps headroom for the OS"
   fi
 else
-  # CPU-only path
   if [[ "$TOTAL_MEM_GB" -ge 16 ]]; then
     WHISPER_RECOMMENDED="medium"
     WHISPER_REASONING="CPU-only with ${TOTAL_MEM_GB}GB RAM — medium works but expect slower transcription"
@@ -211,30 +223,28 @@ else
   fi
 fi
 
-echo "Reasoning: $REASONING"
-echo -e "\n${GREEN}Recommended models for your system:${NC}"
-
-# Define model info (bash 3.2 compatible - no associative arrays)
 get_model_info() {
   case "$1" in
-    "tiny-llama:latest") echo "TinyLlama 1.1B — Ultra-fast, low memory (~2GB)" ;;
-    "neural-chat:7b-v3.1-q4_0") echo "Neural Chat 7B (4-bit) — Fast, high quality (~4GB)" ;;
-    "mistral:latest") echo "Mistral 7B — Best speed/quality balance (~5GB)" ;;
-    "llama2:7b-q4_K_M") echo "Llama2 7B (quantized) — Excellent reasoning (~4GB)" ;;
-    "llama2:7b") echo "Llama2 7B (full) — High quality (~15GB)" ;;
-    "neural-chat:7b-v3.1") echo "Neural Chat 7B — Quality conversation (~15GB)" ;;
-    "dolphin-mixtral:latest") echo "Dolphin Mixtral 8x7B — Powerful MoE (~20GB)" ;;
-    "neural-chat:13b") echo "Neural Chat 13B — High accuracy (~28GB)" ;;
-    "llama2:13b") echo "Llama2 13B — Strong reasoning (~28GB)" ;;
-    "llama2:70b-q3_K_M") echo "Llama2 70B (3-bit) — Expert level (~24GB)" ;;
-    *) echo "Unknown model" ;;
+  "tiny-llama:latest") echo "TinyLlama 1.1B — Ultra-fast, low memory (~2GB)" ;;
+  "neural-chat:7b-v3.1-q4_0") echo "Neural Chat 7B (4-bit) — Fast, high quality (~4GB)" ;;
+  "mistral:latest") echo "Mistral 7B — Best speed/quality balance (~5GB)" ;;
+  "llama2:7b-q4_K_M") echo "Llama2 7B (quantized) — Excellent reasoning (~4GB)" ;;
+  "llama2:7b") echo "Llama2 7B (full) — High quality (~15GB)" ;;
+  "neural-chat:7b-v3.1") echo "Neural Chat 7B — Quality conversation (~15GB)" ;;
+  "dolphin-mixtral:latest") echo "Dolphin Mixtral 8x7B — Powerful MoE (~20GB)" ;;
+  "neural-chat:13b") echo "Neural Chat 13B — High accuracy (~28GB)" ;;
+  "llama2:13b") echo "Llama2 13B — Strong reasoning (~28GB)" ;;
+  "llama2:70b-q3_K_M") echo "Llama2 70B (3-bit) — Expert level (~24GB)" ;;
+  *) echo "Unknown model" ;;
   esac
 }
 
+echo "Reasoning: $REASONING"
+echo -e "\n${GREEN}Recommended models for your system:${NC}"
+
 for model in "${RECOMMENDED_MODELS[@]}"; do
-  VRAM_EST=$(get_model_info "$model")
   echo "  • $model"
-  echo "    $VRAM_EST"
+  echo "    $(get_model_info "$model")"
 done
 
 echo ""
@@ -242,8 +252,6 @@ echo -e "${GREEN}Recommended Whisper model for transcription:${NC}"
 echo "  WHISPER_MODEL=${WHISPER_RECOMMENDED}"
 echo "  Reason: $WHISPER_REASONING"
 echo ""
-echo "  Set this in your .env file, or export it before starting Chorus:"
-echo "    export WHISPER_MODEL='${WHISPER_RECOMMENDED}'"
 echo "  See docs/CONFIGURATION.md for full model comparison."
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -252,7 +260,7 @@ echo "  See docs/CONFIGURATION.md for full model comparison."
 
 echo -e "\n${YELLOW}[6/6] Setup & Installation${NC}"
 
-PRIMARY_MODEL="${RECOMMENDED_MODELS[0]}"
+SELECTED_OLLAMA_MODEL=""
 
 # Step 1: Ollama Installation
 if [[ "$OLLAMA_INSTALLED" == false ]]; then
@@ -273,18 +281,16 @@ if [[ "$OLLAMA_INSTALLED" == true ]]; then
   if [[ "$OLLAMA_RUNNING" == false ]]; then
     echo ""
     echo -e "${YELLOW}Ollama server is not running.${NC}"
-    read -p "Would you like to start Ollama server now? (y/n) " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
+    printf "Would you like to start Ollama server now? (y/n) "
+    read -r REPLY || true
+    if [[ "$REPLY" =~ ^[Yy]$ ]]; then
       echo "Starting Ollama server..."
-      nohup ollama serve > /tmp/ollama.log 2>&1 &
+      nohup ollama serve >/tmp/ollama.log 2>&1 &
       OLLAMA_PID=$!
       echo "Ollama started with PID $OLLAMA_PID"
       echo "Waiting for server to start..."
       sleep 3
-
-      # Verify it started
-      if curl -s http://localhost:11434/api/tags &> /dev/null; then
+      if curl -s http://localhost:11434/api/tags &>/dev/null; then
         echo -e "${GREEN}✓ Ollama server is running${NC}"
         OLLAMA_RUNNING=true
       else
@@ -296,40 +302,64 @@ if [[ "$OLLAMA_INSTALLED" == true ]]; then
   fi
 fi
 
-# Step 3: Pull Recommended Model
+# Step 3: Multi-select model menu
 if [[ "$OLLAMA_RUNNING" == true ]]; then
+  CURRENT_INSTALLED=$(curl -s http://localhost:11434/api/tags 2>/dev/null | grep -o '"name":"[^"]*"' | cut -d'"' -f4 | tr '\n' ' ')
+
   echo ""
-  echo -e "${YELLOW}Checking for recommended model: $PRIMARY_MODEL${NC}"
+  echo -e "${YELLOW}Select models to install:${NC}"
+  echo "  0) Skip — don't pull any models"
 
-  INSTALLED_MODELS=$(curl -s http://localhost:11434/api/tags 2>/dev/null | grep -o '"name":"[^"]*"' | cut -d'"' -f4 | tr '\n' ' ')
-
-  if echo "$INSTALLED_MODELS" | grep -q "${PRIMARY_MODEL%:*}"; then
-    echo -e "${GREEN}✓ Model is already installed${NC}"
-  else
-    echo -e "${YELLOW}Model not found locally.${NC}"
-    read -p "Would you like to pull $PRIMARY_MODEL now? (y/n) " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-      echo "Pulling $PRIMARY_MODEL (this may take a few minutes)..."
-      ollama pull "$PRIMARY_MODEL"
-
-      if [ $? -eq 0 ]; then
-        echo -e "${GREEN}✓ Model pulled successfully${NC}"
-      else
-        echo -e "${RED}✗ Failed to pull model. Try manually: ollama pull $PRIMARY_MODEL${NC}"
-      fi
+  IDX=1
+  for model in "${RECOMMENDED_MODELS[@]}"; do
+    if echo "$CURRENT_INSTALLED" | grep -q "${model%:*}"; then
+      STATUS="${GREEN}(already installed)${NC}"
+    else
+      STATUS=""
     fi
+    printf "  %d) %-38s %s\n" "$IDX" "$model" "$(get_model_info "$model")"
+    if [[ -n "$STATUS" ]]; then
+      echo -e "     $STATUS"
+    fi
+    IDX=$((IDX + 1))
+  done
+
+  echo ""
+  printf "Enter numbers to install (space-separated), or 0 to skip: "
+  read -r MODEL_SELECTION || true
+
+  MODELS_TO_PULL=()
+  if [[ -n "$MODEL_SELECTION" ]] && [[ "$MODEL_SELECTION" != "0" ]]; then
+    for num in $MODEL_SELECTION; do
+      if [[ "$num" =~ ^[0-9]+$ ]] && [[ "$num" -ge 1 ]] && [[ "$num" -le "${#RECOMMENDED_MODELS[@]}" ]]; then
+        MODELS_TO_PULL+=("${RECOMMENDED_MODELS[$((num - 1))]}")
+      fi
+    done
+  fi
+
+  if [[ "${#MODELS_TO_PULL[@]}" -gt 0 ]]; then
+    echo ""
+    for model in "${MODELS_TO_PULL[@]}"; do
+      if echo "$CURRENT_INSTALLED" | grep -q "${model%:*}"; then
+        echo -e "${GREEN}✓ $model is already installed — skipping${NC}"
+      else
+        echo "Pulling $model (this may take a few minutes)..."
+        if ollama pull "$model"; then
+          echo -e "${GREEN}✓ $model pulled successfully${NC}"
+        else
+          echo -e "${RED}✗ Failed to pull $model. Try manually: ollama pull $model${NC}"
+        fi
+      fi
+    done
+    # Use the first successfully-selected model as the recommended OLLAMA_MODEL
+    SELECTED_OLLAMA_MODEL="${MODELS_TO_PULL[0]}"
   fi
 fi
 
-# Step 4: Ready for Chorus
+PRIMARY_MODEL="${SELECTED_OLLAMA_MODEL:-${RECOMMENDED_MODELS[0]}}"
+
 echo ""
 echo -e "${GREEN}Ready to use Chorus with Ollama!${NC}"
-echo ""
-echo -e "${YELLOW}Recommended models to pull:${NC}"
-for model in "${RECOMMENDED_MODELS[@]:0:3}"; do
-  echo "  ollama pull $model"
-done
 echo ""
 echo -e "${YELLOW}Starting Chorus (Docker)${NC}"
 echo "To start Chorus with LLM reconstruction enabled:"
@@ -347,9 +377,93 @@ echo "  streamlit run ui/app.py"
 echo ""
 
 # ─────────────────────────────────────────────────────────────────────────────
+# .env Configuration
+# ─────────────────────────────────────────────────────────────────────────────
+
+echo -e "${YELLOW}[7/7] Apply Settings to .env${NC}"
+
+# Build the list of recommended env vars
+ENV_REC_KEYS=()
+ENV_REC_VALUES=()
+ENV_REC_DESCS=()
+
+ENV_REC_KEYS+=("WHISPER_MODEL")
+ENV_REC_VALUES+=("$WHISPER_RECOMMENDED")
+ENV_REC_DESCS+=("Whisper model size  (${WHISPER_REASONING})")
+
+ENV_REC_KEYS+=("OLLAMA_MODEL")
+ENV_REC_VALUES+=("$PRIMARY_MODEL")
+ENV_REC_DESCS+=("Ollama model for LLM reconstruction")
+
+ENV_REC_KEYS+=("OLLAMA_BASE_URL")
+ENV_REC_VALUES+=("http://localhost:11434")
+ENV_REC_DESCS+=("Ollama server address")
+
+echo ""
+echo "The following settings are recommended for your system:"
+echo ""
+IDX=1
+for i in "${!ENV_REC_KEYS[@]}"; do
+  # Show current .env value if the file exists
+  CURRENT_VAL=""
+  if [[ -f "$ENV_FILE" ]]; then
+    CURRENT_VAL=$(grep "^${ENV_REC_KEYS[$i]}=" "$ENV_FILE" 2>/dev/null | cut -d'=' -f2 || true)
+  fi
+  if [[ -n "$CURRENT_VAL" ]] && [[ "$CURRENT_VAL" != "${ENV_REC_VALUES[$i]}" ]]; then
+    CURRENT_NOTE="  (currently: ${CURRENT_VAL})"
+  else
+    CURRENT_NOTE=""
+  fi
+  printf "  %d) %-20s = %-20s  %s%s\n" \
+    "$IDX" "${ENV_REC_KEYS[$i]}" "${ENV_REC_VALUES[$i]}" "${ENV_REC_DESCS[$i]}" "$CURRENT_NOTE"
+  IDX=$((IDX + 1))
+done
+
+echo ""
+printf "Enter numbers to apply (space-separated), 'all', or 0 to skip: "
+read -r ENV_SELECTION || true
+
+if [[ -n "$ENV_SELECTION" ]] && [[ "$ENV_SELECTION" != "0" ]]; then
+  # Ensure .env exists
+  if [[ ! -f "$ENV_FILE" ]]; then
+    if [[ -f "$ENV_EXAMPLE" ]]; then
+      echo ""
+      echo "No .env found — copying from .env.example..."
+      cp "$ENV_EXAMPLE" "$ENV_FILE"
+      echo -e "${GREEN}✓ Created $ENV_FILE from .env.example${NC}"
+    else
+      echo ""
+      echo "No .env or .env.example found — creating empty .env..."
+      touch "$ENV_FILE"
+    fi
+  fi
+
+  APPLY_INDICES=()
+  if [[ "$ENV_SELECTION" == "all" ]]; then
+    for j in $(seq 1 "${#ENV_REC_KEYS[@]}"); do
+      APPLY_INDICES+=("$j")
+    done
+  else
+    APPLY_INDICES=($ENV_SELECTION)
+  fi
+
+  echo ""
+  for num in "${APPLY_INDICES[@]}"; do
+    if [[ "$num" =~ ^[0-9]+$ ]] && [[ "$num" -ge 1 ]] && [[ "$num" -le "${#ENV_REC_KEYS[@]}" ]]; then
+      IDX=$((num - 1))
+      set_env_var "${ENV_REC_KEYS[$IDX]}" "${ENV_REC_VALUES[$IDX]}" "$ENV_FILE"
+      echo -e "  ${GREEN}✓ Set ${ENV_REC_KEYS[$IDX]}=${ENV_REC_VALUES[$IDX]}${NC}"
+    fi
+  done
+  echo ""
+  echo -e "${GREEN}✓ .env updated: $ENV_FILE${NC}"
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Summary
 # ─────────────────────────────────────────────────────────────────────────────
 
+echo ""
 echo -e "${BLUE}═══════════════════════════════════════════════════════════════${NC}"
 echo -e "${BLUE}Summary${NC}"
 echo -e "${BLUE}═══════════════════════════════════════════════════════════════${NC}"
