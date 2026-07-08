@@ -153,9 +153,9 @@ def run_pipeline(
     # On 32 GB Apple Silicon, large (~3 GB) + neural-chat:13b (~28 GB) = 31 GB;
     # clearing first keeps peak to whichever is larger, not the sum.
     if enable_llm:
-        from transcription_engine.whisper_engine import clear_model_cache
+        from transcription_engine.whisper_engine import unload_model
 
-        clear_model_cache()
+        unload_model()
         _progress("Whisper model released; handing off to LLM…", 0.82)
 
     # ── Stage 3: Consensus Merge ─────────────────────────────────────────────
