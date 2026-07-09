@@ -8,7 +8,7 @@ repos:
         description: Scans for hardcoded credentials, API keys, tokens
         entry: gitleaks protect --verbose --redact
         language: golang
-        stages: [commit]
+        stages: [pre-commit]
         pass_filenames: false
 
   # Ruff: Fast Python linter (security + style)
@@ -20,9 +20,6 @@ repos:
         description: Check Python code for style, performance, security
         args: [--fix]
         types: [python]
-      - id: ruff-format
-        name: Ruff Format — Auto-format Python code
-        types: [python]
 
   # isort: Python import sorting
   - repo: https://github.com/PyCQA/isort
@@ -30,7 +27,7 @@ repos:
     hooks:
       - id: isort
         name: isort — Sort Python imports
-        args: [--profile=black, --line-length=100]
+        args: [--profile=black, --line-length=88]
         types: [python]
 
   # Trailing whitespace and EOF normalization
@@ -53,4 +50,4 @@ ci:
   autofix_prs: true
   autoupdate_schedule: weekly
   skip: [gitleaks]
-  stages: [commit]
+  stages: [pre-commit]

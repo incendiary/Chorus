@@ -97,7 +97,7 @@ if command -v ollama &> /dev/null; then
   echo "✓ Ollama is installed"
   OLLAMA_VERSION=$(ollama --version 2>/dev/null || echo "unknown")
   echo "  Version: $OLLAMA_VERSION"
-  
+
   if curl -s http://localhost:11434/api/tags &> /dev/null; then
     OLLAMA_RUNNING=true
     echo "✓ Ollama server is running (http://localhost:11434)"

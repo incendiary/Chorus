@@ -646,6 +646,7 @@ class TestOutputDirIsolation:
     def test_source_filename_in_bundle(self, tmp_path):
         """Bundle JSON should preserve original source filename."""
         import json
+
         from pipeline_runner import run_pipeline
 
         original_audio = tmp_path / "my_recording_2026-02-09.wav"

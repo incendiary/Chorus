@@ -198,8 +198,6 @@ def run_batch(
     list[BatchResult]
         One result object per discovered audio file.
     """
-    from consensus_merger.alignment import align_transcripts
-    from consensus_merger.renderer import render_consensus
     from pipeline_runner import run_pipeline
 
     audio_files = discover_audio_files(inputs, recursive=recursive)

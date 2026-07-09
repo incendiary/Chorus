@@ -100,9 +100,9 @@ Tracked improvements identified during the June 2026 repository assessment.
 
 ---
 
-## Completed — v3.1.3 Output Isolation & Traceability
+## Completed — v3.2.0 Output Isolation & Traceability
 
-- [x] **Record original source filename in all output artefacts** — the original source filename (with extension, before sanitisation) is now captured at pipeline entry and threaded through all stages:
+- [x] **Record original source filename in all output artefacts** (v3.2.0) — the original source filename (with extension, before sanitisation) is now captured at pipeline entry and threaded through all stages:
   - `source_filename` captured from `audio_path.name` in `pipeline_runner.py`.
   - Stored in `bundle.json` `meta` block via updated `export_transcript_bundle()`.
   - Included in `consensus.md` header via updated `renderer.render_consensus()`.

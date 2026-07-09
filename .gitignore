@@ -54,6 +54,7 @@ test-results/
 .dmypy.json
 dmypy.json
 pyrightconfig.json
+.proxyai/
 
 # ── Security Scanning ─────────────────────────────────────────────────────────
 bandit-report.json

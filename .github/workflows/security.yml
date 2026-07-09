@@ -18,6 +18,8 @@ jobs:
         with:
           fetch-depth: 0
       - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           verbose: true
           fail: true
@@ -27,17 +29,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-python@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
           cache: 'pip'
-      
+
       - name: Install dependencies
         run: pip install -r requirements.txt safety pip-audit
-      
+
       - name: Run safety check (EOL/vulnerable deps)
         run: safety check --json || true
-      
+
       - name: Run pip-audit
         run: pip-audit --desc
 
@@ -46,19 +48,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-python@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      
+
       - name: Install bandit
         run: pip install bandit
-      
+
       - name: Run bandit on source
         run: bandit -r chorus/ batch_processor/ consensus_merger/ audio_processor/ --format json --output bandit-report.json || true
-      
+
       - name: Upload bandit report
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: bandit-report
           path: bandit-report.json
@@ -68,8 +70,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-python@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      
-      - uses: pre-commit/action@v3.0.0
+
+      - uses: pre-commit/action@v3.0.1
