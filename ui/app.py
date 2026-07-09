@@ -394,7 +394,9 @@ st.markdown(
         }
     }
 </style>
-""".replace("__CHORUS_PRIMARY__", _theme["primary"])
+""".replace(
+        "__CHORUS_PRIMARY__", _theme["primary"]
+    )
     .replace("__CHORUS_SURFACE__", _theme["surface"])
     .replace("__CHORUS_BORDER__", _theme["border"])
     .replace("__CHORUS_HEADER_A__", _theme["header_a"])

@@ -212,9 +212,8 @@ class TestFilterAcousticProperties:
         output_dbfs = 20 * np.log10(output_rms) if output_rms > 1e-9 else -np.inf
 
         # Output should be much closer to target than input
-        assert (
-            abs(output_dbfs - NORMALISATION_TARGET_DBFS)
-            < abs(input_dbfs - NORMALISATION_TARGET_DBFS)
+        assert abs(output_dbfs - NORMALISATION_TARGET_DBFS) < abs(
+            input_dbfs - NORMALISATION_TARGET_DBFS
         ), f"Normalisation should bring RMS closer to target: input={input_dbfs:.1f}dB, output={output_dbfs:.1f}dB, target={NORMALISATION_TARGET_DBFS}dB"
 
         # Output should still be clipped to [-1, 1]

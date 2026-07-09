@@ -20,9 +20,6 @@ repos:
         description: Check Python code for style, performance, security
         args: [--fix]
         types: [python]
-      - id: ruff-format
-        name: Ruff Format — Auto-format Python code
-        types: [python]
 
   # isort: Python import sorting
   - repo: https://github.com/PyCQA/isort
