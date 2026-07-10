@@ -275,7 +275,7 @@ class TestOptionalPipelineFeatures:
         from pipeline_runner import run_pipeline
 
         with patch(
-            "nlp_reconstructor.reconstructor.reconstruct_low_tokens",
+            "reconstruction.nlp.reconstruct_low_tokens",
             side_effect=lambda votes: votes,
         ) as mock_reconstruct:
             results = run_pipeline(
@@ -293,7 +293,7 @@ class TestOptionalPipelineFeatures:
         from pipeline_runner import run_pipeline
 
         with patch(
-            "llm_reconstructor.reconstructor.reconstruct_low_tokens_llm",
+            "reconstruction.llm.reconstruct_low_tokens_llm",
             side_effect=lambda votes, model=None: votes,
         ) as mock_reconstruct:
             results = run_pipeline(

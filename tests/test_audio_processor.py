@@ -293,3 +293,42 @@ class TestPipeline:
 
         with pytest.raises(RuntimeError, match="Failed to decode audio file"):
             process_audio(bad_file)
+
+    def test_wav_load_uses_soundfile_without_deprecation(self, tmp_path, recwarn):
+        """Loading a standard WAV must not trigger the librosa audioread fallback."""
+        import soundfile as sf
+
+        wav_path = tmp_path / "tone.wav"
+        t = np.linspace(0, 1.0, SR, endpoint=False, dtype=np.float32)
+        sf.write(str(wav_path), 0.5 * np.sin(2 * np.pi * 440 * t), SR, subtype="PCM_16")
+
+        from audio_processor.pipeline import process_audio
+
+        outputs = process_audio(wav_path, output_dir=tmp_path / "variants")
+
+        assert set(outputs) == {"original", "highpass", "normalised", "denoised"}
+        deprecation_messages = [
+            str(w.message) for w in recwarn.list if "__audioread_load" in str(w.message)
+        ]
+        assert not deprecation_messages, (
+            "librosa audioread deprecation warning was emitted; "
+            "the soundfile decode path was not taken."
+        )
+
+    def test_non_target_rate_is_resampled(self, tmp_path):
+        """A non-target sample rate is resampled to TARGET_SAMPLE_RATE."""
+        import soundfile as sf
+
+        from config import TARGET_SAMPLE_RATE
+
+        source_sr = 8_000
+        wav_path = tmp_path / "low_rate.wav"
+        t = np.linspace(0, 1.0, source_sr, endpoint=False, dtype=np.float32)
+        sf.write(str(wav_path), 0.5 * np.sin(2 * np.pi * 220 * t), source_sr)
+
+        from audio_processor.pipeline import _load_audio
+
+        audio, sr = _load_audio(wav_path)
+        assert sr == TARGET_SAMPLE_RATE
+        assert audio.dtype == np.float32
+        assert audio.ndim == 1

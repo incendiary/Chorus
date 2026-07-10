@@ -364,6 +364,8 @@ Chorus produces a final `.md` file in the `outputs/consensus/` directory. This f
 
 ```text
 chorus-engine/
+├── chorus/                   # Stable public API façade (see "Library usage")
+│   └── __init__.py           # Re-exports the supported 4.x entry points
 ├── audio_processor/          # Stage 1: Audio cleaning pipeline
 │   ├── filters.py            # High-pass, norm, denoise (VAD + fixed modes)
 │   └── pipeline.py           # Orchestrates variant generation (memory-optimised)
@@ -380,11 +382,11 @@ chorus-engine/
 ├── export_engine/            # Multi-format export
 │   ├── exporter.py           # PDF, DOCX, SRT, VTT, ZIP, plain text
 │   └── ai_context.py         # AI/LLM context pack generator
-├── nlp_reconstructor/        # NLP post-processing
-│   └── reconstructor.py      # spaCy grammatical reconstruction
-├── llm_reconstructor/        # Optional local LLM post-processing
-│   ├── ollama_client.py      # Local Ollama API client wrapper
-│   └── reconstructor.py      # LOW-token reconstruction helpers
+├── reconstruction/           # LOW-token reconstruction (strategy-based)
+│   ├── __init__.py           # Unified reconstruct(votes, *, strategy) entry point
+│   ├── nlp.py                # spaCy grammatical reconstruction ("nlp" strategy)
+│   ├── llm.py                # Local Ollama reconstruction ("llm" strategy)
+│   └── ollama_client.py      # Local Ollama API client wrapper
 ├── ui/                       # Stage 4: Web interface
 │   └── app.py                # Streamlit dashboard (confidence vis, batch mode)
 ├── tests/                    # Test suite (120+ tests)
@@ -402,6 +404,26 @@ chorus-engine/
 ├── docker-compose.gpu.yml    # GPU override (NVIDIA device reservations)
 └── requirements.txt          # Pinned Python dependencies
 ```
+
+### Library usage
+
+Once installed (`pip install .`), Chorus exposes a single, stable public API
+through the top-level `chorus` package. Import the supported entry points from
+there rather than reaching into the internal modules, whose paths may change
+between minor releases:
+
+```python
+from chorus import run_pipeline, run_batch
+
+# Transcribe a single file end to end.
+results = run_pipeline(audio_path="meeting.wav", language="en")
+
+# Or process a directory of files unattended.
+run_batch(["recordings/"], recursive=True)
+```
+
+The full public surface is `run_pipeline`, `run_batch`,
+`merge_transcripts_with_votes`, `export_all`, and `export_transcript_bundle`.
 
 ---
 

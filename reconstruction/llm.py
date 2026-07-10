@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 
 from consensus_merger.alignment import WordVote
-from llm_reconstructor.ollama_client import suggest_token
+from reconstruction.ollama_client import suggest_token
 
 logger = logging.getLogger(__name__)
 

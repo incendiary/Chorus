@@ -1,4 +1,4 @@
-"""tests/test_llm_reconstructor.py — unit tests for llm_reconstructor module."""
+"""tests/test_llm_reconstructor.py — unit tests for the LLM reconstruction strategy."""
 
 from __future__ import annotations
 
@@ -7,9 +7,9 @@ from unittest.mock import MagicMock, patch
 from urllib import error
 
 from consensus_merger.alignment import WordVote
-from llm_reconstructor import ollama_client
-from llm_reconstructor.ollama_client import probe_model
-from llm_reconstructor.reconstructor import reconstruct_low_tokens_llm
+from reconstruction import ollama_client
+from reconstruction.llm import reconstruct_low_tokens_llm
+from reconstruction.ollama_client import probe_model
 
 
 def _vote(word: str, tier: str = "HIGH", variants: list[str] | None = None) -> WordVote:
@@ -41,7 +41,7 @@ def test_llm_reconstructor_upgrades_low_token(monkeypatch):
     ]
 
     monkeypatch.setattr(
-        "llm_reconstructor.reconstructor.suggest_token",
+        "reconstruction.llm.suggest_token",
         lambda **kwargs: "garble",
     )
 
@@ -58,7 +58,7 @@ def test_llm_reconstructor_ignores_unknown_suggestion(monkeypatch):
     ]
 
     monkeypatch.setattr(
-        "llm_reconstructor.reconstructor.suggest_token",
+        "reconstruction.llm.suggest_token",
         lambda **kwargs: "not-in-candidates",
     )
 
@@ -83,7 +83,7 @@ def _make_urlopen_response(body: str):
 
 def test_suggest_token_timeout_returns_none():
     with patch(
-        "llm_reconstructor.ollama_client.request.urlopen",
+        "reconstruction.ollama_client.request.urlopen",
         side_effect=TimeoutError("timed out"),
     ):
         result = ollama_client.suggest_token(
@@ -94,7 +94,7 @@ def test_suggest_token_timeout_returns_none():
 
 def test_suggest_token_url_error_returns_none():
     with patch(
-        "llm_reconstructor.ollama_client.request.urlopen",
+        "reconstruction.ollama_client.request.urlopen",
         side_effect=error.URLError("connection refused"),
     ):
         result = ollama_client.suggest_token(
@@ -107,7 +107,7 @@ def test_suggest_token_http_error_returns_none():
     http_err = error.HTTPError(
         url="http://localhost", code=503, msg="Service Unavailable", hdrs=None, fp=None
     )
-    with patch("llm_reconstructor.ollama_client.request.urlopen", side_effect=http_err):
+    with patch("reconstruction.ollama_client.request.urlopen", side_effect=http_err):
         result = ollama_client.suggest_token(
             context="hello world", candidates=["foo", "bar"]
         )
@@ -116,7 +116,7 @@ def test_suggest_token_http_error_returns_none():
 
 def test_suggest_token_malformed_json_returns_none():
     with patch(
-        "llm_reconstructor.ollama_client.request.urlopen",
+        "reconstruction.ollama_client.request.urlopen",
         return_value=_make_urlopen_response("not valid { json"),
     ):
         result = ollama_client.suggest_token(
@@ -127,7 +127,7 @@ def test_suggest_token_malformed_json_returns_none():
 
 def test_suggest_token_empty_response_field_returns_none():
     with patch(
-        "llm_reconstructor.ollama_client.request.urlopen",
+        "reconstruction.ollama_client.request.urlopen",
         return_value=_make_urlopen_response('{"response": "  "}'),
     ):
         result = ollama_client.suggest_token(
@@ -138,7 +138,7 @@ def test_suggest_token_empty_response_field_returns_none():
 
 def test_suggest_token_success():
     with patch(
-        "llm_reconstructor.ollama_client.request.urlopen",
+        "reconstruction.ollama_client.request.urlopen",
         return_value=_make_urlopen_response('{"response": "bar"}'),
     ):
         result = ollama_client.suggest_token(
@@ -156,7 +156,7 @@ def test_reconstruct_votes_unchanged_on_all_failures(monkeypatch):
     ]
 
     with patch(
-        "llm_reconstructor.ollama_client.request.urlopen",
+        "reconstruction.ollama_client.request.urlopen",
         side_effect=TimeoutError("timed out"),
     ):
         result = reconstruct_low_tokens_llm(votes)
@@ -173,10 +173,10 @@ def test_reconstruct_votes_unchanged_on_all_failures(monkeypatch):
 def test_probe_model_success():
     body = '{"models": [{"name": "llama3.1:8b"}]}'
     with patch(
-        "llm_reconstructor.ollama_client.request.urlopen",
+        "reconstruction.ollama_client.request.urlopen",
         return_value=_make_urlopen_response(body),
     ):
-        with patch("llm_reconstructor.ollama_client.OLLAMA_MODEL", "llama3.1:8b"):
+        with patch("reconstruction.ollama_client.OLLAMA_MODEL", "llama3.1:8b"):
             ok, reason = probe_model()
     assert ok is True
     assert reason == ""
@@ -184,7 +184,7 @@ def test_probe_model_success():
 
 def test_probe_model_connection_refused():
     with patch(
-        "llm_reconstructor.ollama_client.request.urlopen",
+        "reconstruction.ollama_client.request.urlopen",
         side_effect=error.URLError("connection refused"),
     ):
         ok, reason = probe_model()
@@ -195,10 +195,10 @@ def test_probe_model_connection_refused():
 def test_probe_model_model_not_pulled():
     body = '{"models": [{"name": "mistral:7b"}]}'
     with patch(
-        "llm_reconstructor.ollama_client.request.urlopen",
+        "reconstruction.ollama_client.request.urlopen",
         return_value=_make_urlopen_response(body),
     ):
-        with patch("llm_reconstructor.ollama_client.OLLAMA_MODEL", "llama3.1:8b"):
+        with patch("reconstruction.ollama_client.OLLAMA_MODEL", "llama3.1:8b"):
             ok, reason = probe_model()
     assert ok is False
     assert "not pulled" in reason
@@ -207,7 +207,7 @@ def test_probe_model_model_not_pulled():
 
 def test_probe_model_timeout():
     with patch(
-        "llm_reconstructor.ollama_client.request.urlopen",
+        "reconstruction.ollama_client.request.urlopen",
         side_effect=TimeoutError("timed out"),
     ):
         ok, reason = probe_model()
@@ -227,9 +227,9 @@ def test_suggest_token_weighted_prompt_includes_agreement():
             self.method = method
             sent_payloads.append(json.loads(data.decode("utf-8")))
 
-    with patch("llm_reconstructor.ollama_client.request.Request", CapturingRequest):
+    with patch("reconstruction.ollama_client.request.Request", CapturingRequest):
         with patch(
-            "llm_reconstructor.ollama_client.request.urlopen",
+            "reconstruction.ollama_client.request.urlopen",
             return_value=_make_urlopen_response('{"response": "garble"}'),
         ):
             result = ollama_client.suggest_token(
@@ -259,9 +259,7 @@ def test_reconstruct_low_tokens_passes_weights_to_suggest(monkeypatch):
         received_weights.append(candidate_weights or {})
         return candidates[0]
 
-    monkeypatch.setattr(
-        "llm_reconstructor.reconstructor.suggest_token", capturing_suggest
-    )
+    monkeypatch.setattr("reconstruction.llm.suggest_token", capturing_suggest)
     reconstruct_low_tokens_llm(votes)
 
     assert received_weights

@@ -178,8 +178,7 @@ For detailed architecture, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 - `consensus_merger/` — Word-level voting and alignment
 - `export_engine/` — Multi-format export (PDF, DOCX, SRT, VTT, JSON)
 - `diarisation/` — Speaker identification (pyannote)
-- `nlp_reconstructor/` — spaCy-based token recovery
-- `llm_reconstructor/` — Ollama-based token recovery
+- `reconstruction/` — LOW-token recovery via spaCy (`"nlp"`) or Ollama (`"llm"`) strategies
 - `batch_processor/` — Multi-file processing
 - `ui/` — Streamlit interface
 

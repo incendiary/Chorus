@@ -1,5 +1,5 @@
 """
-tests/test_reconstructor.py — Unit tests for nlp_reconstructor.reconstructor.
+tests/test_reconstructor.py — Unit tests for reconstruction.nlp.
 
 Covers graceful degradation when spaCy or its model is unavailable,
 and correct passthrough behaviour on empty inputs.
@@ -33,7 +33,7 @@ def _make_vote(
 
 class TestReconstructorDegradation:
     def test_empty_list_returns_empty_list(self):
-        from nlp_reconstructor.reconstructor import reconstruct_low_tokens
+        from reconstruction.nlp import reconstruct_low_tokens
 
         result = reconstruct_low_tokens([])
         assert result == []
@@ -51,7 +51,7 @@ class TestReconstructorDegradation:
             # Re-import to pick up the patched module state
             import importlib
 
-            import nlp_reconstructor.reconstructor as rec_mod
+            import reconstruction.nlp as rec_mod
 
             importlib.reload(rec_mod)
 
@@ -60,9 +60,9 @@ class TestReconstructorDegradation:
         # Reload the real module afterwards so other tests are unaffected
         import importlib
 
-        import nlp_reconstructor.reconstructor
+        import reconstruction.nlp
 
-        importlib.reload(nlp_reconstructor.reconstructor)
+        importlib.reload(reconstruction.nlp)
 
         assert len(result) == len(votes)
         # Words should be unchanged
@@ -71,7 +71,7 @@ class TestReconstructorDegradation:
     def test_no_low_tokens_returns_votes_unchanged(self):
         """If there are no LOW tokens, the vote list is returned as-is."""
         votes = [_make_vote("hello"), _make_vote("world"), _make_vote("today")]
-        from nlp_reconstructor.reconstructor import reconstruct_low_tokens
+        from reconstruction.nlp import reconstruct_low_tokens
 
         result = reconstruct_low_tokens(votes)
         assert len(result) == len(votes)

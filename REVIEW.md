@@ -1,6 +1,12 @@
 # Chorus Engine Holistic Codebase Review
 
-Date: 21 June 2026
+Date: 21 June 2026 · Re-assessed: 29 June 2026 (v3.3.0)
+
+> **29 June 2026 re-assessment.** This review was re-validated against the v3.3.0 tree.
+> The headline findings still stand and have been routed into the v4.0.0 work packages —
+> see the [v3.3.0 re-assessment & v4.0.0 readiness](#v330-re-assessment--v400-readiness)
+> section at the end of this document, and [`docs/tasks/`](docs/tasks/README.md) for the
+> executable task specifications.
 
 ## Executive summary
 
@@ -515,3 +521,39 @@ Snippet 5: check Docker labels against `VERSION`.
 **Files to change:** `Dockerfile`, `Dockerfile.gpu`, `docker-publish.sh`, `tests/test_version_sync.py`, `devops-practices/check-version-sync.sh`, `.github/workflows/release.yml`
 
 **Estimated effort:** S
+
+---
+
+## v3.3.0 re-assessment & v4.0.0 readiness
+
+Re-validated 29 June 2026 against the v3.3.0 tree (193 test functions present;
+`VERSION`, `pyproject.toml`, and README all report 3.3.0). The original findings were
+checked against current code rather than recalled.
+
+### Findings that still stand (routed into v4.0.0)
+
+| Finding (original) | Status at v3.3.0 | Evidence | Routed to |
+|---|---|---|---|
+| Output isolation drift — global `CONSENSUS_DIR` writes/reads | **Still present** | `export_engine/exporter.py:600,605,610` (`build_export_zip` reads sidecars from `CONSENSUS_DIR`); `diarisation/diariser.py:337` (`_speaker_names_path` hardcodes `CONSENSUS_DIR`) | WP2 |
+| `pyproject.toml` `dependencies = []` — wheel installs no runtime deps | **Still present** | `pyproject.toml:12` | WP1 (RA-1.1) |
+| UI and batch surfaces near-zero coverage | **Still present** | no test imports `run_batch` or `ui/app.py` | WP3 |
+| `pip-audit` non-blocking in CI | **Still present** | `.github/workflows/ci.yml:120` ends with `\|\| true` | WP3 (RA-3.3) |
+| librosa audioread deprecation | **Still present** | `audio_processor/pipeline.py:69` `librosa.load(...)` falls back to deprecated path without `soundfile` | WP1 (RA-1.4) |
+
+### New observation since the original review
+
+- **Two reconstruction modules now coexist** — `nlp_reconstructor/` (spaCy) and
+  `llm_reconstructor/` (Ollama, added v3.0.0). They have overlapping responsibility and
+  separate pipeline wiring. Consolidating them behind one interface is the principal
+  breaking change that justifies the 4.0.0 major bump. Routed to **WP1 (RA-1.3)**.
+- `CLAUDE.md` "Core Modules" still lists only `nlp_reconstructor/`; it omits
+  `llm_reconstructor/`. WP1 updates this for documentation parity.
+
+### Path to 4.0.0
+
+The four work packages in [`docs/tasks/`](docs/tasks/README.md) constitute the 4.0.0
+scope. WP1 is breaking and earns the major version; WP2 and WP3 are correctness and
+test-parity hardening (independently shippable as 3.4.x if desired); WP4 is the visible
+feature payload. Recommended execution order: **WP2 → WP1 → WP3 → WP4**. The release
+owner bumps `VERSION` to 4.0.0 and writes the migration note once all four merge.
+
