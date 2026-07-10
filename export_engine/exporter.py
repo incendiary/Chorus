@@ -564,6 +564,7 @@ def export_zip(
     whisper_result: dict[str, Any],
     stem: str,
     include_formats: list[str] | None = None,
+    output_dir: Path | None = None,
 ) -> bytes:
     """
     Bundle all outputs for a recording into an in-memory zip archive.
@@ -586,12 +587,15 @@ def export_zip(
         Base filename stem.
     include_formats : list[str], optional
         Additional export formats to include.
+    output_dir : Path | None
+        Root directory for outputs. If None, uses the global CONSENSUS_DIR.
 
     Returns
     -------
     bytes
         Raw zip archive bytes, ready for ``st.download_button``.
     """
+    target_dir = output_dir or CONSENSUS_DIR
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         # Consensus markdown — always included
@@ -599,31 +603,37 @@ def export_zip(
             zf.write(consensus_md_path, consensus_md_path.name)
 
         # Speaker names sidecar — included if it exists
-        speaker_names_path = CONSENSUS_DIR / f"{stem}_speakers.json"
+        speaker_names_path = target_dir / f"{stem}_speakers.json"
         if speaker_names_path.exists():
             zf.write(speaker_names_path, speaker_names_path.name)
 
         # AI context pack — included if it exists
-        ai_context_path = CONSENSUS_DIR / f"{stem}_ai_context.md"
+        ai_context_path = target_dir / f"{stem}_ai_context.md"
         if ai_context_path.exists():
             zf.write(ai_context_path, ai_context_path.name)
 
         # Diarised transcript — included if it exists
-        diarised_path = CONSENSUS_DIR / f"{stem}_diarised.md"
+        diarised_path = target_dir / f"{stem}_diarised.md"
         if diarised_path.exists():
             zf.write(diarised_path, diarised_path.name)
 
         # Additional format exports
         if include_formats:
             for _, path in export_all(
-                consensus_md_path, whisper_result, stem, include_formats
+                consensus_md_path,
+                whisper_result,
+                stem,
+                include_formats,
+                output_dir=output_dir,
             ).items():
                 if path and path.exists():
                     zf.write(path, path.name)
 
         # Both plain-text variants — always included
         for include_low in (True, False):
-            plain = export_plain_text(consensus_md_path, stem, include_low=include_low)
+            plain = export_plain_text(
+                consensus_md_path, stem, include_low=include_low, output_dir=output_dir
+            )
             if plain.exists():
                 zf.write(plain, plain.name)
 

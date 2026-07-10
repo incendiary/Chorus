@@ -332,22 +332,38 @@ def render_diarised_md(
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def _speaker_names_path(stem: str) -> Path:
-    """Return the path to the speaker names sidecar JSON for *stem*."""
-    return CONSENSUS_DIR / f"{stem}_speakers.json"
-
-
-def load_speaker_names(stem: str) -> dict[str, str]:
+def _speaker_names_path(stem: str, output_dir: Path | None = None) -> Path:
     """
-    Load a previously saved speaker name mapping for *stem*.
-
-    The mapping is stored as a JSON file alongside the consensus outputs:
-    ``outputs/consensus/{stem}_speakers.json``
+    Return the path to the speaker names sidecar JSON for *stem*.
 
     Parameters
     ----------
     stem : str
         Base filename stem.
+    output_dir : Path | None
+        Root directory for outputs. If None, uses the global CONSENSUS_DIR.
+
+    Returns
+    -------
+    Path
+        Path to the speaker names JSON file.
+    """
+    target_dir = output_dir or CONSENSUS_DIR
+    return target_dir / f"{stem}_speakers.json"
+
+
+def load_speaker_names(stem: str, output_dir: Path | None = None) -> dict[str, str]:
+    """
+    Load a previously saved speaker name mapping for *stem*.
+
+    The mapping is stored as a JSON file alongside the consensus outputs.
+
+    Parameters
+    ----------
+    stem : str
+        Base filename stem.
+    output_dir : Path | None
+        Root directory for outputs. If None, uses the global CONSENSUS_DIR.
 
     Returns
     -------
@@ -355,7 +371,7 @@ def load_speaker_names(stem: str) -> dict[str, str]:
         Mapping of diarisation label (``"SPEAKER_00"``) → human-readable name.
         Returns an empty dict if no sidecar file exists or is unreadable.
     """
-    path = _speaker_names_path(stem)
+    path = _speaker_names_path(stem, output_dir=output_dir)
     if not path.exists():
         return {}
 
@@ -378,7 +394,7 @@ def save_speaker_names(
     Save a speaker name mapping to the sidecar JSON file.
 
     Only entries where the user has provided a non-empty custom name are
-    persisted.  Entries mapping to the original label (e.g.,
+    persisted. Entries mapping to the original label (e.g.,
     ``"SPEAKER_00" → "SPEAKER_00"``) are excluded to keep the file clean.
 
     Parameters
@@ -387,6 +403,8 @@ def save_speaker_names(
         Base filename stem.
     speaker_map : dict[str, str]
         Mapping of diarisation label → human-readable name.
+    output_dir : Path | None
+        Root directory for outputs. If None, uses the global CONSENSUS_DIR.
 
     Returns
     -------
@@ -398,9 +416,8 @@ def save_speaker_names(
         k: v.strip() for k, v in speaker_map.items() if v.strip() and v.strip() != k
     }
 
-    target_dir = output_dir or CONSENSUS_DIR
-    target_dir.mkdir(parents=True, exist_ok=True)
-    path = target_dir / f"{_speaker_names_path(stem).name}"
+    path = _speaker_names_path(stem, output_dir=output_dir)
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         json.dumps(cleaned, indent=2, ensure_ascii=False) + "\n",
         encoding="utf-8",

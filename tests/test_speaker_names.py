@@ -198,3 +198,50 @@ class TestRenderDiarisedMdWithNames:
         path = render_diarised_md(sample_labelled, "test", speaker_map={})
         text = path.read_text(encoding="utf-8")
         assert "SPEAKER_00" in text
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# output_dir isolation (RA-2.2)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class TestSpeakerNamesOutputDirIsolation:
+    """The speaker-name sidecar must honour an isolated *output_dir* rather than
+    always reading from and writing to the global CONSENSUS_DIR. These tests fail
+    on the pre-WP2 code, where the path was hardcoded to CONSENSUS_DIR."""
+
+    def test_save_writes_to_output_dir_not_global(self, tmp_path, monkeypatch):
+        """save_speaker_names(output_dir=...) writes under the isolated directory
+        and leaves the global CONSENSUS_DIR untouched."""
+        global_dir = tmp_path / "global_consensus"
+        global_dir.mkdir()
+        monkeypatch.setattr("diarisation.diariser.CONSENSUS_DIR", global_dir)
+
+        isolated_dir = tmp_path / "isolated"
+        path = save_speaker_names(
+            "test_audio", {"SPEAKER_00": "Alice"}, output_dir=isolated_dir
+        )
+
+        assert path == isolated_dir / "test_audio_speakers.json"
+        assert path.exists()
+        assert list(global_dir.iterdir()) == []
+
+    def test_load_reads_from_output_dir(self, tmp_path, monkeypatch):
+        """load_speaker_names(output_dir=...) reads back what was written to the
+        isolated directory, and does not fall through to the global directory."""
+        global_dir = tmp_path / "global_consensus"
+        global_dir.mkdir()
+        monkeypatch.setattr("diarisation.diariser.CONSENSUS_DIR", global_dir)
+
+        # A same-stem sidecar in the global dir must NOT shadow the isolated one.
+        (global_dir / "test_audio_speakers.json").write_text(
+            '{"SPEAKER_00": "StaleName"}', encoding="utf-8"
+        )
+
+        isolated_dir = tmp_path / "isolated"
+        save_speaker_names(
+            "test_audio", {"SPEAKER_00": "Alice"}, output_dir=isolated_dir
+        )
+        result = load_speaker_names("test_audio", output_dir=isolated_dir)
+
+        assert result == {"SPEAKER_00": "Alice"}

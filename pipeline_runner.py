@@ -222,7 +222,7 @@ def run_pipeline(
             speaker_labels = get_unique_speakers(labelled)
 
             # Load any previously saved speaker names for this stem
-            speaker_map = load_speaker_names(stem)
+            speaker_map = load_speaker_names(stem, output_dir=consensus_dir)
 
             diarised_path = render_diarised_md(
                 labelled, stem, speaker_map=speaker_map, output_dir=consensus_dir

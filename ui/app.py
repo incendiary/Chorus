@@ -1336,6 +1336,7 @@ if uploaded_files:
                     transcripts["original"],
                     original_stem,
                     include_formats=formats_to_export or None,
+                    output_dir=None,
                 )
             st.download_button(
                 label="⬇️ Download Full Output Archive (.zip)",

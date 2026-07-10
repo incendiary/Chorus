@@ -688,6 +688,76 @@ class TestOutputDirIsolation:
         assert "Source file" in text
         assert "interview_alice_bob_final.m4a" in text
 
+    @pytest.mark.usefixtures("_patch_transcription")
+    def test_isolated_run_does_not_leak_to_global_consensus_dir(
+        self, synthetic_audio, tmp_path, monkeypatch
+    ):
+        """
+        Regression test: isolated output_dir runs should not write to global CONSENSUS_DIR.
+
+        A default run always generates the AI-context pack, so this test exercises the
+        ``_ai_context.md`` routing end-to-end: it asserts the pack lands in the isolated
+        directory and that nothing leaks to the global one. The diarisation-gated
+        sidecars (``_speakers.json``, ``_diarised.md``) are covered directly by
+        ``tests/test_speaker_names.py::TestSpeakerNamesOutputDirIsolation``, which does
+        not require mocking pyannote.
+        """
+        from pipeline_runner import run_pipeline
+
+        # Mock the global CONSENSUS_DIR to an empty temp directory
+        mock_global_dir = tmp_path / "global_consensus"
+        mock_global_dir.mkdir()
+        monkeypatch.setattr("config.CONSENSUS_DIR", mock_global_dir)
+        monkeypatch.setattr("diarisation.diariser.CONSENSUS_DIR", mock_global_dir)
+        monkeypatch.setattr("consensus_merger.renderer.CONSENSUS_DIR", mock_global_dir)
+        monkeypatch.setattr("export_engine.exporter.CONSENSUS_DIR", mock_global_dir)
+        monkeypatch.setattr("export_engine.ai_context.CONSENSUS_DIR", mock_global_dir)
+
+        # Get initial file count in mock global dir
+        initial_files = (
+            set(mock_global_dir.iterdir()) if mock_global_dir.exists() else set()
+        )
+
+        # Run pipeline with isolated output_dir
+        isolated_dir = tmp_path / "isolated_output"
+        results = run_pipeline(
+            audio_path=synthetic_audio,
+            language="en",
+            output_dir=isolated_dir,
+        )
+
+        # Verify consensus was created in isolated dir
+        assert results["consensus_path"].exists()
+        assert results["consensus_path"].parent == isolated_dir / "consensus"
+
+        # The AI-context pack is always produced; confirm it landed in the isolated
+        # directory. This keeps the leak check below non-vacuous — if the pack stopped
+        # being generated, this assertion would fail rather than passing silently.
+        ai_context_path = results.get("ai_context_path")
+        assert ai_context_path is not None
+        assert ai_context_path.exists()
+        assert isolated_dir in ai_context_path.parents
+
+        # Verify global CONSENSUS_DIR gained no new files
+        final_files = (
+            set(mock_global_dir.iterdir()) if mock_global_dir.exists() else set()
+        )
+        new_files = final_files - initial_files
+
+        # Filter out non-sidecar files (e.g., transcripts.json created by mocked transcription)
+        leaked_sidecars = [
+            f
+            for f in new_files
+            if any(
+                pattern in f.name
+                for pattern in ["_speakers.json", "_ai_context.md", "_diarised.md"]
+            )
+        ]
+
+        assert (
+            not leaked_sidecars
+        ), f"Isolated run leaked sidecars to global dir: {[f.name for f in leaked_sidecars]}"
+
 
 class TestConsensusModelForwarding:
     """Test consensus model selection wiring into transcription stage."""

@@ -5,17 +5,21 @@ Covers:
   - Timestamp formatting helpers (SRT and VTT)
   - SRT export: file created, correct structure
   - VTT export: file created, starts with WEBVTT header
+  - ZIP export: honours output_dir for sidecars and does not contaminate global dir
 """
 
 from __future__ import annotations
 
+import io
 import re
+import zipfile
 
 from export_engine.exporter import (
     _seconds_to_srt_ts,
     _seconds_to_vtt_ts,
     export_srt,
     export_vtt,
+    export_zip,
 )
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -246,3 +250,120 @@ class TestExportTranscriptBundle:
         assert "bundle_path" in result
         assert result["bundle_path"].exists()
         assert result["bundle_path"].name.endswith("_bundle.json")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ZIP export with output_dir isolation
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class TestZipExportOutputDirIsolation:
+    """Test that export_zip respects output_dir and does not leak to global dir."""
+
+    def _make_mock_whisper_result(self) -> dict:
+        """Minimal Whisper result for testing."""
+        return {
+            "text": "test recording",
+            "segments": [{"start": 0.0, "end": 1.0, "text": " test recording"}],
+            "language": "en",
+        }
+
+    def test_zip_reads_sidecars_from_output_dir(self, tmp_path):
+        """ZIP should include sidecars written to the specified output_dir."""
+        # Create a consensus markdown in output_dir
+        output_dir = tmp_path / "outputs"
+        output_dir.mkdir()
+        consensus_path = output_dir / "test_consensus.md"
+        consensus_path.write_text("# Test Consensus\n\nHello world.\n")
+
+        # Create the sidecars in output_dir
+        speakers_path = output_dir / "test_speakers.json"
+        speakers_path.write_text('{"SPEAKER_00": "Alice"}')
+
+        ai_context_path = output_dir / "test_ai_context.md"
+        ai_context_path.write_text("# AI Context\n\nGood recording.\n")
+
+        diarised_path = output_dir / "test_diarised.md"
+        diarised_path.write_text("# Diarised\n\nAlice: Hello world.\n")
+
+        # Build ZIP
+        zip_bytes = export_zip(
+            consensus_md_path=consensus_path,
+            whisper_result=self._make_mock_whisper_result(),
+            stem="test",
+            output_dir=output_dir,
+        )
+
+        # Verify ZIP contains all sidecars
+        zf = zipfile.ZipFile(io.BytesIO(zip_bytes))
+        names = zf.namelist()
+        assert any(
+            "_speakers.json" in n for n in names
+        ), "Missing speakers sidecar in ZIP"
+        assert any("_ai_context.md" in n for n in names), "Missing AI context in ZIP"
+        assert any(
+            "_diarised.md" in n for n in names
+        ), "Missing diarised sidecar in ZIP"
+
+    def test_zip_does_not_pick_up_stale_sidecars_from_global_dir(
+        self, tmp_path, monkeypatch
+    ):
+        """ZIP from isolated output_dir should not include stale files from global dir."""
+        # Mock global CONSENSUS_DIR to tmp_path / "global"
+        global_dir = tmp_path / "global"
+        global_dir.mkdir()
+        monkeypatch.setattr("export_engine.exporter.CONSENSUS_DIR", global_dir)
+
+        # Create stale files in global dir
+        stale_speakers = global_dir / "test_speakers.json"
+        stale_speakers.write_text('{"SPEAKER_00": "OldName"}')
+
+        stale_ai_context = global_dir / "test_ai_context.md"
+        stale_ai_context.write_text("# Old AI Context\n\nStale data.\n")
+
+        # Create fresh consensus in isolated output_dir
+        isolated_dir = tmp_path / "isolated"
+        isolated_dir.mkdir()
+        consensus_path = isolated_dir / "test_consensus.md"
+        consensus_path.write_text("# Test Consensus\n\nFresh recording.\n")
+
+        # Build ZIP from isolated_dir (no sidecars there)
+        zip_bytes = export_zip(
+            consensus_md_path=consensus_path,
+            whisper_result=self._make_mock_whisper_result(),
+            stem="test",
+            output_dir=isolated_dir,
+        )
+
+        # Verify ZIP does NOT contain the stale sidecars from global dir
+        zf = zipfile.ZipFile(io.BytesIO(zip_bytes))
+        names = zf.namelist()
+        assert not any(
+            "_speakers.json" in n for n in names
+        ), "ZIP should not include stale speakers sidecar from global dir"
+        assert not any(
+            "_ai_context.md" in n for n in names
+        ), "ZIP should not include stale AI context from global dir"
+
+    def test_zip_contains_consensus_and_plaintext(self, tmp_path):
+        """ZIP should always include consensus markdown and plaintext variants."""
+        output_dir = tmp_path / "outputs"
+        output_dir.mkdir()
+        consensus_path = output_dir / "test_consensus.md"
+        consensus_path.write_text(
+            "# Consensus\n\n## Consensus Transcript\n\n**~~guess~~**[^1]\n\n"
+        )
+
+        zip_bytes = export_zip(
+            consensus_md_path=consensus_path,
+            whisper_result=self._make_mock_whisper_result(),
+            stem="test",
+            output_dir=output_dir,
+        )
+
+        zf = zipfile.ZipFile(io.BytesIO(zip_bytes))
+        names = zf.namelist()
+        # Should have consensus markdown
+        assert any("consensus.md" in n for n in names)
+        # Should have plaintext variants
+        assert any("most_likely" in n for n in names)

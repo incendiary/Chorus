@@ -185,9 +185,8 @@ test the surfaces users actually touch.
 
 Each work package below has a detailed, self-contained specification under
 [`docs/tasks/`](docs/tasks/README.md), written so a single agent can execute it
-independently. **Recommended order: WP2 → WP1 → WP3 → WP4.** Do not bump `VERSION`
-inside a work-package PR — the release owner cuts `4.0.0` once all four merge (see the
-"Release cut" section of the task index).
+independently. Do not bump `VERSION` inside a work-package PR — the release owner cuts
+`4.0.0` once all four merge (see the "Release cut" section of the task index).
 
 ### WP1 — Packaging & stable public API (BREAKING) · [spec](docs/tasks/WP1-packaging-and-public-api.md)
 
@@ -198,9 +197,11 @@ inside a work-package PR — the release owner cuts `4.0.0` once all four merge 
 
 ### WP2 — Output-routing correctness · [spec](docs/tasks/WP2-output-routing-correctness.md)
 
-- [ ] **Thread `output_dir` through `build_export_zip`** — fixes `exporter.py:600/605/610` reading sidecars from the global `CONSENSUS_DIR`. (RA-2.1)
-- [ ] **Make speaker-name persistence honour `output_dir`** — fixes `diariser.py:337` hardcoding `CONSENSUS_DIR`. (RA-2.2)
-- [ ] **Add a global-directory leak regression guard** — assert an isolated run writes nothing to the global `CONSENSUS_DIR`. (RA-2.3)
+- [x] **Thread `output_dir` through `build_export_zip`** — fixes `exporter.py:600/605/610` reading sidecars from the global `CONSENSUS_DIR`. (RA-2.1)
+- [x] **Make speaker-name persistence honour `output_dir`** — fixes `diariser.py:337` hardcoding `CONSENSUS_DIR`. (RA-2.2)
+- [x] **Add a global-directory leak regression guard** — assert an isolated run writes nothing to the global `CONSENSUS_DIR`. (RA-2.3)
+  - **Files changed:** `export_engine/exporter.py`, `diarisation/diariser.py`, `pipeline_runner.py`, `ui/app.py`, `tests/test_exporter.py`, `tests/test_integration.py`, `tests/test_speaker_names.py`
+  - **Tests:** 191 → 197 passing (output_dir isolation coverage)
 
 ### WP3 — User-facing test parity & CI hardening · [spec](docs/tasks/WP3-test-parity-and-ci.md)
 
