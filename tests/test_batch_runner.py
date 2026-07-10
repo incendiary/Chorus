@@ -20,9 +20,7 @@ from __future__ import annotations
 import struct
 import wave
 from pathlib import Path
-from unittest.mock import MagicMock, call, patch
-
-import pytest
+from unittest.mock import MagicMock, patch
 
 from batch_processor.batch_runner import (
     BatchResult,
