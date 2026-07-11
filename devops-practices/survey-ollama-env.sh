@@ -154,24 +154,53 @@ RECOMMENDED_MODELS=()
 REASONING=""
 
 if [[ "$TOTAL_MEM_GB" -lt 4 ]]; then
-  RECOMMENDED_MODELS=("tiny-llama:latest" "neural-chat:7b-v3.1-q4_0")
-  REASONING="Low RAM (< 4GB): Recommend small, quantized models"
+  RECOMMENDED_MODELS=("tinyllama:latest" "qwen2.5:0.5b")
+  REASONING="Low RAM (< 4GB): small, low-memory models"
 elif [[ "$TOTAL_MEM_GB" -lt 8 ]]; then
-  RECOMMENDED_MODELS=("mistral:latest" "neural-chat:7b-v3.1-q4_0" "llama2:7b-q4_K_M")
-  REASONING="Medium RAM (4-8GB): Balanced models with quantization"
+  RECOMMENDED_MODELS=("qwen2.5:3b" "llama3.2:3b" "mistral:latest")
+  REASONING="Medium RAM (4-8GB): compact models with quantization"
 elif [[ "$TOTAL_MEM_GB" -lt 16 ]]; then
-  RECOMMENDED_MODELS=("mistral:latest" "llama2:7b" "neural-chat:7b-v3.1" "dolphin-mixtral:latest")
-  REASONING="Good RAM (8-16GB): Full-precision 7B models"
+  RECOMMENDED_MODELS=("mistral:latest" "llama3.1:8b" "qwen2.5:7b")
+  REASONING="Good RAM (8-16GB): full-precision ~7-8B models"
 else
-  RECOMMENDED_MODELS=("mistral:latest" "llama2:13b" "neural-chat:7b-v3.1" "dolphin-mixtral:latest" "llama2:70b-q3_K_M")
-  REASONING="Excellent RAM (16GB+): Large models and quantized versions"
+  RECOMMENDED_MODELS=("mistral:latest" "llama3.1:8b" "qwen2.5:14b" "gemma2:9b")
+  REASONING="Excellent RAM (16GB+): larger models with headroom to spare"
 fi
 
 if [[ "$GPU_TYPE" != "none" ]]; then
   if [[ "$GPU_VRAM_GB" -ge 8 ]] || [[ "$GPU_TYPE" == "Apple Silicon (MPS)" ]]; then
-    RECOMMENDED_MODELS+=("neural-chat:13b")
-    REASONING+=" | GPU detected: Can use larger models"
+    RECOMMENDED_MODELS+=("gemma2:27b")
+    REASONING+=" | GPU detected: can use larger models"
   fi
+fi
+
+# check_model_exists MODEL:TAG — verify a tag actually resolves in Ollama's
+# registry before recommending it. A previous version of this script
+# recommended neural-chat:13b and tiny-llama:latest, neither of which ever
+# existed — this check prevents that class of bug from silently recurring as
+# tags get renamed or deprecated upstream. Network failures are treated as
+# "assume valid" so an offline machine doesn't lose all recommendations.
+check_model_exists() {
+  local spec="$1" model tag code
+  model="${spec%%:*}"
+  tag="${spec#*:}"
+  code=$(curl -s -o /dev/null -m 4 -w "%{http_code}" \
+    -H "Accept: application/vnd.docker.distribution.manifest.v2+json" \
+    "https://registry.ollama.ai/v2/library/${model}/manifests/${tag}" 2>/dev/null || echo "000")
+  [[ "$code" == "200" || "$code" == "000" ]]
+}
+
+VALIDATED_MODELS=()
+for m in "${RECOMMENDED_MODELS[@]}"; do
+  if check_model_exists "$m"; then
+    VALIDATED_MODELS+=("$m")
+  else
+    echo -e "${YELLOW}  (skipping $m — no longer available in the Ollama library)${NC}"
+  fi
+done
+RECOMMENDED_MODELS=("${VALIDATED_MODELS[@]}")
+if [[ "${#RECOMMENDED_MODELS[@]}" -eq 0 ]]; then
+  RECOMMENDED_MODELS=("mistral:latest")
 fi
 
 # ── Whisper model recommendation ─────────────────────────────────────────────
@@ -225,16 +254,16 @@ fi
 
 get_model_info() {
   case "$1" in
-  "tiny-llama:latest") echo "TinyLlama 1.1B — Ultra-fast, low memory (~2GB)" ;;
-  "neural-chat:7b-v3.1-q4_0") echo "Neural Chat 7B (4-bit) — Fast, high quality (~4GB)" ;;
-  "mistral:latest") echo "Mistral 7B — Best speed/quality balance (~5GB)" ;;
-  "llama2:7b-q4_K_M") echo "Llama2 7B (quantized) — Excellent reasoning (~4GB)" ;;
-  "llama2:7b") echo "Llama2 7B (full) — High quality (~15GB)" ;;
-  "neural-chat:7b-v3.1") echo "Neural Chat 7B — Quality conversation (~15GB)" ;;
-  "dolphin-mixtral:latest") echo "Dolphin Mixtral 8x7B — Powerful MoE (~20GB)" ;;
-  "neural-chat:13b") echo "Neural Chat 13B — High accuracy (~28GB)" ;;
-  "llama2:13b") echo "Llama2 13B — Strong reasoning (~28GB)" ;;
-  "llama2:70b-q3_K_M") echo "Llama2 70B (3-bit) — Expert level (~24GB)" ;;
+  "tinyllama:latest") echo "TinyLlama 1.1B — ultra-fast, minimal memory (~1GB)" ;;
+  "qwen2.5:0.5b") echo "Qwen2.5 0.5B — smallest capable option (~1GB)" ;;
+  "qwen2.5:3b") echo "Qwen2.5 3B — compact, strong for its size (~2GB)" ;;
+  "llama3.2:3b") echo "Llama 3.2 3B — Meta's small model, good general use (~2GB)" ;;
+  "mistral:latest") echo "Mistral 7B — reliable speed/quality balance (~4GB)" ;;
+  "llama3.1:8b") echo "Llama 3.1 8B — strong modern all-rounder (~5GB)" ;;
+  "qwen2.5:7b") echo "Qwen2.5 7B — leading open-weight 7B for reasoning (~5GB)" ;;
+  "qwen2.5:14b") echo "Qwen2.5 14B — top-tier reasoning at this size (~9GB)" ;;
+  "gemma2:9b") echo "Gemma 2 9B — Google's model, strong instruction following (~5GB)" ;;
+  "gemma2:27b") echo "Gemma 2 27B — high quality for larger/GPU systems (~16GB)" ;;
   *) echo "Unknown model" ;;
   esac
 }
@@ -246,6 +275,10 @@ for model in "${RECOMMENDED_MODELS[@]}"; do
   echo "  • $model"
   echo "    $(get_model_info "$model")"
 done
+
+echo ""
+echo "  These are a starting point, not an exhaustive ranking — browse the"
+echo "  full current library: https://ollama.com/library?sort=popular"
 
 echo ""
 echo -e "${GREEN}Recommended Whisper model for transcription:${NC}"
@@ -302,6 +335,19 @@ if [[ "$OLLAMA_INSTALLED" == true ]]; then
   fi
 fi
 
+# is_model_installed MODEL:TAG — exact match against installed models.
+# A naive substring match on the model name (stripping ":tag") gives false
+# positives whenever a differently-tagged or differently-named model shares a
+# prefix — e.g. "qwen2.5:14b" would wrongly show as installed if only
+# "qwen2.5-coder:14b" is present. Match the full "name:tag" string instead.
+is_model_installed() {
+  local spec="$1" installed
+  for installed in $CURRENT_INSTALLED; do
+    [[ "$installed" == "$spec" ]] && return 0
+  done
+  return 1
+}
+
 # Step 3: Multi-select model menu
 if [[ "$OLLAMA_RUNNING" == true ]]; then
   CURRENT_INSTALLED=$(curl -s http://localhost:11434/api/tags 2>/dev/null | grep -o '"name":"[^"]*"' | cut -d'"' -f4 | tr '\n' ' ')
@@ -312,7 +358,7 @@ if [[ "$OLLAMA_RUNNING" == true ]]; then
 
   IDX=1
   for model in "${RECOMMENDED_MODELS[@]}"; do
-    if echo "$CURRENT_INSTALLED" | grep -q "${model%:*}"; then
+    if is_model_installed "$model"; then
       STATUS="${GREEN}(already installed)${NC}"
     else
       STATUS=""
@@ -340,7 +386,7 @@ if [[ "$OLLAMA_RUNNING" == true ]]; then
   if [[ "${#MODELS_TO_PULL[@]}" -gt 0 ]]; then
     echo ""
     for model in "${MODELS_TO_PULL[@]}"; do
-      if echo "$CURRENT_INSTALLED" | grep -q "${model%:*}"; then
+      if is_model_installed "$model"; then
         echo -e "${GREEN}✓ $model is already installed — skipping${NC}"
       else
         echo "Pulling $model (this may take a few minutes)..."
