@@ -91,6 +91,7 @@ docker-compose.override.yml
 # ── IDE & Editor ──────────────────────────────────────────────────────────────
 .vscode/
 .idea/
+.serena/
 *.swp
 *.swo
 *.swn

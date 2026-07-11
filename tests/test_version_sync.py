@@ -364,11 +364,25 @@ class TestRoadmapSync:
         if not roadmap:
             pytest.skip("ROADMAP.md is empty")
 
-        # Find items marked [x] that don't have a version tag
-        # Use a simpler approach: find completed items without (vX.Y.Z) nearby
+        # Find items marked [x] that don't have a version tag, except items
+        # still under an open "## Planned — vNext" heading: this repo now
+        # ships a release as several incremental work-package PRs, each
+        # ticking off its own items on merge, well before the version bump
+        # and tag that only happen at the actual release cut. A tag can't
+        # exist yet for work that's real but not yet released, so these
+        # items are exempt until they move into a "## Completed — vX.Y.Z"
+        # section post-release.
         lines = roadmap.split("\n")
         problematic = []
+        in_planned = False
         for line in lines:
+            if re.match(r"^## Planned", line):
+                in_planned = True
+                continue
+            if re.match(r"^## ", line):
+                in_planned = False
+            if in_planned:
+                continue
             if re.search(r"-\s*\[x\]", line) and not re.search(
                 r"\(v\d+\.\d+\.\d+\)", line
             ):

@@ -132,12 +132,6 @@ Tracked improvements identified during the June 2026 repository assessment.
 
 - [x] **Live log window with user-configurable line count** (v3.2.1) — tail-N number input (default 50) added to the Logs page toolbar; shows only the last N entries. Consecutive identical messages deduplicated with ×N repeat badge. Existing Download and Clear buttons preserved.
 
-- [x] **Resolve librosa audioread deprecation** (addressed by WP1 RA-1.4) — librosa 0.10.0 deprecated `librosa.core.audio.__audioread_load`, which will be removed in v1.0. The audio processor now decodes through `soundfile` and uses librosa only for non-deprecated resampling, so the audioread fallback is never taken. Original remediation notes:
-  - Ensure soundfile is a hard dependency with clear installation instructions (optional in macOS; may require system libraries on Linux).
-  - Migrate from deprecated `__audioread_load` to the current librosa API.
-  - Add explicit, user-friendly error handling when audio loading fails, with recovery suggestions.
-  - Pin librosa version or conditionally use new API if available to future-proof against v1.0.
-
 - [ ] **Human-readable "best guess" transcript export** — current plain-text exports include markup (`[word?]` for LOW-confidence, omitted words, or verbose statistics). Create a new export that is truly human-readable:
   - Single, clean plain-text file (`{stem}_best_guess.txt`) with no annotations, brackets, or metadata.
   - Contains only HIGH-confidence words and the single best-guess word for MEDIUM/LOW-confidence positions (selected by highest agreement across variants).

@@ -97,8 +97,20 @@ else
 fi
 
 # --- 6. Completed roadmap items have version tags ---
-info "Completed roadmap items include (vX.Y.Z) tags"
-UNTAGGED=$(grep -E -- "-[[:space:]]*\[x\]" "$REPO_ROOT/ROADMAP.md" | grep -Ev "\(v[0-9]+\.[0-9]+\.[0-9]+\)" || true)
+# Items under the still-open "## Planned — vNext" heading are exempt: this
+# repo now ships a release as several incremental work-package PRs, each
+# ticking off its own items on merge, well before the version bump and tag
+# that only happen at the actual release cut. A tag can't exist yet for work
+# that's real but not yet released, so these items are allowed to stay
+# untagged until they move into a "## Completed — vX.Y.Z" section post-release
+# (see check 9's identical "except current in-flight" reasoning).
+info "Completed roadmap items include (vX.Y.Z) tags (excluding in-flight 'Planned' items)"
+UNTAGGED=$(awk '
+  /^## Planned/ { in_planned = 1; next }
+  /^## / { in_planned = 0 }
+  in_planned { next }
+  /-[[:space:]]*\[x\]/ && !/\(v[0-9]+\.[0-9]+\.[0-9]+\)/ { print }
+' "$REPO_ROOT/ROADMAP.md")
 if [[ -z "$UNTAGGED" ]]; then
   pass
 else
