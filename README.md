@@ -563,4 +563,4 @@ A change is complete only when all of the following are true:
 ---
 
 **Author:** Manus AI
-**Licence:** MIT
+**Licence:** [Prosperity Public License 4.0.0](LICENSE) — free for non-commercial use; a commercial licence must be arranged with the licensor for any commercial use.
