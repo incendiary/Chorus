@@ -83,6 +83,7 @@ def run_pipeline(
           ``"variant_paths"``  — dict of variant key → WAV path
           ``"transcripts"``    — dict of variant key → Whisper result dict
           ``"consensus_path"`` — Path to the final consensus ``.md`` file
+          ``"best_guess_path"``— Path to the clean, markup-free best-guess ``.txt`` file
           ``"elapsed_seconds"``— total wall-clock time
 
     Raises
@@ -164,6 +165,15 @@ def run_pipeline(
     from consensus_merger.merger import merge_transcripts_with_votes
 
     if enable_nlp:
+        from reconstruction import probe_spacy_model
+
+        _nlp_ok, _nlp_reason = probe_spacy_model()
+        if not _nlp_ok:
+            logger.warning(
+                "NLP reconstruction requested but unavailable: %s "
+                "LOW-confidence tokens will be left unreconstructed for this run.",
+                _nlp_reason,
+            )
         _progress("Running spaCy NLP reconstruction…", 0.90)
     if enable_llm:
         _progress("Running LLM reconstruction…", 0.92)
@@ -183,7 +193,7 @@ def run_pipeline(
     # ── AI Context Pack (always generated) ───────────────────────────────────
     _progress("Generating AI context pack…", 0.96)
     from export_engine.ai_context import generate_ai_context_pack
-    from export_engine.exporter import export_transcript_bundle
+    from export_engine.exporter import export_best_guess, export_transcript_bundle
 
     ai_context_path = generate_ai_context_pack(
         votes=votes,
@@ -200,6 +210,12 @@ def run_pipeline(
         votes=votes,
         stem=stem,
         source_filename=source_filename,
+        output_dir=consensus_dir,
+    )
+
+    best_guess_path = export_best_guess(
+        consensus_path,
+        stem,
         output_dir=consensus_dir,
     )
 
@@ -254,6 +270,7 @@ def run_pipeline(
         "consensus_path": consensus_path,
         "ai_context_path": ai_context_path,
         "bundle_path": bundle_path,
+        "best_guess_path": best_guess_path,
         "diarised_path": diarised_path,
         "speaker_labels": speaker_labels,
         "elapsed_seconds": elapsed,

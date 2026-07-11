@@ -42,6 +42,7 @@ from config import (  # noqa: E402
 )
 from export_engine.exporter import (  # noqa: E402
     export_all,
+    export_best_guess,
     export_plain_text,
     export_zip,
 )
@@ -983,6 +984,54 @@ with st.sidebar:
         "🧠 NLP Reconstruction",
         help="Use spaCy to grammatically reconstruct LOW-confidence tokens.",
     )
+    if enable_nlp:
+        from reconstruction import probe_spacy_model
+
+        _nlp_ok, _nlp_reason = probe_spacy_model()
+        if not _nlp_ok:
+            enable_nlp = False
+            st.session_state["show_spacy_dialog"] = True
+            st.session_state["spacy_fail_reason"] = _nlp_reason
+
+    if st.session_state.get("show_spacy_dialog"):
+        from reconstruction import probe_spacy_model as _probe_spacy
+
+        _spacy_reason = st.session_state.get(
+            "spacy_fail_reason", "The spaCy model is not available."
+        )
+
+        @st.dialog("NLP Reconstruction — Setup Required")
+        def _spacy_setup_dialog():
+            st.error(_spacy_reason)
+            st.markdown(
+                "**To enable NLP reconstruction, install spaCy and its model:**\n\n"
+                "```bash\n"
+                "pip install spacy\n"
+                "python -m spacy download en_core_web_md\n"
+                "```\n\n"
+                "See the **Help** page in the sidebar for full setup guidance."
+            )
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("Dismiss", use_container_width=True, key="spacy_dismiss"):
+                    st.session_state["show_spacy_dialog"] = False
+                    st.rerun()
+            with col2:
+                if st.button(
+                    "Retry", type="primary", use_container_width=True, key="spacy_retry"
+                ):
+                    _ok, _new_reason = _probe_spacy()
+                    if _ok:
+                        st.session_state["show_spacy_dialog"] = False
+                        st.rerun()
+                    else:
+                        st.session_state["spacy_fail_reason"] = _new_reason
+                        st.rerun()
+
+        _spacy_setup_dialog()
+    else:
+        st.session_state.pop("spacy_fail_reason", None)
+
     enable_llm = st.checkbox(
         "🤖 LLM Reconstruction (Ollama)",
         help=(
@@ -1327,6 +1376,17 @@ if uploaded_files:
                 file_name=plain_path.name,
                 mime="text/plain",
                 key=f"dl_txt_{original_stem}",
+                use_container_width=True,
+            )
+
+            best_guess_path = export_best_guess(consensus_path, original_stem)
+            st.download_button(
+                label="⬇️ Download Best-Guess Transcript (.txt)",
+                data=best_guess_path.read_text(encoding="utf-8"),
+                file_name=best_guess_path.name,
+                mime="text/plain",
+                help="Clean, human-readable transcript with no confidence markup.",
+                key=f"dl_best_guess_{original_stem}",
                 use_container_width=True,
             )
 

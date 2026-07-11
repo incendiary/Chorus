@@ -76,3 +76,60 @@ class TestReconstructorDegradation:
         result = reconstruct_low_tokens(votes)
         assert len(result) == len(votes)
         assert [v.word for v in result] == ["hello", "world", "today"]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# probe_spacy_model — actionable missing-model detection (RA-4.3)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class TestProbeSpacyModel:
+    def test_spacy_not_installed_returns_actionable_message(self):
+        """When spaCy itself cannot be imported, the reason names the pip install."""
+        with patch.dict(sys.modules, {"spacy": None}):
+            import importlib
+
+            import reconstruction.nlp as rec_mod
+
+            importlib.reload(rec_mod)
+            ok, reason = rec_mod.probe_spacy_model()
+
+        import importlib
+
+        import reconstruction.nlp
+
+        importlib.reload(reconstruction.nlp)
+
+        assert ok is False
+        assert "pip install spacy" in reason
+
+    def test_model_missing_returns_actionable_download_command(self):
+        """When spaCy is installed but the model is missing, the reason names
+        the exact download command — not a silent fallback."""
+        import reconstruction.nlp as rec_mod
+
+        fake_spacy = type(
+            "FakeSpacy",
+            (),
+            {"load": staticmethod(lambda name: (_ for _ in ()).throw(OSError()))},
+        )()
+
+        with patch.dict(sys.modules, {"spacy": fake_spacy}):
+            ok, reason = rec_mod.probe_spacy_model()
+
+        assert ok is False
+        assert "python -m spacy download en_core_web_md" in reason
+
+    def test_model_available_returns_ok(self):
+        """When the model loads successfully, probe reports success."""
+        import reconstruction.nlp as rec_mod
+
+        fake_spacy = type(
+            "FakeSpacy", (), {"load": staticmethod(lambda name: object())}
+        )()
+
+        with patch.dict(sys.modules, {"spacy": fake_spacy}):
+            ok, reason = rec_mod.probe_spacy_model()
+
+        assert ok is True
+        assert reason == ""

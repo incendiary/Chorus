@@ -211,9 +211,12 @@ independently. Do not bump `VERSION` inside a work-package PR — the release ow
 
 ### WP4 — Headline user features · [spec](docs/tasks/WP4-headline-features.md)
 
-- [ ] **Human-readable "best-guess" transcript export** — clean `{stem}_best_guess.txt`, no markup. (RA-4.1)
-- [ ] **LLM context document** — `docs/CHORUS_FOR_LLMS.md` explaining the project and outputs to language models. (RA-4.2)
-- [ ] **Streamline spaCy model setup** — actionable guidance instead of a silent fallback warning. (RA-4.3)
+- [x] **Human-readable "best-guess" transcript export** — clean `{stem}_best_guess.txt`, no markup. (RA-4.1)
+  - **Files changed:** `export_engine/exporter.py`, `pipeline_runner.py`, `ui/app.py`, `tests/test_exporter.py`, `README.md`, `ui/pages/1_Help.py`
+- [x] **LLM context document** — `docs/CHORUS_FOR_LLMS.md` explaining the project and outputs to language models. (RA-4.2)
+  - **Files changed:** `docs/CHORUS_FOR_LLMS.md`, `README.md`, `ui/pages/1_Help.py`
+- [x] **Streamline spaCy model setup** — actionable guidance instead of a silent fallback warning. (RA-4.3)
+  - **Files changed:** `reconstruction/nlp.py`, `reconstruction/__init__.py`, `pipeline_runner.py`, `ui/app.py`, `tests/test_reconstructor.py`, `ui/pages/1_Help.py`
 
 > The three pre-existing "Upcoming" items above (best-guess export, LLM context doc,
 > spaCy setup) are now folded into WP4. The MPS float64 warning cleanup remains a
@@ -221,4 +224,4 @@ independently. Do not bump `VERSION` inside a work-package PR — the release ow
 
 ---
 
-*Last updated: 29 June 2026*
+*Last updated: 11 July 2026*
