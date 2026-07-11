@@ -77,6 +77,45 @@ docker-compose down
 
 ---
 
+## Using the Web UI
+
+Once the UI is open at [http://localhost:8501](http://localhost:8501), configuration lives in the sidebar and the workflow runs left-to-right in the main panel.
+
+### 1. Configure (sidebar)
+
+- **Settings preset — Max / Background:** click **🔍 Apply** to survey your machine's RAM, CPU, and GPU in-process and auto-select a model size, compute device, and parallelism for you. **Max** picks the largest model your hardware can run with full parallelism (machine dedicated to Chorus); **Background** steps one model tier down and pins parallelism to 1 (machine stays responsive for other work). This is the fastest way to get sensible settings without knowing the trade-offs yourself — use it first, then fine-tune the controls below if you want to.
+- **Model size:** `tiny` → `large`. Larger is more accurate but slower; `base` is the recommended default for CPU-only machines.
+- **Consensus models:** optionally select more than one Whisper model size to transcribe with — Chorus votes across all of them for extra confidence signal (slower, more accurate).
+- **Compute device:** Auto-detect (recommended), CPU, NVIDIA CUDA, or Apple MPS.
+- **Auto parallelism / worker count:** how many variants transcribe simultaneously.
+- **Alignment strategy** and **noise floor mode:** advanced tuning — defaults are sensible for most audio.
+- **Speaker Diarisation, LLM reconstruction, NLP reconstruction:** optional toggles. If a required local dependency (Ollama, a spaCy model) isn't set up yet, a setup dialog explains exactly what to install rather than failing silently.
+- **Export formats:** PDF, Word (.docx), and word-level SRT subtitles are opt-in checkboxes — the annotated Markdown, best-guess plain text, and JSON bundle are always generated.
+
+### 2. Upload and run (main panel)
+
+1. **Upload Audio Files** — drag and drop, or browse. Any FFmpeg-supported format; multiple files at once.
+2. For 2 uploaded files, choose **Sequential** (see each file's results as it finishes) or **All at once** (all files process before any results show); 3+ files always run in batch mode automatically.
+3. Click **▶ Start Chorus** to begin. Progress and stage information appear as each file processes.
+
+### 3. Understanding the output
+
+Chorus produces a final `.md` file in the `outputs/consensus/` directory. This file uses standard Markdown and extended highlighting syntax to indicate confidence levels:
+
+| Rendering | Confidence Tier | Meaning | Recommended Action |
+|-----------|-----------------|---------|--------------------|
+| Plain text | **HIGH** (≥ 75 %) | Word appears in 3 or 4 variants. | Accept — high agreement. |
+| `==highlighted==` | **MEDIUM** (50 %) | Word appears in exactly 2 variants. | Review — split consensus. |
+| **~~struck bold~~** | **LOW** (25 %) | Word appears in only 1 variant. | Flag — likely an artefact. |
+
+*Note: The exact threshold percentages are configurable in `config.py`.*
+
+Alongside the annotated Markdown, every run also writes a `{stem}_best_guess.txt` file — a clean, fully human-readable transcript with no brackets, highlighting, or statistics at all. Every MEDIUM/LOW-confidence position is resolved to its single best-guess word (the highest-agreement candidate already selected by the consensus vote), making it suitable for distribution to non-technical readers or downstream NLP processing.
+
+Download individual formats from the results panel, or **Download All** for a ZIP bundle. Every completed run is also browsable later from the **Past Jobs** page in the sidebar — no need to keep the browser tab open.
+
+---
+
 ## GPU Acceleration
 
 ### Linux — NVIDIA (Docker)
@@ -343,27 +382,6 @@ Access the UI at [http://localhost:8501](http://localhost:8501).
    ```bash
    streamlit run ui/app.py
    ```
-
----
-
-## Understanding the Output
-
-Chorus produces a final `.md` file in the `outputs/consensus/` directory. This file uses standard Markdown and extended highlighting syntax to indicate confidence levels:
-
-| Rendering | Confidence Tier | Meaning | Recommended Action |
-|-----------|-----------------|---------|--------------------|
-| Plain text | **HIGH** (≥ 75 %) | Word appears in 3 or 4 variants. | Accept — high agreement. |
-| `==highlighted==` | **MEDIUM** (50 %) | Word appears in exactly 2 variants. | Review — split consensus. |
-| **~~struck bold~~** | **LOW** (25 %) | Word appears in only 1 variant. | Flag — likely an artefact. |
-
-*Note: The exact threshold percentages are configurable in `config.py`.*
-
-Alongside the annotated Markdown, every run also writes a
-`{stem}_best_guess.txt` file — a clean, fully human-readable transcript with
-no brackets, highlighting, or statistics at all. Every MEDIUM/LOW-confidence
-position is resolved to its single best-guess word (the highest-agreement
-candidate already selected by the consensus vote), making it suitable for
-distribution to non-technical readers or downstream NLP processing.
 
 ---
 
