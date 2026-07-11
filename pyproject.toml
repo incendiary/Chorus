@@ -23,7 +23,7 @@ dependencies = [
   "streamlit==1.58.0",
   "watchdog==6.0.0",
   "psutil==7.2.2",
-  "pyannote-audio==4.0.4",
+  "pyannote-audio==4.0.7",
   "spacy==3.8.13",
   "weasyprint==69.0",
   "python-docx==1.2.0",
