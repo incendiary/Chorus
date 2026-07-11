@@ -556,4 +556,3 @@ scope. WP1 is breaking and earns the major version; WP2 and WP3 are correctness 
 test-parity hardening (independently shippable as 3.4.x if desired); WP4 is the visible
 feature payload. Recommended execution order: **WP2 → WP1 → WP3 → WP4**. The release
 owner bumps `VERSION` to 4.0.0 and writes the migration note once all four merge.
-
