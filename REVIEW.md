@@ -3,10 +3,9 @@
 Date: 21 June 2026 · Re-assessed: 29 June 2026 (v3.3.0)
 
 > **29 June 2026 re-assessment.** This review was re-validated against the v3.3.0 tree.
-> The headline findings still stand and have been routed into the v4.0.0 work packages —
-> see the [v3.3.0 re-assessment & v4.0.0 readiness](#v330-re-assessment--v400-readiness)
-> section at the end of this document, and [`docs/tasks/`](docs/tasks/README.md) for the
-> executable task specifications.
+> The headline findings were routed into four v4.0.0 work packages, all now shipped
+> in full — see [v3.3.0 re-assessment & v4.0.0 readiness](#v330-re-assessment--v400-readiness)
+> below and `ROADMAP.md`'s "Completed — v4.0.0" section for what landed.
 
 ## Executive summary
 
@@ -551,8 +550,8 @@ checked against current code rather than recalled.
 
 ### Path to 4.0.0
 
-The four work packages in [`docs/tasks/`](docs/tasks/README.md) constitute the 4.0.0
-scope. WP1 is breaking and earns the major version; WP2 and WP3 are correctness and
-test-parity hardening (independently shippable as 3.4.x if desired); WP4 is the visible
+The four work packages constituted the 4.0.0 scope and have all shipped. WP1 was
+breaking and earned the major version; WP2 and WP3 were correctness and
+test-parity hardening; WP4 was the visible
 feature payload. Recommended execution order: **WP2 → WP1 → WP3 → WP4**. The release
 owner bumps `VERSION` to 4.0.0 and writes the migration note once all four merge.
