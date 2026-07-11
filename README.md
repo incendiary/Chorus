@@ -46,7 +46,7 @@ This is the recommended approach. The Docker image encapsulates the Python envir
 1. **Clone the repository:**
 
    ```bash
-   git clone -b v3.3.0 https://github.com/incendiary/Chorus.git
+   git clone -b v4.0.0 https://github.com/incendiary/Chorus.git
    cd Chorus
    ```
 
@@ -300,15 +300,15 @@ Pre-built images are published to [GitHub Container Registry](https://ghcr.io/in
 ### CPU
 
 ```bash
-docker pull ghcr.io/incendiary/chorus:v3.3.0
-docker run --rm -p 8501:8501 ghcr.io/incendiary/chorus:v3.3.0
+docker pull ghcr.io/incendiary/chorus:v4.0.0
+docker run --rm -p 8501:8501 ghcr.io/incendiary/chorus:v4.0.0
 ```
 
 ### GPU (NVIDIA CUDA)
 
 ```bash
-docker pull ghcr.io/incendiary/chorus:v3.3.0-gpu
-docker run --rm -p 8501:8501 --gpus all ghcr.io/incendiary/chorus:v3.3.0-gpu
+docker pull ghcr.io/incendiary/chorus:v4.0.0-gpu
+docker run --rm -p 8501:8501 --gpus all ghcr.io/incendiary/chorus:v4.0.0-gpu
 ```
 
 Access the UI at [http://localhost:8501](http://localhost:8501).
@@ -433,6 +433,43 @@ The full public surface is `run_pipeline`, `run_batch`,
 `merge_transcripts_with_votes`, `export_all`, and `export_transcript_bundle`.
 
 ---
+
+## Breaking changes in v4.0.0
+
+Chorus 4.0.0 introduces breaking import-path changes as part of establishing a
+stable public API. If you import Chorus internals directly (rather than through
+the Streamlit UI or CLI), update as follows:
+
+**New stable public API.** The recommended way to use Chorus as a library is now:
+
+```python
+from chorus import run_pipeline, run_batch, merge_transcripts_with_votes, export_all, export_transcript_bundle
+```
+
+These names are committed to staying stable; deeper module paths are internal
+and may change without notice in future minor/patch releases.
+
+**Reconstruction modules consolidated.** `nlp_reconstructor/` and
+`llm_reconstructor/` have been merged into a single `reconstruction/` package
+with one entry point:
+
+```python
+# Old (removed in 4.0.0):
+from nlp_reconstructor.reconstructor import reconstruct as nlp_reconstruct
+from llm_reconstructor.reconstructor import reconstruct as llm_reconstruct
+
+# New:
+from reconstruction import reconstruct
+reconstruct(votes, strategy="nlp")   # was nlp_reconstructor
+reconstruct(votes, strategy="llm")   # was llm_reconstructor
+```
+
+`enable_nlp` / `enable_llm` flag behaviour on `run_pipeline()` and in the UI is
+unchanged — only the underlying import paths moved.
+
+**Runtime dependencies now declared.** `pip install chorus-engine` (or `pip install .`)
+now installs its runtime dependencies directly; previously only `requirements.txt`
+carried them.
 
 ## Documentation
 

@@ -170,46 +170,46 @@ Tracked improvements identified during the June 2026 repository assessment.
 
 ---
 
-## Planned — v4.0.0 "Trustworthy outputs, stable surface"
+## Completed — v4.0.0 "Trustworthy outputs, stable surface"
 
-The next **major** release. It earns the major bump because **WP1 introduces breaking
+The major release. It earns the major bump because **WP1 introduces breaking
 changes** to import paths, packaging, and the reconstruction module layout. The theme:
 make Chorus installable and integrable as a library, guarantee output isolation, and
-test the surfaces users actually touch.
+test the surfaces users actually touch. See the README "Breaking changes in v4.0.0"
+section for the user-facing migration note.
 
-Each work package below has a detailed, self-contained specification under
-[`docs/tasks/`](docs/tasks/README.md), written so a single agent can execute it
-independently. Do not bump `VERSION` inside a work-package PR — the release owner cuts
-`4.0.0` once all four merge (see the "Release cut" section of the task index).
+Each work package below had a detailed, self-contained specification under
+[`docs/tasks/`](docs/tasks/README.md), written so a single agent could execute it
+independently.
 
 ### WP1 — Packaging & stable public API (BREAKING) · [spec](docs/tasks/WP1-packaging-and-public-api.md)
 
-- [x] **Declare runtime dependencies in `pyproject.toml`** — `dependencies = []` today, so `pip install chorus-engine` installs no runtime deps. (RA-1.1) — files: `pyproject.toml`.
-- [x] **Establish a stable top-level `chorus` public API** — re-export `run_pipeline`, `run_batch`, and the supported entry points; commit to keeping them stable. (RA-1.2) — files: `chorus/__init__.py`, `pyproject.toml`, `tests/test_public_api.py`, `README.md`.
-- [x] **Consolidate `nlp_reconstructor` + `llm_reconstructor` into one `reconstruction` package** — single strategy-based interface; breaking import change. (RA-1.3) — files: `reconstruction/` (`__init__.py`, `nlp.py`, `llm.py`, `ollama_client.py`), `consensus_merger/merger.py`, `pipeline_runner.py`, `ui/app.py`, `pyproject.toml`, `tests/test_reconstructor.py`, `tests/test_llm_reconstructor.py`, `tests/test_integration.py`, `CLAUDE.md`, `README.md`.
-- [x] **Retire the deprecated librosa audioread fallback** — make `soundfile` an explicit dependency and use the non-deprecated load path. (RA-1.4) — files: `audio_processor/pipeline.py`, `requirements.txt`, `pyproject.toml`, `tests/test_audio_processor.py`.
+- [x] **Declare runtime dependencies in `pyproject.toml`** (v4.0.0) — `dependencies = []` today, so `pip install chorus-engine` installs no runtime deps. (RA-1.1) — files: `pyproject.toml`.
+- [x] **Establish a stable top-level `chorus` public API** (v4.0.0) — re-export `run_pipeline`, `run_batch`, and the supported entry points; commit to keeping them stable. (RA-1.2) — files: `chorus/__init__.py`, `pyproject.toml`, `tests/test_public_api.py`, `README.md`.
+- [x] **Consolidate `nlp_reconstructor` + `llm_reconstructor` into one `reconstruction` package** (v4.0.0) — single strategy-based interface; breaking import change. (RA-1.3) — files: `reconstruction/` (`__init__.py`, `nlp.py`, `llm.py`, `ollama_client.py`), `consensus_merger/merger.py`, `pipeline_runner.py`, `ui/app.py`, `pyproject.toml`, `tests/test_reconstructor.py`, `tests/test_llm_reconstructor.py`, `tests/test_integration.py`, `CLAUDE.md`, `README.md`.
+- [x] **Retire the deprecated librosa audioread fallback** (v4.0.0) — make `soundfile` an explicit dependency and use the non-deprecated load path. (RA-1.4) — files: `audio_processor/pipeline.py`, `requirements.txt`, `pyproject.toml`, `tests/test_audio_processor.py`.
 
 ### WP2 — Output-routing correctness · [spec](docs/tasks/WP2-output-routing-correctness.md)
 
-- [x] **Thread `output_dir` through `build_export_zip`** — fixes `exporter.py:600/605/610` reading sidecars from the global `CONSENSUS_DIR`. (RA-2.1)
-- [x] **Make speaker-name persistence honour `output_dir`** — fixes `diariser.py:337` hardcoding `CONSENSUS_DIR`. (RA-2.2)
-- [x] **Add a global-directory leak regression guard** — assert an isolated run writes nothing to the global `CONSENSUS_DIR`. (RA-2.3)
+- [x] **Thread `output_dir` through `build_export_zip`** (v4.0.0) — fixes `exporter.py:600/605/610` reading sidecars from the global `CONSENSUS_DIR`. (RA-2.1)
+- [x] **Make speaker-name persistence honour `output_dir`** (v4.0.0) — fixes `diariser.py:337` hardcoding `CONSENSUS_DIR`. (RA-2.2)
+- [x] **Add a global-directory leak regression guard** (v4.0.0) — assert an isolated run writes nothing to the global `CONSENSUS_DIR`. (RA-2.3)
   - **Files changed:** `export_engine/exporter.py`, `diarisation/diariser.py`, `pipeline_runner.py`, `ui/app.py`, `tests/test_exporter.py`, `tests/test_integration.py`, `tests/test_speaker_names.py`
   - **Tests:** 191 → 197 passing (output_dir isolation coverage)
 
 ### WP3 — User-facing test parity & CI hardening · [spec](docs/tasks/WP3-test-parity-and-ci.md)
 
-- [ ] **Batch processor test coverage** — `batch_runner.py` is at ~0 %; cover isolation, partial failure, and empty input. (RA-3.1)
-- [ ] **Streamlit UI smoke/behaviour tests** — `ui/app.py` at 0 %; use `streamlit.testing.v1.AppTest`. (RA-3.2)
-- [ ] **Make `pip-audit` blocking in CI** — remove the `|| true` that swallows CVE findings. (RA-3.3)
+- [x] **Batch processor test coverage** (v4.0.0) — `batch_runner.py` was at ~0 %; added 25 tests covering isolation, partial failure, and empty input. (RA-3.1) — files: `tests/test_batch_runner.py`.
+- [x] **Make `pip-audit` blocking in CI** (v4.0.0) — removed the `|| true` that swallowed CVE findings. (RA-3.3) — files: `.github/workflows/ci.yml`.
+- [ ] **Streamlit UI smoke/behaviour tests** — `ui/app.py` at 0 %; use `streamlit.testing.v1.AppTest`. (RA-3.2) — deferred out of 4.0.0, tracked as a follow-up.
 
 ### WP4 — Headline user features · [spec](docs/tasks/WP4-headline-features.md)
 
-- [x] **Human-readable "best-guess" transcript export** — clean `{stem}_best_guess.txt`, no markup. (RA-4.1)
+- [x] **Human-readable "best-guess" transcript export** (v4.0.0) — clean `{stem}_best_guess.txt`, no markup. (RA-4.1)
   - **Files changed:** `export_engine/exporter.py`, `pipeline_runner.py`, `ui/app.py`, `tests/test_exporter.py`, `README.md`, `ui/pages/1_Help.py`
-- [x] **LLM context document** — `docs/CHORUS_FOR_LLMS.md` explaining the project and outputs to language models. (RA-4.2)
+- [x] **LLM context document** (v4.0.0) — `docs/CHORUS_FOR_LLMS.md` explaining the project and outputs to language models. (RA-4.2)
   - **Files changed:** `docs/CHORUS_FOR_LLMS.md`, `README.md`, `ui/pages/1_Help.py`
-- [x] **Streamline spaCy model setup** — actionable guidance instead of a silent fallback warning. (RA-4.3)
+- [x] **Streamline spaCy model setup** (v4.0.0) — actionable guidance instead of a silent fallback warning. (RA-4.3)
   - **Files changed:** `reconstruction/nlp.py`, `reconstruction/__init__.py`, `pipeline_runner.py`, `ui/app.py`, `tests/test_reconstructor.py`, `ui/pages/1_Help.py`
 
 > The three pre-existing "Upcoming" items above (best-guess export, LLM context doc,
