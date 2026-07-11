@@ -180,9 +180,7 @@ section for the user-facing migration note.
 
 Each work package had a detailed, self-contained task specification at the time;
 those specs have since been removed as their work completed (see the file changes
-recorded under each item below). The one item not completed in this release,
-RA-3.2, retains its spec at
-[`docs/tasks/streamlit-ui-tests.md`](docs/tasks/streamlit-ui-tests.md).
+recorded under each item below).
 
 ### WP1 — Packaging & stable public API (BREAKING)
 
@@ -203,7 +201,7 @@ RA-3.2, retains its spec at
 
 - [x] **Batch processor test coverage** (v4.0.0) — `batch_runner.py` was at ~0 %; added 25 tests covering isolation, partial failure, and empty input. (RA-3.1) — files: `tests/test_batch_runner.py`.
 - [x] **Make `pip-audit` blocking in CI** (v4.0.0) — removed the `|| true` that swallowed CVE findings. (RA-3.3) — files: `.github/workflows/ci.yml`.
-- [ ] **Streamlit UI smoke/behaviour tests** — `ui/app.py` at 0 %; use `streamlit.testing.v1.AppTest`. (RA-3.2) — deferred out of 4.0.0, tracked as a follow-up · [spec](docs/tasks/streamlit-ui-tests.md)
+- [x] **Streamlit UI smoke/behaviour tests** (v4.0.0) — `ui/app.py` was at 0 %; added 9 tests via `streamlit.testing.v1.AppTest` covering render smoke, sidebar controls (model/device/hardware-preset selectors, parallelism toggle), and the Ollama/spaCy setup-dialog paths. (RA-3.2) — files: `tests/test_ui_app.py`.
 
 ### WP4 — Headline user features
 

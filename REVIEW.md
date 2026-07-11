@@ -4,10 +4,8 @@ Date: 21 June 2026 · Re-assessed: 29 June 2026 (v3.3.0)
 
 > **29 June 2026 re-assessment.** This review was re-validated against the v3.3.0 tree.
 > The headline findings were routed into four v4.0.0 work packages, all now shipped
-> (see [v3.3.0 re-assessment & v4.0.0 readiness](#v330-re-assessment--v400-readiness)
-> below and `ROADMAP.md`'s "Completed — v4.0.0" section for what landed). The one
-> item deferred out of 4.0.0, Streamlit UI test coverage, retains its task spec at
-> [`docs/tasks/streamlit-ui-tests.md`](docs/tasks/streamlit-ui-tests.md).
+> in full — see [v3.3.0 re-assessment & v4.0.0 readiness](#v330-re-assessment--v400-readiness)
+> below and `ROADMAP.md`'s "Completed — v4.0.0" section for what landed.
 
 ## Executive summary
 
