@@ -205,18 +205,26 @@ bash devops-practices/survey-ollama-env.sh
 
 This script:
 1. **Surveys your system** for available RAM, CPU cores, GPU (NVIDIA CUDA, Apple Silicon MPS, etc.), and free disk space
-2. **Recommends models** based on your hardware constraints
+2. **Recommends models** — both Ollama LLM models and a `WHISPER_MODEL` size — based on your hardware constraints
 3. **Offers to start Ollama** if not running (`ollama serve`)
-4. **Offers to pull recommended models** (e.g., `ollama pull mistral:latest`)
-5. **Shows model pull commands** for all top recommendations
+4. **Multi-select model menu** — presents all recommended Ollama models as a numbered list; enter space-separated numbers to pull several at once (e.g. `1 3`), or `0` to skip. Already-installed models are labelled in-line.
+5. **Applies settings to `.env`** — offers the recommended `WHISPER_MODEL`, `OLLAMA_MODEL`, and `OLLAMA_BASE_URL` values, showing your current `.env` value alongside each. Enter numbers, `all`, or `0` to skip. If `.env` doesn't exist yet, it's created from `.env.example` first.
 6. **Provides ready-to-run commands** for both Docker and bare-metal deployments
 
 Example output:
 ```
-Recommended models to pull:
-  ollama pull mistral:latest
-  ollama pull llama2:13b
-  ollama pull neural-chat:7b-v3.1
+Select models to install:
+  0) Skip — don't pull any models
+  1) mistral:latest                     Mistral 7B — Best speed/quality balance (~5GB)
+  2) llama2:13b                         Llama2 13B — Strong reasoning (~28GB)
+  3) neural-chat:7b-v3.1                 Neural Chat 7B — Quality conversation (~15GB)
+Enter numbers to install (space-separated), or 0 to skip: 1
+
+Apply Settings to .env
+  1) WHISPER_MODEL         = medium
+  2) OLLAMA_MODEL           = mistral:latest
+  3) OLLAMA_BASE_URL        = http://localhost:11434
+Enter numbers to apply (space-separated), 'all', or 0 to skip: all
 
 Starting Chorus (Docker)
   export OLLAMA_MODEL='mistral:latest'
