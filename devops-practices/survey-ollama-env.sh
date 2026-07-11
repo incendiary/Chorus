@@ -444,7 +444,7 @@ if [[ -n "$ENV_SELECTION" ]] && [[ "$ENV_SELECTION" != "0" ]]; then
       APPLY_INDICES+=("$j")
     done
   else
-    APPLY_INDICES=($ENV_SELECTION)
+    read -ra APPLY_INDICES <<<"$ENV_SELECTION"
   fi
 
   echo ""
