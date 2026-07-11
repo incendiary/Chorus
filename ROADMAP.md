@@ -178,18 +178,20 @@ make Chorus installable and integrable as a library, guarantee output isolation,
 test the surfaces users actually touch. See the README "Breaking changes in v4.0.0"
 section for the user-facing migration note.
 
-Each work package below had a detailed, self-contained specification under
-[`docs/tasks/`](docs/tasks/README.md), written so a single agent could execute it
-independently.
+Each work package had a detailed, self-contained task specification at the time;
+those specs have since been removed as their work completed (see the file changes
+recorded under each item below). The one item not completed in this release,
+RA-3.2, retains its spec at
+[`docs/tasks/streamlit-ui-tests.md`](docs/tasks/streamlit-ui-tests.md).
 
-### WP1 — Packaging & stable public API (BREAKING) · [spec](docs/tasks/WP1-packaging-and-public-api.md)
+### WP1 — Packaging & stable public API (BREAKING)
 
 - [x] **Declare runtime dependencies in `pyproject.toml`** (v4.0.0) — `dependencies = []` today, so `pip install chorus-engine` installs no runtime deps. (RA-1.1) — files: `pyproject.toml`.
 - [x] **Establish a stable top-level `chorus` public API** (v4.0.0) — re-export `run_pipeline`, `run_batch`, and the supported entry points; commit to keeping them stable. (RA-1.2) — files: `chorus/__init__.py`, `pyproject.toml`, `tests/test_public_api.py`, `README.md`.
 - [x] **Consolidate `nlp_reconstructor` + `llm_reconstructor` into one `reconstruction` package** (v4.0.0) — single strategy-based interface; breaking import change. (RA-1.3) — files: `reconstruction/` (`__init__.py`, `nlp.py`, `llm.py`, `ollama_client.py`), `consensus_merger/merger.py`, `pipeline_runner.py`, `ui/app.py`, `pyproject.toml`, `tests/test_reconstructor.py`, `tests/test_llm_reconstructor.py`, `tests/test_integration.py`, `CLAUDE.md`, `README.md`.
 - [x] **Retire the deprecated librosa audioread fallback** (v4.0.0) — make `soundfile` an explicit dependency and use the non-deprecated load path. (RA-1.4) — files: `audio_processor/pipeline.py`, `requirements.txt`, `pyproject.toml`, `tests/test_audio_processor.py`.
 
-### WP2 — Output-routing correctness · [spec](docs/tasks/WP2-output-routing-correctness.md)
+### WP2 — Output-routing correctness
 
 - [x] **Thread `output_dir` through `build_export_zip`** (v4.0.0) — fixes `exporter.py:600/605/610` reading sidecars from the global `CONSENSUS_DIR`. (RA-2.1)
 - [x] **Make speaker-name persistence honour `output_dir`** (v4.0.0) — fixes `diariser.py:337` hardcoding `CONSENSUS_DIR`. (RA-2.2)
@@ -197,13 +199,13 @@ independently.
   - **Files changed:** `export_engine/exporter.py`, `diarisation/diariser.py`, `pipeline_runner.py`, `ui/app.py`, `tests/test_exporter.py`, `tests/test_integration.py`, `tests/test_speaker_names.py`
   - **Tests:** 191 → 197 passing (output_dir isolation coverage)
 
-### WP3 — User-facing test parity & CI hardening · [spec](docs/tasks/WP3-test-parity-and-ci.md)
+### WP3 — User-facing test parity & CI hardening
 
 - [x] **Batch processor test coverage** (v4.0.0) — `batch_runner.py` was at ~0 %; added 25 tests covering isolation, partial failure, and empty input. (RA-3.1) — files: `tests/test_batch_runner.py`.
 - [x] **Make `pip-audit` blocking in CI** (v4.0.0) — removed the `|| true` that swallowed CVE findings. (RA-3.3) — files: `.github/workflows/ci.yml`.
-- [ ] **Streamlit UI smoke/behaviour tests** — `ui/app.py` at 0 %; use `streamlit.testing.v1.AppTest`. (RA-3.2) — deferred out of 4.0.0, tracked as a follow-up.
+- [ ] **Streamlit UI smoke/behaviour tests** — `ui/app.py` at 0 %; use `streamlit.testing.v1.AppTest`. (RA-3.2) — deferred out of 4.0.0, tracked as a follow-up · [spec](docs/tasks/streamlit-ui-tests.md)
 
-### WP4 — Headline user features · [spec](docs/tasks/WP4-headline-features.md)
+### WP4 — Headline user features
 
 - [x] **Human-readable "best-guess" transcript export** (v4.0.0) — clean `{stem}_best_guess.txt`, no markup. (RA-4.1)
   - **Files changed:** `export_engine/exporter.py`, `pipeline_runner.py`, `ui/app.py`, `tests/test_exporter.py`, `README.md`, `ui/pages/1_Help.py`
