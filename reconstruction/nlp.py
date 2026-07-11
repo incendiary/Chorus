@@ -88,6 +88,40 @@ def _get_nlp():
         return None
 
 
+def probe_spacy_model() -> tuple[bool, str]:
+    """Check whether spaCy and its ``en_core_web_md`` model are available.
+
+    Intended to be called *before* enabling NLP reconstruction (mirrors
+    :func:`reconstruction.ollama_client.probe_model`), so that a missing
+    model surfaces as an explicit, actionable message rather than a silent
+    runtime fallback warning.
+
+    Returns
+    -------
+    tuple[bool, str]
+        ``(True, "")`` when ``en_core_web_md`` is available, or
+        ``(False, reason)`` with a human-readable reason and the exact
+        command to fix it.
+    """
+    try:
+        import spacy  # type: ignore
+    except ImportError:
+        return False, (
+            "spaCy is not installed. Install it with: "
+            "pip install spacy && python -m spacy download en_core_web_md"
+        )
+
+    try:
+        spacy.load("en_core_web_md")
+    except OSError:
+        return False, (
+            "spaCy model 'en_core_web_md' is not downloaded. "
+            "Run: python -m spacy download en_core_web_md"
+        )
+
+    return True, ""
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Scoring helpers
 # ─────────────────────────────────────────────────────────────────────────────

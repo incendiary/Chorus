@@ -21,7 +21,7 @@ from typing import Any
 from consensus_merger.alignment import WordVote
 from reconstruction import llm, nlp
 from reconstruction.llm import reconstruct_low_tokens_llm
-from reconstruction.nlp import reconstruct_low_tokens
+from reconstruction.nlp import probe_spacy_model, reconstruct_low_tokens
 from reconstruction.ollama_client import list_models, probe_model
 
 __all__ = [
@@ -30,6 +30,7 @@ __all__ = [
     "reconstruct_low_tokens_llm",
     "list_models",
     "probe_model",
+    "probe_spacy_model",
 ]
 
 
