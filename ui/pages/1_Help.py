@@ -83,11 +83,44 @@ st.markdown(
     "| **SRT** | Word-level subtitles, ≤ 6 words per cue |\n"
     "| **VTT** | WebVTT subtitles for web players |\n"
     "| **Plain text** | Clean transcript, no markup; optional `[word?]` for LOW tokens |\n"
+    "| **Best-guess text** | Fully clean transcript — no brackets, markup, or "
+    "statistics at all; every word resolved to its single best guess |\n"
     "| **JSON bundle** | All variant transcripts, word-vote sequence, and statistics |\n"
     "| **AI context pack** | Structured document for LLM consumption — methodology, "
     "confidence data, uncertainty annotations |\n"
     "| **ZIP** | All selected formats bundled together |\n"
 )
+st.markdown(
+    "For a guide to every output file written for LLM-assisted analysis, see "
+    "`docs/CHORUS_FOR_LLMS.md` in the repository — paste it alongside Chorus "
+    "output when asking an LLM to summarise or fact-check a transcript."
+)
+
+# ── spaCy setup ────────────────────────────────────────────────────────────────
+st.header("NLP Reconstruction — spaCy Setup")
+st.markdown(
+    "The **NLP Reconstruction** feature uses spaCy's `en_core_web_md` model "
+    "(grammatical analysis and word vectors) to attempt to resolve "
+    "LOW-confidence tokens. This model is not installed by default and must be "
+    "downloaded once."
+)
+
+with st.expander("Step-by-step: install the spaCy model", expanded=True):
+    st.markdown(
+        "**1. Install spaCy** (already a project dependency, but confirm with):\n"
+        "```bash\n"
+        "pip install spacy\n"
+        "```\n\n"
+        "**2. Download the model** (run once; downloads ~40 MB):\n"
+        "```bash\n"
+        "python -m spacy download en_core_web_md\n"
+        "```\n\n"
+        "**3.** Restart Chorus and tick the **NLP Reconstruction** checkbox — "
+        "the setup dialog should no longer appear.\n\n"
+        "> **Docker users:** bake the model into your image by adding the same "
+        "`python -m spacy download en_core_web_md` command to your Dockerfile, "
+        "so it is available without a first-run download."
+    )
 
 # ── Ollama setup ──────────────────────────────────────────────────────────────
 st.header("LLM Reconstruction — Ollama Setup")

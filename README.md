@@ -358,6 +358,13 @@ Chorus produces a final `.md` file in the `outputs/consensus/` directory. This f
 
 *Note: The exact threshold percentages are configurable in `config.py`.*
 
+Alongside the annotated Markdown, every run also writes a
+`{stem}_best_guess.txt` file — a clean, fully human-readable transcript with
+no brackets, highlighting, or statistics at all. Every MEDIUM/LOW-confidence
+position is resolved to its single best-guess word (the highest-agreement
+candidate already selected by the consensus vote), making it suitable for
+distribution to non-technical readers or downstream NLP processing.
+
 ---
 
 ## Project Architecture
@@ -435,6 +442,7 @@ The full public surface is `run_pipeline`, `run_batch`,
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Internal module design and data-flow walkthrough. |
 | [docs/DOCKER.md](docs/DOCKER.md) | Docker build, tagging, and publish workflow. |
 | [docs/SCALABILITY.md](docs/SCALABILITY.md) | Scaling guidance for large batch workloads. |
+| [docs/CHORUS_FOR_LLMS.md](docs/CHORUS_FOR_LLMS.md) | Explains Chorus and its output files to a language model — paste it alongside Chorus output for downstream LLM analysis. |
 
 ---
 
