@@ -27,30 +27,47 @@ This approach dramatically reduces single-model hallucinations and improves word
 
 ## Prerequisites
 
-If running via Docker, you only need:
-
-- [Docker](https://docs.docker.com/get-docker/)
-- [Docker Compose](https://docs.docker.com/compose/install/)
-
-If running natively (bare-metal), you require:
+Native installation (recommended — see below) requires:
 
 - Python 3.11+
 - [FFmpeg](https://ffmpeg.org/download.html) (must be available on your system `PATH`)
 
+Docker installation instead requires:
+
+- [Docker](https://docs.docker.com/get-docker/)
+- [Docker Compose](https://docs.docker.com/compose/install/)
+
 ---
 
-## Installation & Usage (Docker)
+## Installation & Usage (Native / Bare-Metal)
 
-This is the recommended approach. The Docker image encapsulates the Python environment and FFmpeg dependencies.
+This is the primary supported path — it's required for Apple Silicon (MPS) GPU
+acceleration, and gives you direct access to the hardware survey script. See
+[Docker installation](docs/DOCKER.md) instead if you'd rather not manage a Python
+environment yourself.
 
-1. **Clone the repository:**
+1. **Install FFmpeg:**
+   - macOS: `brew install ffmpeg`
+   - Ubuntu/Debian: `sudo apt install ffmpeg`
+   - Windows: install via `winget` or download binaries.
+
+2. **Clone the repository at the current release:**
 
    ```bash
    git clone -b v4.0.0 https://github.com/incendiary/Chorus.git
    cd Chorus
    ```
 
-2. **Configure environment (optional):**
+3. **Create a virtual environment and install dependencies:**
+
+   ```bash
+   python3 -m venv .venv
+   source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+   pip install --upgrade pip
+   pip install -r requirements.txt
+   ```
+
+4. **Configure environment (optional):**
 
    ```bash
    cp .env.example .env
@@ -58,22 +75,21 @@ This is the recommended approach. The Docker image encapsulates the Python envir
    # See docs/CONFIGURATION.md for a full explanation of every option.
    ```
 
-3. **Build and start the application:**
+   For local LLM-assisted reconstruction, run
+   `bash devops-practices/survey-ollama-env.sh` — it surveys your hardware, recommends
+   models, and can write `.env` for you. See
+   [Local LLM Integration with Ollama](#local-llm-integration-with-ollama) below.
+
+5. **Run the Streamlit UI:**
 
    ```bash
-   docker-compose up --build
+   streamlit run ui/app.py
    ```
 
-4. **Access the UI:**
-   Open your browser and navigate to: [http://localhost:8501](http://localhost:8501)
+   Open your browser at [http://localhost:8501](http://localhost:8501).
 
-### Stopping the service
-
-```bash
-docker-compose down
-```
-
-*Note: The Whisper model weights are cached in a persistent Docker volume, so subsequent starts will be significantly faster.*
+*Whisper model weights are cached under `~/.cache/whisper` after first use, so
+subsequent runs are significantly faster.*
 
 ---
 
@@ -118,76 +134,26 @@ Download individual formats from the results panel, or **Download All** for a ZI
 
 ## GPU Acceleration
 
-### Linux — NVIDIA (Docker)
-
-Follow the prerequisites in `docker-compose.gpu.yml`, then:
+Chorus probes hardware in this order and selects the first available option automatically: **CUDA** (NVIDIA GPU) → **MPS** (Apple Silicon) → **CPU**. Override explicitly via `.env`:
 
 ```bash
-docker-compose -f docker-compose.yml -f docker-compose.gpu.yml up --build
-```
-
-Requires NVIDIA Container Toolkit and a Volta (GTX 1070 Ti / RTX series) or newer GPU.
-
----
-
-### Windows — NVIDIA (Docker Desktop + WSL2)
-
-The runtime command is identical to Linux, but the setup path is different. Docker Desktop on Windows uses a WSL2-based Linux VM to run containers, and GPU passthrough happens through that layer.
-
-**Prerequisites:**
-
-- Windows 10 (21H2 or later) or Windows 11
-- Docker Desktop for Windows with the **WSL2 backend** enabled (Settings → General → *Use the WSL2 based engine*)
-- NVIDIA driver **527.41 or later** installed on the **Windows host** — do not install CUDA inside WSL2, the host driver is all that is needed
-- NVIDIA Container Toolkit installed **inside WSL2** (not on Windows itself)
-
-**One-time WSL2 setup (run inside your WSL2 terminal, e.g. Ubuntu):**
-
-```bash
-distribution=$(. /etc/os-release; echo $ID$VERSION_ID)
-curl -fsSL https://nvidia.github.io/nvidia-docker/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-docker.gpg
-curl -sL "https://nvidia.github.io/nvidia-docker/${distribution}/nvidia-docker.list" \
-  | sed 's|deb |deb [signed-by=/usr/share/keyrings/nvidia-docker.gpg] |' \
-  | sudo tee /etc/apt/sources.list.d/nvidia-docker.list
-sudo apt-get update && sudo apt-get install -y nvidia-container-toolkit
-```
-
-Restart Docker Desktop after installing the toolkit.
-
-**Verify GPU passthrough:**
-
-```bash
-docker run --rm --gpus all nvidia/cuda:12.1.1-base-ubuntu22.04 nvidia-smi
-```
-
-You should see your GPU listed. If `nvidia-smi` fails, check that Docker Desktop is using the WSL2 backend and that your Windows NVIDIA driver is up to date.
-
-**Start Chorus with GPU:**
-
-```bash
-docker-compose -f docker-compose.yml -f docker-compose.gpu.yml up --build
-```
-
----
-
-### Apple Silicon (macOS) — MPS
-
-**In Docker: CPU only.** Docker Desktop on macOS runs containers inside a Linux VM (Apple's Virtualization Framework). That VM has no access to the Metal GPU — `WHISPER_DEVICE=mps` cannot work inside a container. There is no workaround; this is an architectural limitation. The standard CPU image runs fine.
-
-**Native (bare-metal): MPS is fully supported and auto-detected.** On Apple Silicon Macs, Chorus probes for MPS at startup and selects it automatically — no `.env` change needed. PyTorch's Metal backend gives roughly 3–5× the speed of CPU inference for the `base` and `small` models.
-
-If you want to be explicit, or override to CPU for testing:
-
-```bash
-# .env
-WHISPER_DEVICE=mps   # force MPS (Apple Silicon native)
+WHISPER_DEVICE=cuda  # force NVIDIA CUDA
+WHISPER_DEVICE=mps   # force Apple Silicon MPS
 WHISPER_DEVICE=cpu   # force CPU
 # leave blank to auto-detect (default)
 ```
 
+### Apple Silicon (macOS) — MPS
+
+**Native only — MPS is fully supported and auto-detected**, no `.env` change needed. PyTorch's Metal backend gives roughly 3–5× the speed of CPU inference for the `base` and `small` models. If MPS fails to load (e.g. memory pressure), Chorus automatically falls back to CPU and logs a warning — transcription still completes.
+
+**Not available in Docker at all** — Docker Desktop on macOS runs containers inside a Linux VM with no access to the Metal GPU. This is an architectural limitation with no workaround; use native installation for MPS.
+
 > **Memory note:** The `large` model (~3 GB) may exceed unified memory on 8 GB M-series configurations. Use `WHISPER_MODEL=small` or `medium` on those machines.
 
-If Chorus is run natively on Apple Silicon and the MPS device fails to load (e.g. memory pressure), it automatically falls back to CPU and logs a warning — the transcription will still complete.
+### NVIDIA CUDA
+
+Native installation auto-detects CUDA if PyTorch's CUDA build is installed and a compatible driver is present (Volta / GTX 1070 Ti / RTX series or newer). For **Docker** GPU setup (Linux, and Windows via WSL2), see [docs/DOCKER.md](docs/DOCKER.md#with-gpu-support).
 
 ---
 
@@ -248,75 +214,6 @@ Starting Chorus (Bare Metal/Native)
    ollama --version
    ```
 
-### Recommended Models (2024)
-
-Select based on available RAM and your quality/speed trade-off:
-
-| Model | RAM | Speed | Quality | Use Case |
-|-------|-----|-------|---------|----------|
-| **TinyLlama 1.1B** | 2GB | ⚡⚡⚡ Fast | ⭐ Low | Minimal systems (<4GB) |
-| **Neural Chat 7B (q4)** | 4GB | ⚡⚡ Balanced | ⭐⭐⭐ Good | Best value (4-8GB systems) |
-| **Mistral 7B** | 5GB | ⚡⚡ Balanced | ⭐⭐⭐ Good | Speed/quality balance |
-| **Llama2 7B (q4)** | 4GB | ⚡⚡ Balanced | ⭐⭐⭐ Good | Strong reasoning |
-| **Llama2 7B** | 15GB | ⚡ Slower | ⭐⭐⭐⭐ Excellent | Full precision (8GB+ RAM) |
-| **Neural Chat 13B** | 28GB | ⚡ Slower | ⭐⭐⭐⭐ Excellent | High accuracy (16GB+ RAM) |
-| **Dolphin Mixtral 8x7B** | 20GB | ⚡ Slower | ⭐⭐⭐⭐ Excellent | MoE power user (16GB+ RAM) |
-
-**Note:** Model sizes shown are approximate. Quantized models (q4, q3) reduce VRAM by ~50% but slightly lower quality.
-
-### Quick Start
-
-1. **Start Ollama server** (runs on `http://localhost:11434`):
-   ```bash
-   ollama serve
-   ```
-
-2. **Pull a recommended model** (in another terminal):
-   ```bash
-   # Fast & efficient (recommended for most)
-   ollama pull mistral
-
-   # Or smaller for low-RAM systems
-   ollama pull neural-chat:7b-v3.1-q4_0
-   ```
-
-3. **Start Chorus with Ollama** (uses the model for token recovery):
-   ```bash
-   docker-compose -f docker-compose.yml -f docker-compose.ollama.yml up
-   ```
-
-4. **In the Chorus UI:**
-   - Toggle **"Enable LLM reconstruction"** under Advanced Options
-   - Select your model from the dropdown (auto-populated from Ollama)
-   - Process audio as usual — LOW-confidence words are reconstructed by the LLM
-
-### Environment Variables
-
-Configure Ollama via `.env`:
-
-```bash
-# Ollama server endpoint
-OLLAMA_BASE_URL=http://localhost:11434  # Default (native or Docker host)
-# OLLAMA_BASE_URL=http://ollama:11434   # Use with docker-compose.ollama.yml
-
-# Model to use for token reconstruction
-OLLAMA_MODEL=mistral                    # Default: Mistral 7B
-
-# Timeout for inference (seconds)
-OLLAMA_TIMEOUT_SECONDS=30               # Default: 20
-```
-
-### Performance Tips
-
-- **CPU only:** Use quantized models (q4_0, q4_K_M, q3_K_M) for 2-4× speedup with minimal quality loss
-- **GPU acceleration:** Ollama auto-detects NVIDIA CUDA and Apple MPS. No configuration needed.
-- **Multiple models:** Pre-pull multiple models to avoid download delays during processing:
-  ```bash
-  ollama pull mistral
-  ollama pull neural-chat:7b-v3.1
-  ```
-- **Model tuning:** Lower `OLLAMA_TIMEOUT_SECONDS` if responses are slow, or increase for high-latency networks
-
 ### Troubleshooting
 
 **"Connection refused" (Ollama not running):**
@@ -330,67 +227,33 @@ ollama pull <model-name>
 ollama list  # See installed models
 ```
 
-**Out of memory:**
-Use a quantized model (q4_0) or smaller model size. Check system RAM with:
+**Out of memory:** use `qwen2.5:3b` (the default) rather than `qwen2.5:14b` — see
+[Choosing a model](docs/CONFIGURATION.md#choosing-a-model) for the reasoning. Re-check
+your system RAM with:
 ```bash
 bash devops-practices/survey-ollama-env.sh
 ```
 
-**Slow inference:**
-Enable GPU acceleration or use a smaller model. Native inference is much faster than Docker.
+**Slow inference:** GPU acceleration helps (see [GPU Acceleration](#gpu-acceleration));
+otherwise the 3B default is already the faster option — `qwen2.5:14b` is deliberately
+slower in exchange for better rare-vocabulary handling.
 
 ---
 
-## Deploy from GHCR
+## Docker
 
-Pre-built images are published to [GitHub Container Registry](https://ghcr.io/incendiary/chorus) on every tagged release. No local build step required.
-
-### CPU
-
-```bash
-docker pull ghcr.io/incendiary/chorus:v4.0.0
-docker run --rm -p 8501:8501 ghcr.io/incendiary/chorus:v4.0.0
-```
-
-### GPU (NVIDIA CUDA)
+Prefer an isolated environment over managing a Python venv? See
+[docs/DOCKER.md](docs/DOCKER.md) for the full Docker installation, GPU passthrough
+(Linux and Windows/WSL2), and GHCR pre-built image instructions.
 
 ```bash
-docker pull ghcr.io/incendiary/chorus:v4.0.0-gpu
-docker run --rm -p 8501:8501 --gpus all ghcr.io/incendiary/chorus:v4.0.0-gpu
+git clone -b v4.0.0 https://github.com/incendiary/Chorus.git
+cd Chorus
+docker-compose up --build
 ```
 
-Access the UI at [http://localhost:8501](http://localhost:8501).
-
-*See `docker-publish.sh` and `docker-test.sh` in the repo root for building, testing, and pushing images locally.*
-
----
-
-## Native Installation (Bare-Metal)
-
-1. **Ensure FFmpeg is installed.**
-   - macOS: `brew install ffmpeg`
-   - Ubuntu/Debian: `sudo apt install ffmpeg`
-   - Windows: Install via `winget` or download binaries.
-
-2. **Create a virtual environment:**
-
-   ```bash
-   python3 -m venv .venv
-   source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-   ```
-
-3. **Install dependencies:**
-
-   ```bash
-   pip install --upgrade pip
-   pip install -r requirements.txt
-   ```
-
-4. **Run the Streamlit UI:**
-
-   ```bash
-   streamlit run ui/app.py
-   ```
+Note: Apple Silicon GPU (MPS) acceleration is **not available in Docker** — use native
+installation above for that.
 
 ---
 
@@ -423,7 +286,7 @@ chorus-engine/
 │   └── ollama_client.py      # Local Ollama API client wrapper
 ├── ui/                       # Stage 4: Web interface
 │   └── app.py                # Streamlit dashboard (confidence vis, batch mode)
-├── tests/                    # Test suite (120+ tests)
+├── tests/                    # Test suite (244 tests)
 │   ├── test_integration.py   # Full pipeline integration tests
 │   ├── test_alignment.py     # Positional alignment tests
 │   ├── test_sequence_alignment.py  # Needleman-Wunsch tests
