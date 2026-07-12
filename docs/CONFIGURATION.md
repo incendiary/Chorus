@@ -317,12 +317,41 @@ replaces the LOW token in the final output.
 - Contextually ambiguous tokens where grammatical form alone is insufficient (e.g. a
   homophone that could be either of two valid words).
 
+### Choosing a model
+
+LLM reconstruction is a narrow, closed-set task: given roughly eight words of
+surrounding context and a short list of two to four ASR candidate words, the
+model must output exactly one candidate token and nothing else. This is not a
+reasoning or open-ended generation task, so the usual "bigger model is smarter"
+intuition does not straightforwardly apply, and getting it wrong is a real
+failure mode — a chatty model that adds a preamble breaks the parsing logic.
+
+Two things matter more than raw parameter count for this specific task:
+
+- **Strict instruction-following.** The model must reliably emit only the
+  requested token, with no explanation or commentary, across dozens of calls
+  per transcript. The Qwen2.5 family measurably outperforms comparable
+  Llama/Gemma/Mistral models on this (IFEval negative-constraint compliance),
+  which is why it is the recommended default.
+- **Vocabulary breadth for rare/technical words.** For ordinary spoken
+  language, model size makes little practical difference — this saturates
+  early. It does keep improving with scale specifically for technical,
+  medical, legal, or otherwise rare vocabulary, since smaller models prune
+  long-tail vocabulary during training and quantisation. `qwen2.5:14b` is
+  offered as an explicit *option* for jargon-heavy transcripts, not a
+  general "better" default — for typical audio it will not outperform the
+  3B default, only run slower.
+
+`devops-practices/survey-ollama-env.sh` recommends `qwen2.5:3b` as the default
+and offers `qwen2.5:14b` when there's enough RAM headroom, following this
+reasoning.
+
 ### Environment variables
 
 | Variable | Default | Description |
 |---|---|---|
 | `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama server address. Use `http://ollama:11434` with `docker-compose.ollama.yml`. |
-| `OLLAMA_MODEL` | `llama3.1:8b` | Model to use for reconstruction. See the Ollama section of the README for hardware recommendations. |
+| `OLLAMA_MODEL` | `qwen2.5:3b` | Model to use for reconstruction. See "Choosing a model" above. |
 | `OLLAMA_TIMEOUT_SECONDS` | `20` | Seconds to wait for a response before skipping the reconstruction and retaining the original LOW token. |
 
 ### Behaviour on failure
