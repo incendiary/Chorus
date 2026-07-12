@@ -215,25 +215,26 @@ Example output:
 ```
 Select models to install:
   0) Skip — don't pull any models
-  1) mistral:latest                     Mistral 7B — Best speed/quality balance (~5GB)
-  2) llama2:13b                         Llama2 13B — Strong reasoning (~28GB)
-  3) neural-chat:7b-v3.1                 Neural Chat 7B — Quality conversation (~15GB)
+  1) qwen2.5:3b                          Qwen2.5 3B — fast default; reliably follows token-only output (~2GB)
+  2) qwen2.5:14b                         Qwen2.5 14B — better for technical/rare vocabulary (~9GB)
 Enter numbers to install (space-separated), or 0 to skip: 1
 
 Apply Settings to .env
   1) WHISPER_MODEL         = medium
-  2) OLLAMA_MODEL           = mistral:latest
+  2) OLLAMA_MODEL           = qwen2.5:3b
   3) OLLAMA_BASE_URL        = http://localhost:11434
 Enter numbers to apply (space-separated), 'all', or 0 to skip: all
 
 Starting Chorus (Docker)
-  export OLLAMA_MODEL='mistral:latest'
+  export OLLAMA_MODEL='qwen2.5:3b'
   docker-compose -f docker-compose.yml -f docker-compose.ollama.yml up
 
 Starting Chorus (Bare Metal/Native)
-  export OLLAMA_MODEL='mistral:latest'
+  export OLLAMA_MODEL='qwen2.5:3b'
   streamlit run ui/app.py
 ```
+
+*Model recommendations favour reliable, low-latency instruction-following over raw size for this task (picking one word from a short candidate list) — see [docs/CONFIGURATION.md](docs/CONFIGURATION.md) for the reasoning, and the optional larger model offered for jargon-heavy transcripts.*
 
 ### Install Ollama
 
