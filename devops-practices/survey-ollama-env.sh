@@ -153,25 +153,35 @@ echo -e "\n${YELLOW}[5/6] Model Recommendations${NC}"
 RECOMMENDED_MODELS=()
 REASONING=""
 
+# Model choice here is for one narrow task: picking one word from a short
+# list of 2-4 ASR candidates given ~8 words of context, at temperature 0,
+# with the model required to output *only* the chosen token. Research into
+# this specific task shape (closed-set cloze / word-sense disambiguation)
+# found that, contrary to an earlier assumption in this script, accuracy
+# keeps improving well past 3B parameters (LAMBADA and WSD benchmarks show
+# continued gains through 8B-70B) rather than saturating early — and rare
+# or technical vocabulary retention improves further with scale, since
+# smaller models prune long-tail vocabulary during training/quantisation.
+# The Qwen2.5 family is used throughout because it measurably outperforms
+# Llama/Gemma/Mistral on IFEval negative-constraint compliance (reliably
+# emitting only the requested token, no preamble) — this matters more here
+# than raw capability, since any extra text breaks the parsing logic.
 if [[ "$TOTAL_MEM_GB" -lt 4 ]]; then
-  RECOMMENDED_MODELS=("tinyllama:latest" "qwen2.5:0.5b")
-  REASONING="Low RAM (< 4GB): small, low-memory models"
-elif [[ "$TOTAL_MEM_GB" -lt 8 ]]; then
-  RECOMMENDED_MODELS=("qwen2.5:3b" "llama3.2:3b" "mistral:latest")
-  REASONING="Medium RAM (4-8GB): compact models with quantization"
-elif [[ "$TOTAL_MEM_GB" -lt 16 ]]; then
-  RECOMMENDED_MODELS=("mistral:latest" "llama3.1:8b" "qwen2.5:7b")
-  REASONING="Good RAM (8-16GB): full-precision ~7-8B models"
+  RECOMMENDED_MODELS=("qwen2.5:0.5b")
+  REASONING="Low RAM (< 4GB): smallest viable model in the same family"
 else
-  RECOMMENDED_MODELS=("mistral:latest" "llama3.1:8b" "qwen2.5:14b" "gemma2:9b")
-  REASONING="Excellent RAM (16GB+): larger models with headroom to spare"
+  RECOMMENDED_MODELS=("qwen2.5:3b")
+  REASONING="Default: fast, low-latency, reliably follows the 'respond with only the token' constraint"
 fi
 
-if [[ "$GPU_TYPE" != "none" ]]; then
-  if [[ "$GPU_VRAM_GB" -ge 8 ]] || [[ "$GPU_TYPE" == "Apple Silicon (MPS)" ]]; then
-    RECOMMENDED_MODELS+=("gemma2:27b")
-    REASONING+=" | GPU detected: can use larger models"
-  fi
+# Optional larger model for jargon-heavy transcripts (technical, medical,
+# legal vocabulary, uncommon proper nouns) — rare-word disambiguation
+# accuracy keeps improving with scale even where common-word accuracy
+# plateaus, so this is worth offering wherever there's RAM headroom for it,
+# not just on a discrete GPU.
+if [[ "$TOTAL_MEM_GB" -ge 16 ]]; then
+  RECOMMENDED_MODELS+=("qwen2.5:14b")
+  REASONING+=" | Optional if your audio has heavy technical/rare vocabulary: qwen2.5:14b retains far more long-tail vocabulary than the 3B default"
 fi
 
 # check_model_exists MODEL:TAG — verify a tag actually resolves in Ollama's
@@ -200,7 +210,7 @@ for m in "${RECOMMENDED_MODELS[@]}"; do
 done
 RECOMMENDED_MODELS=("${VALIDATED_MODELS[@]}")
 if [[ "${#RECOMMENDED_MODELS[@]}" -eq 0 ]]; then
-  RECOMMENDED_MODELS=("mistral:latest")
+  RECOMMENDED_MODELS=("qwen2.5:3b")
 fi
 
 # ── Whisper model recommendation ─────────────────────────────────────────────
@@ -254,16 +264,9 @@ fi
 
 get_model_info() {
   case "$1" in
-  "tinyllama:latest") echo "TinyLlama 1.1B — ultra-fast, minimal memory (~1GB)" ;;
-  "qwen2.5:0.5b") echo "Qwen2.5 0.5B — smallest capable option (~1GB)" ;;
-  "qwen2.5:3b") echo "Qwen2.5 3B — compact, strong for its size (~2GB)" ;;
-  "llama3.2:3b") echo "Llama 3.2 3B — Meta's small model, good general use (~2GB)" ;;
-  "mistral:latest") echo "Mistral 7B — reliable speed/quality balance (~4GB)" ;;
-  "llama3.1:8b") echo "Llama 3.1 8B — strong modern all-rounder (~5GB)" ;;
-  "qwen2.5:7b") echo "Qwen2.5 7B — leading open-weight 7B for reasoning (~5GB)" ;;
-  "qwen2.5:14b") echo "Qwen2.5 14B — top-tier reasoning at this size (~9GB)" ;;
-  "gemma2:9b") echo "Gemma 2 9B — Google's model, strong instruction following (~5GB)" ;;
-  "gemma2:27b") echo "Gemma 2 27B — high quality for larger/GPU systems (~16GB)" ;;
+  "qwen2.5:0.5b") echo "Qwen2.5 0.5B — smallest viable option, low RAM (~1GB)" ;;
+  "qwen2.5:3b") echo "Qwen2.5 3B — fast default; reliably follows token-only output (~2GB)" ;;
+  "qwen2.5:14b") echo "Qwen2.5 14B — better for technical/rare vocabulary (~9GB)" ;;
   *) echo "Unknown model" ;;
   esac
 }
