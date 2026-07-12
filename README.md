@@ -205,27 +205,36 @@ bash devops-practices/survey-ollama-env.sh
 
 This script:
 1. **Surveys your system** for available RAM, CPU cores, GPU (NVIDIA CUDA, Apple Silicon MPS, etc.), and free disk space
-2. **Recommends models** based on your hardware constraints
+2. **Recommends models** — both Ollama LLM models and a `WHISPER_MODEL` size — based on your hardware constraints
 3. **Offers to start Ollama** if not running (`ollama serve`)
-4. **Offers to pull recommended models** (e.g., `ollama pull mistral:latest`)
-5. **Shows model pull commands** for all top recommendations
+4. **Multi-select model menu** — presents all recommended Ollama models as a numbered list; enter space-separated numbers to pull several at once (e.g. `1 3`), or `0` to skip. Already-installed models are labelled in-line.
+5. **Applies settings to `.env`** — offers the recommended `WHISPER_MODEL`, `OLLAMA_MODEL`, and `OLLAMA_BASE_URL` values, showing your current `.env` value alongside each. Enter numbers, `all`, or `0` to skip. If `.env` doesn't exist yet, it's created from `.env.example` first.
 6. **Provides ready-to-run commands** for both Docker and bare-metal deployments
 
 Example output:
 ```
-Recommended models to pull:
-  ollama pull mistral:latest
-  ollama pull llama2:13b
-  ollama pull neural-chat:7b-v3.1
+Select models to install:
+  0) Skip — don't pull any models
+  1) qwen2.5:3b                          Qwen2.5 3B — fast default; reliably follows token-only output (~2GB)
+  2) qwen2.5:14b                         Qwen2.5 14B — better for technical/rare vocabulary (~9GB)
+Enter numbers to install (space-separated), or 0 to skip: 1
+
+Apply Settings to .env
+  1) WHISPER_MODEL         = medium
+  2) OLLAMA_MODEL           = qwen2.5:3b
+  3) OLLAMA_BASE_URL        = http://localhost:11434
+Enter numbers to apply (space-separated), 'all', or 0 to skip: all
 
 Starting Chorus (Docker)
-  export OLLAMA_MODEL='mistral:latest'
+  export OLLAMA_MODEL='qwen2.5:3b'
   docker-compose -f docker-compose.yml -f docker-compose.ollama.yml up
 
 Starting Chorus (Bare Metal/Native)
-  export OLLAMA_MODEL='mistral:latest'
+  export OLLAMA_MODEL='qwen2.5:3b'
   streamlit run ui/app.py
 ```
+
+*Model recommendations favour reliable, low-latency instruction-following over raw size for this task (picking one word from a short candidate list) — see [docs/CONFIGURATION.md](docs/CONFIGURATION.md) for the reasoning, and the optional larger model offered for jargon-heavy transcripts.*
 
 ### Install Ollama
 
