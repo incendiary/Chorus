@@ -1,557 +1,293 @@
 # Chorus Engine Holistic Codebase Review
 
-Date: 21 June 2026 · Re-assessed: 29 June 2026 (v3.3.0)
+Date: 12 July 2026 (v4.0.0, post-release)
 
-> **29 June 2026 re-assessment.** This review was re-validated against the v3.3.0 tree.
-> The headline findings were routed into four v4.0.0 work packages, all now shipped
-> in full — see [v3.3.0 re-assessment & v4.0.0 readiness](#v330-re-assessment--v400-readiness)
-> below and `ROADMAP.md`'s "Completed — v4.0.0" section for what landed.
+> This supersedes the previous 21 June / 29 June 2026 review. That review's findings
+> were routed into the four v4.0.0 work packages, all shipped. This is a fresh,
+> ground-up pass against the current tree — see `ROADMAP.md`'s "Completed — v4.0.0"
+> section for what shipped, and the action roadmap below for what's next.
 
 ## Executive summary
 
-Chorus is in a strong early-production state: the core audio, transcription, consensus, export, and release paths are modular, the test suite is broad for the non-UI core, dependencies are pinned in `requirements.txt`, and CI already runs tests, linting, secret scanning, scheduled drift checks, and a non-blocking dependency audit. The most urgent risk is output isolation drift: several helpers still write to global `outputs/consensus` even when callers supply an isolated `output_dir`, which can silently mix files across CLI, UI, and batch runs. The second-order scaling risk is the Streamlit UI and batch processor having little or no direct coverage despite being the main user-facing orchestration surfaces. Overall health is good, but the project should harden output routing, batch feature parity, export sanitisation, and dependency audit enforcement before scaling to larger unattended workloads.
-
-## Context reviewed
-
-### Entry points
-
-| Entry point | Trigger | Notes |
-|---|---|---|
-| `pipeline_runner.py` | `python pipeline_runner.py <audio>` or programmatic `run_pipeline()` | Main single-file CLI and API entry point. |
-| `batch_processor/batch_runner.py` | `python -m batch_processor.batch_runner ...` | Batch and directory-processing CLI. |
-| `ui/app.py` | `streamlit run ui/app.py` or Docker Compose | Main interactive UI. |
-| `tests/` | `pytest` | Test execution surface and regression harness. |
-| Package `__init__.py` files | Imports | Mostly empty, low risk. |
-| `.github/workflows/ci.yml` | Push, PR, and weekly schedule | CI, lint, test, secret scan, dependency audit, and version drift checks. |
-| `.github/workflows/release.yml` | `v*` tag push | Release tests, Docker build and publish, GitHub release, and post-release checks. |
-| `Dockerfile`, `Dockerfile.gpu`, `docker-compose.yml`, `docker-compose.gpu.yml` | Container runtime | CPU and CUDA deployment surfaces. |
-| `docker-publish.sh`, `docker-test.sh`, `devops-practices/*.sh` | Manual operational scripts | Release and consistency helpers. |
-
-### Dependency manifests
-
-| Manifest | Purpose | Finding |
-|---|---|---|
-| `requirements.txt` | Runtime dependency pins | Direct runtime dependencies are pinned. |
-| `pyproject.toml` | Build metadata, package discovery, tool config, dev extras | Runtime `dependencies = []`, so package installs do not receive runtime dependencies unless `requirements.txt` is installed separately. |
-| `.pre-commit-config.yaml` | Local quality and secret hooks | Hooks are pinned and include layered secret scanning. |
-| `Dockerfile`, `Dockerfile.gpu` | Container dependency installation | Runtime labels are stale (`1.0.0`), and GPU image installs a second `pyannote.audio` version outside `requirements.txt`. |
-
-### CI definition
-
-CI exists in `.github/workflows/ci.yml` and release automation exists in `.github/workflows/release.yml`. The pipeline runs on push, pull request, and a weekly schedule. It runs secret scanning, formatting checks, Ruff, isort, tests, version drift checks, and `pip-audit`, although `pip-audit` is currently non-blocking because the command ends with `|| true`.
-
-### Existing tests and coverage
-
-The repository has 188 tests under `tests/`. I ran:
-
-```bash
-.venv/bin/python -m pytest --cov=. --cov-report=term-missing --tb=short
-```
-
-Result: 188 passed, 7 warnings, 74% overall coverage. Notable blind spots: `ui/app.py` at 0%, `batch_processor/batch_runner.py` at 0%, `nlp_reconstructor/reconstructor.py` at 33%, `export_engine/exporter.py` at 58%, and `diarisation/diariser.py` at 66%.
-
-### README and docs
-
-`README.md` clearly documents purpose, Docker and native installation, GPU support, output interpretation, architecture, and roadmap governance. `ROADMAP.md` is the dedicated roadmap source of truth and is enforced by tests, so this review adds action items there rather than embedding roadmap checklists in `README.md`.
-
-### Known pain points inferred from project docs
-
-The current documented focus areas are batch consensus clarity, progress and error feedback, UI pattern consistency, and strict release and documentation synchronisation. The historical roadmap shows recent work on output directory isolation, LLM reconstruction hardening, batch processing, Docker environment documentation, and version consistency.
+Chorus is in a healthy, well-tested state for its core pipeline (audio → transcription
+→ consensus → export), with 244 passing tests and 82% overall coverage. The most
+material risk found in this pass is not in the core pipeline but in **dependency
+manifest drift**: `pyproject.toml` and `requirements.txt` must be kept in sync by hand,
+and they silently drifted — a patched CVE in `requirements.txt` (nltk path traversal)
+was never applied to `pyproject.toml`, leaving two open Dependabot alerts undetected
+until this review (fix in progress, PR #129). The second-order risk is **coverage
+concentration**: the two files with the least test coverage — `ui/hardware_survey.py`
+(14%) and `ui/app.py` (36%) — are exactly the files behind the hardware-preset
+selector and the main UI, i.e. the surfaces most users touch first. CI is otherwise
+solid (secret scanning, pinned actions, scheduled drift checks), but has no code
+scanning (CodeQL) and no security policy for coordinated disclosure.
 
 ## Architecture
 
 | Module / Path | Responsibility | Concerns |
 |---|---|---|
-| `config.py` | Central constants, environment parsing, device detection, and output directories | Runtime dependencies are not declared in `pyproject.toml`; environment-derived constants are imported early, which makes runtime UI changes via `os.environ` fragile. |
-| `utils.py` | Shared filename stem sanitisation | Narrow, clear responsibility. |
-| `audio_processor/` | Load audio, resample to mono 16 kHz, generate original, high-pass, normalised, and denoised WAV variants | Loads full audio into memory, so very large files scale linearly in RAM. |
-| `transcription_engine/` | Load Whisper models, cache by model and device, transcribe variants, and write transcript JSON/TXT files | Model cache has no eviction policy; parallel CPU runs can overcommit RAM on large models. |
-| `consensus_merger/` | Token alignment, fuzzy voting, sequence alignment, and Markdown rendering | Sequence alignment is banded for long inputs, but multi-model or highly divergent transcripts can still become CPU-heavy. |
-| `nlp_reconstructor/` | Optional spaCy-based LOW-token reconstruction | English-only model assumption, low direct coverage, and no end-to-end assertion that reconstruction improves or preserves accuracy. |
-| `llm_reconstructor/` | Optional local Ollama reconstruction and model probing | Local HTTP calls are bounded by timeout and covered, but prompt/output contracts remain heuristic. |
-| `diarisation/` | Optional pyannote speaker diarisation, speaker labelling, speaker-name persistence, and diarised Markdown output | Output directory is global, and external model loading depends on Hugging Face token and network/model cache state. |
-| `export_engine/` | PDF, DOCX, SRT, VTT, plain-text, ZIP, JSON bundle, and AI context exports | Several exports always write to global `CONSENSUS_DIR`; Markdown-to-HTML conversion does not explicitly sanitise untrusted transcript content before PDF generation. |
-| `batch_processor/` | Batch discovery, sequential pipeline invocation, optional exports, and batch report generation | Reimplements optional NLP/diarisation/export work outside `run_pipeline()`, ignores some feature flags, and writes reports and exports globally. |
-| `ui/` | Streamlit single-page workflow for upload, configuration, processing, preview, downloads, and speaker naming | Largest module, no direct automated coverage, and feature wiring depends on import-time config constants. |
-| `.github/workflows/` | CI and release automation | Good baseline; dependency audit is advisory rather than blocking. |
-| `Dockerfile*`, `docker-compose*.yml` | CPU/GPU runtime packaging | Docker labels are stale, and GPU dependency versioning diverges from `requirements.txt`. |
+| `chorus/` | Stable public API façade (re-exports) | None — thin, low-risk by design |
+| `audio_processor/` | Audio cleaning: high-pass, normalise, denoise | None significant |
+| `transcription_engine/` | Whisper wrapper + multi-variant orchestration | None significant |
+| `consensus_merger/` | Word-vote alignment (sequence + positional) and Markdown rendering | None significant |
+| `diarisation/` | pyannote speaker ID + name persistence | 67% coverage; some untested branches (diariser.py:96-134, 164-194) |
+| `export_engine/` | PDF/DOCX/SRT/VTT/ZIP/plain-text/best-guess export | 62% coverage — largest untested surface in the core pipeline (exporter.py:114-184, 218-294) |
+| `reconstruction/` | Strategy-based LOW-token reconstruction (nlp/llm) | `nlp.py` at 39% — the actual spaCy grammatical-correction logic is thin on coverage vs. its degradation paths |
+| `ui/` | Streamlit web UI + hardware survey | `app.py` is a single 1744-line file at 36% coverage; `hardware_survey.py` at 14% — see Risk Inventory |
+| `batch_processor/` | Unattended multi-file CLI | 100% coverage (added WP3) |
+| `devops-practices/` | Shell scripts: version sync, survey-ollama-env, clone-ref checks | Manually maintained; no test harness for the shell scripts themselves beyond `version_consistency_test.sh` |
 
-### Data flow
-
-External input enters through uploaded browser files in `ui/app.py`, CLI file paths in `pipeline_runner.py`, or file/directory/glob inputs in `batch_processor/batch_runner.py`. The audio processor decodes the source file with librosa/FFmpeg, writes four WAV variants, and passes paths into the transcription orchestrator. Whisper produces one or more transcript dictionaries per model and variant, which are persisted as JSON and TXT companions. The consensus merger extracts transcript text, aligns tokens, computes confidence tiers, optionally applies NLP or LLM reconstruction, and renders a Markdown consensus document. Export helpers then generate AI context, JSON bundles, PDF, DOCX, SRT, VTT, plain text, ZIP archives, diarised Markdown, and speaker-name sidecars. Outputs leave the system as files under `outputs/` or a caller-provided `output_dir`, and as Streamlit download payloads.
+**Data flow:** audio file → `audio_processor` (4 variants) → `transcription_engine`
+(Whisper × variants × consensus models) → `consensus_merger` (word-vote alignment) →
+optional `reconstruction` (LOW-token cleanup via spaCy or Ollama) → optional
+`diarisation` → `export_engine` (all output formats) → filesystem (`output_dir` or
+global `CONSENSUS_DIR`). Entry points: `pipeline_runner.py` (CLI/API), `ui/app.py`
+(Streamlit), `batch_processor/batch_runner.py` (unattended batch).
 
 ## Risk inventory
 
 | # | Category | Finding | Score | File / Location |
 |---|---|---|---|---|
-| 1 | Reliability | `output_dir` isolation is incomplete: AI context, diarisation, speaker names, batch reports, plain text, SRT, VTT, PDF, DOCX, and ZIP helper sidecars can still write to global `outputs/consensus`. | 4 | `pipeline_runner.py`, `export_engine/ai_context.py`, `export_engine/exporter.py`, `diarisation/diariser.py`, `batch_processor/batch_runner.py` |
-| 2 | Reliability | Batch processing re-runs optional NLP and diarisation outside `run_pipeline()` and does not pass all feature flags into the pipeline, so batch behaviour can diverge from CLI and UI behaviour. | 4 | `batch_processor/batch_runner.py` |
-| 3 | Maintainability | The main Streamlit app is a 1,400-line script with nested functions and zero direct coverage, making UI workflow regressions likely. | 4 | `ui/app.py` |
-| 4 | Scalability | Audio processing loads each whole file into memory and materialises several full-length arrays; there is no duration, file-size, or decoded-sample guard. | 4 | `audio_processor/pipeline.py`, `audio_processor/filters.py`, `ui/app.py` |
-| 5 | Dependency | `pyproject.toml` declares no runtime dependencies, so `pip install chorus-engine` or editable package installation without `requirements.txt` produces a broken runtime. | 4 | `pyproject.toml`, `requirements.txt` |
-| 6 | Security | Transcript-derived Markdown is converted to HTML for PDF export without an explicit sanitisation policy; malformed or HTML-bearing transcript text may be rendered into PDF output. | 3 | `export_engine/exporter.py`, `consensus_merger/renderer.py`, `export_engine/ai_context.py` |
-| 7 | Dependency | Dependency audit exists in CI but is non-blocking (`|| true`), and `pip-audit` is not installed in the local `.venv`, so the current manual audit could not verify CVEs. | 3 | `.github/workflows/ci.yml`, local environment |
-| 8 | Reliability | Docker image labels are stale (`1.0.0`, `1.0.0-gpu`) while package and README version are `3.1.1`, which weakens operational traceability. | 3 | `Dockerfile`, `Dockerfile.gpu` |
-| 9 | Dependency | The GPU Dockerfile installs `pyannote.audio==3.1.1` after installing `requirements.txt`, which pins `pyannote-audio==4.0.4`; this can downgrade or skew dependency resolution in GPU images. | 3 | `Dockerfile.gpu`, `requirements.txt` |
-| 10 | Maintainability | Import-time config constants are mutated indirectly in the UI by setting `os.environ`, but imported modules have already captured many config values. | 3 | `ui/app.py`, `config.py`, `audio_processor/filters.py`, `transcription_engine/orchestrator.py` |
-| 11 | Maintainability | Optional NLP reconstruction has low coverage and no quality regression harness; it can upgrade LOW tokens without an objective accuracy gate. | 3 | `nlp_reconstructor/reconstructor.py`, `tests/test_reconstructor.py` |
-| 12 | Scalability | Whisper model cache has no memory budget, eviction, or explicit user-facing guard when multi-model consensus selects several large models. | 3 | `transcription_engine/whisper_engine.py`, `transcription_engine/orchestrator.py`, `ui/app.py` |
-| 13 | Reliability | LLM and diarisation integrations depend on local/external model availability; they degrade gracefully in several cases, but long-running model operations are not covered by integration tests with realistic latency. | 2 | `llm_reconstructor/`, `diarisation/` |
-| 14 | CI/CD | CI does not publish coverage artefacts or enforce a minimum coverage threshold for critical surfaces. | 2 | `.github/workflows/ci.yml`, `pyproject.toml` |
-| 15 | Maintainability | Runtime and dev tool versions differ between `requirements.txt`, `pyproject.toml` dev extras, CI install commands, and the local `.venv`. | 2 | `requirements.txt`, `pyproject.toml`, `.github/workflows/ci.yml` |
+| 1 | Security | `pyproject.toml` and `requirements.txt` both declare runtime deps independently with no automated sync check; drifted silently, leaving an open CVE (nltk path traversal) unpatched in one manifest for weeks | 4 | `pyproject.toml`, `requirements.txt` |
+| 2 | Security | `pip-audit` in `security.yml` only scans `requirements.txt` — a vulnerable pin that exists *only* in `pyproject.toml` (as just happened) would never be caught by CI at all | 4 | `.github/workflows/security.yml` |
+| 3 | Security | No `SECURITY.md`, no private vulnerability reporting enabled, no CodeQL/code scanning configured | 3 | repo root, GitHub Security tab |
+| 4 | Maintainability | `ui/app.py` is a single 1744-line file mixing sidebar config, upload handling, pipeline invocation, results rendering, and dialog logic | 3 | `ui/app.py` |
+| 5 | Maintainability | `ui/hardware_survey.py` (RAM/CPU/GPU detection + Max/Background preset logic) is at 14% coverage — the exact code behind the one-click preset button documented as "the fastest way to get sensible settings" | 4 | `ui/hardware_survey.py` |
+| 6 | Reliability | New GitHub Actions workflow (`ollama-model-tags-check.yml`) has never actually executed (confirmed via `gh run list` — zero runs since creation); its correctness under real CI conditions is unverified | 3 | `.github/workflows/ollama-model-tags-check.yml` |
+| 7 | Maintainability | `export_engine/exporter.py` at 62% coverage — largest untested surface in the core (non-UI) pipeline; PDF/DOCX export paths specifically | 3 | `export_engine/exporter.py:114-184,218-294` |
+| 8 | Reliability | Documentation (README, docs/DOCKER.md) drifted independently of code multiple times this session with no detection mechanism — stale Docker-compose syntax, stale model names, stale defaults sat unnoticed until manually found | 3 | `README.md`, `docs/DOCKER.md` (now fixed) |
+| 9 | Dependency | `streamlit` (1.58.0 pinned, 1.59.1 latest) and `spacy` (3.8.13 pinned, 3.8.14 latest) are one release behind; not urgent, routine maintenance | 1 | `requirements.txt`, `pyproject.toml` |
+| 10 | Maintainability | `reconstruction/nlp.py` at 39% coverage — spaCy reconstruction logic itself (not just its degradation path) is thin on direct tests | 3 | `reconstruction/nlp.py:132-288` |
 
 ## Predicted failure scenarios
 
-### PF-1: Cross-run output contamination (Reliability, score 4)
+### PF-1: A future dependency CVE fix applied to only one manifest goes undetected (Security, score 4)
 
-**What happens:** A batch run or CLI run with `--output-dir` returns isolated consensus paths, but AI context packs, diarised transcripts, speaker names, plain-text downloads, subtitles, and batch reports appear in the global `outputs/consensus` directory or overwrite files from another run with the same stem.
+**What happens:** Someone bumps a vulnerable package's pin in `requirements.txt` (the
+file CI's `pip-audit` actually scans) but not in `pyproject.toml` (or vice versa), and
+CI stays green while a real CVE remains exploitable via `pip install -e .`.
 
-**Trigger condition:** Processing two files with the same sanitised stem, processing simultaneous UI sessions, running batch jobs with `--output-dir`, or reprocessing the same uploaded filename.
+**Trigger condition:** Any future dependency security fix — this has already happened
+once (nltk, this session) and the two manifests have no automated sync check.
 
-**Estimated timeline:** This can fail today. The current tests only assert the consensus Markdown parent, not every secondary artefact.
+**Estimated timeline:** Will recur at the next CVE fix unless addressed; it is not a
+hypothetical, it already occurred.
 
-**Minimum fix:** Add `output_dir` or `consensus_dir` parameters to every export, diarisation, speaker-name, AI context, and batch-report writer, and thread the caller-selected directory through the UI, CLI, and batch paths.
+**Minimum fix:** Add a CI check (or pre-commit hook) asserting every pinned version in
+`pyproject.toml`'s `dependencies` matches the corresponding pin in `requirements.txt`.
 
-**Full fix (roadmap item):** Add a run-scoped output context object and integration tests that assert every artefact for two same-stem runs stays in its own directory.
+**Full fix (roadmap item):** Generate `pyproject.toml`'s dependency list from
+`requirements.txt` at build/lint time instead of maintaining two hand-written lists.
 
-### PF-2: Batch mode produces different results from single-file mode (Reliability, score 4)
+### PF-2: A user with a genuinely unusual hardware configuration gets a wrong preset recommendation silently (Reliability, score 4)
 
-**What happens:** Batch runs ignore or duplicate optional feature behaviour. NLP reconstruction can be applied after `run_pipeline()` has already generated consensus, diarisation can be run a second time, exports can land outside the batch output root, and LLM options are not represented in the batch API.
+**What happens:** `ui/hardware_survey.py`'s `detect_hardware()`/`recommend_settings()`
+functions have almost no direct test coverage (14%). A logic error in GPU/VRAM
+detection or the recommendation thresholds would surface only as "the Max preset
+picked a model that OOMs" — a bad user experience with no test to have caught it
+first.
 
-**Trigger condition:** Users process directories with `--nlp`, `--diarise`, `--export`, or a custom output directory.
+**Trigger condition:** Any hardware configuration not resembling the developer's own
+test machine (e.g., unusual VRAM reporting, multi-GPU systems, non-standard `nvidia-smi`
+output parsing).
 
-**Estimated timeline:** This can fail today for batch users using optional features.
+**Estimated timeline:** Latent now; will surface as user-reported bugs, not CI
+failures, since there's no test harness exercising the actual detection logic against
+varied simulated hardware profiles.
 
-**Minimum fix:** Make `run_batch()` delegate all pipeline options to `run_pipeline()` and perform exports against the returned artefacts with the same output root.
+**Minimum fix:** Add unit tests for `detect_hardware()` and `recommend_settings()`
+mocking `nvidia-smi`/`system_profiler` output across a few representative hardware
+profiles (low-RAM CPU-only, mid-range NVIDIA, Apple Silicon, high-VRAM NVIDIA).
 
-**Full fix (roadmap item):** Define a shared processing-options dataclass used by CLI, batch, and UI, then add parity tests comparing single-file and batch output manifests.
+**Full fix (roadmap item):** Extend to property-based testing across a wider input
+matrix, given this function's output directly drives what model runs on a user's
+machine.
 
-### PF-3: UI regression reaches users without a failing test (Maintainability, score 4)
+### PF-3: `ui/app.py`'s 1744-line single-file structure makes future changes increasingly risky (Maintainability, score 3)
 
-**What happens:** A change to sidebar option wiring, upload handling, error display, download generation, or speaker-name saving silently breaks the Streamlit workflow while all unit tests still pass.
+**What happens:** As features accumulate, the lack of separation between sidebar
+config, upload handling, pipeline invocation, and results rendering makes it harder to
+reason about side effects of a change — a change to one control's logic risks breaking
+an unrelated one via shared `st.session_state` keys.
 
-**Trigger condition:** Any UI refactor, Streamlit upgrade, or feature flag addition.
+**Trigger condition:** Continued feature growth in the UI (already grown substantially
+across v3.1-v4.0).
 
-**Estimated timeline:** Likely within the next few UI changes because `ui/app.py` has 0% direct coverage.
+**Estimated timeline:** Not an immediate failure risk, but the maintenance cost is
+already visible — most new UI logic this session (survey preset, LLM/NLP setup
+dialogs) added to the same file rather than a decomposed module.
 
-**Minimum fix:** Extract pure helpers for option construction, output manifest rendering, and file-processing orchestration, then unit-test them.
+**Minimum fix:** None required immediately — flagging for awareness.
 
-**Full fix (roadmap item):** Add Playwright or Streamlit app tests for upload, single-file processing, multi-file processing, failed-file display, and download buttons using mocked Whisper.
-
-### PF-4: Process killed on long or high-resolution audio (Scalability, score 4)
-
-**What happens:** The process is killed by the OS or Docker memory limit during `librosa.load()`, STFT denoising, or multi-variant array creation. In Docker, this appears as a container restart; in native runs, it can look like an abrupt shell or Streamlit failure.
-
-**Trigger condition:** Long recordings, high sample-rate media, multi-file upload batches, or several large files processed on the 4 GB Docker memory limit.
-
-**Estimated timeline:** Will occur when users move from short test recordings to long meetings, interviews, or lectures.
-
-**Minimum fix:** Add a preflight metadata check using `soundfile.info()` or FFmpeg metadata to reject or warn on files above a configurable duration or decoded-sample limit.
-
-**Full fix (roadmap item):** Move toward chunked audio processing and chunked transcription with progress, merge boundaries, and predictable memory limits.
-
-### PF-5: Installed package cannot run outside the repo bootstrap path (Dependency, score 4)
-
-**What happens:** A user installs the project with `pip install .` or `pip install -e .` and then imports or runs Chorus, but dependencies such as Whisper, librosa, Streamlit, pyannote, or WeasyPrint are missing.
-
-**Trigger condition:** Any package-style installation that does not also install `requirements.txt`.
-
-**Estimated timeline:** Will occur as soon as the project is consumed as a Python package rather than a Docker app or manually bootstrapped repo.
-
-**Minimum fix:** Move runtime dependencies into `pyproject.toml` or generate them from one source of truth.
-
-**Full fix (roadmap item):** Split extras into `ui`, `export`, `diarisation`, `llm`, and `dev`, and update Docker, CI, and README to install via package extras.
-
-### PF-6: Transcript content renders unexpected HTML in PDF exports (Security, score 3)
-
-**What happens:** Transcript text containing Markdown or HTML-like content is passed through Markdown conversion into HTML and then rendered by WeasyPrint. The local PDF renderer is less exposed than a browser, but output can include unintended markup, links, or layout-breaking content.
-
-**Trigger condition:** Audio contains dictated HTML/Markdown, or imported transcript text includes angle brackets and Markdown table syntax.
-
-**Estimated timeline:** Possible today when exporting adversarial or unusual transcripts to PDF.
-
-**Minimum fix:** Escape transcript-derived tokens before Markdown rendering or sanitise generated HTML with an allowlist before PDF conversion.
-
-**Full fix (roadmap item):** Add export sanitisation tests covering HTML tags, scripts as literal text, Markdown tables inside transcript content, and low-confidence annotations.
-
-### PF-7: Vulnerable dependency ships because audit is advisory (Dependency, score 3)
-
-**What happens:** CI reports a pip-audit issue but still passes, allowing a dependency with a known vulnerability to remain in main and release images.
-
-**Trigger condition:** A new CVE appears in any pinned direct or transitive dependency.
-
-**Estimated timeline:** Could happen on the next dependency disclosure. The weekly schedule helps visibility, but it does not block merges.
-
-**Minimum fix:** Remove `|| true` from the audit step after documenting any intentional ignores with expiry dates.
-
-**Full fix (roadmap item):** Add a dependency review workflow, publish audit artefacts, and create scheduled issues for drift or CVE findings.
-
-### PF-8: GPU image dependency skew causes diarisation/runtime failures (Dependency, score 3)
-
-**What happens:** GPU image builds with a different pyannote stack than CPU/local installs, causing diarisation import errors, model-loading errors, or subtly different speaker segmentation behaviour.
-
-**Trigger condition:** Building `Dockerfile.gpu`, especially after dependency resolver changes or pyannote transitive updates.
-
-**Estimated timeline:** Possible on the next GPU build.
-
-**Minimum fix:** Remove the extra `pip install pyannote.audio==3.1.1` or align it with the pinned `pyannote-audio==4.0.4` requirement.
-
-**Full fix (roadmap item):** Add a GPU Docker smoke test that imports Whisper, torch, pyannote, and runs a mocked diarisation path.
-
-### PF-9: UI configuration changes do not reach processing code (Maintainability, score 3)
-
-**What happens:** The UI updates `os.environ` for model and noise settings after modules have imported constants, but filter and orchestrator modules may continue using values captured at import time.
-
-**Trigger condition:** User changes model, consensus model, or noise-floor mode in the sidebar after app start.
-
-**Estimated timeline:** This can happen today for options backed by imported constants rather than explicit function parameters.
-
-**Minimum fix:** Pass user-selected settings explicitly through `run_pipeline()` and into processing functions instead of mutating environment variables at run time.
-
-**Full fix (roadmap item):** Introduce a typed runtime configuration object and remove user-option writes to `os.environ` from the Streamlit app.
-
-### PF-10: Multi-model consensus exhausts memory (Scalability, score 3)
-
-**What happens:** Selecting multiple large Whisper models loads several model/device cache entries and keeps them resident, leading to memory pressure or CPU/GPU fallback.
-
-**Trigger condition:** Multi-model consensus using `medium` or `large`, parallel workers, or repeated runs in a long-lived Streamlit process.
-
-**Estimated timeline:** Likely when users experiment with larger models after initial success with `base` or `small`.
-
-**Minimum fix:** Add a model memory preflight warning and expose an unload/clear-cache operation after each run or batch.
-
-**Full fix (roadmap item):** Implement a bounded model cache with explicit eviction and per-device memory policy.
-
-### PF-11: NLP reconstruction reduces transcript accuracy (Maintainability, score 3)
-
-**What happens:** LOW tokens are upgraded to MEDIUM based on weak semantic/POS scoring, and downstream users treat them as more reliable than they are.
-
-**Trigger condition:** Domain-specific vocabulary, non-English audio, names, acronyms, or missing spaCy vectors.
-
-**Estimated timeline:** Possible whenever `enable_nlp=True` is used on real-world transcripts.
-
-**Minimum fix:** Keep reconstructed tokens visibly annotated and add tests for names, acronyms, non-English text, and no-vector candidates.
-
-**Full fix (roadmap item):** Build a small golden transcript evaluation set and require reconstruction to improve or preserve word error rate before default use.
-
-### PF-12: Docker/runtime version traceability is misleading (Reliability, score 3)
-
-**What happens:** Inspecting image labels reports version `1.0.0` or `1.0.0-gpu` while README, tags, and package metadata report `3.1.1`, complicating incident response and support.
-
-**Trigger condition:** Any deployed Docker image inspected by operators or release tooling.
-
-**Estimated timeline:** This is already present.
-
-**Minimum fix:** Source Docker labels from build arguments populated by CI release metadata.
-
-**Full fix (roadmap item):** Add a CI check that Dockerfile labels, `VERSION`, `pyproject.toml`, README examples, and image tags agree.
+**Full fix (roadmap item):** Split `ui/app.py` into `ui/sidebar.py`, `ui/upload.py`,
+`ui/results.py` modules called from a thin `ui/app.py` entry point, once the file
+exceeds ~2000 lines or the next major UI feature is added.
 
 ## Test coverage gaps
 
 | Path | Why critical | Test type needed |
 |---|---|---|
-| `ui/app.py` upload-to-download workflow | Main user-facing workflow and largest module; currently 0% coverage. | UI/integration: mocked upload, single run, batch run, failed file, and download checks. |
-| `batch_processor/batch_runner.py:run_batch()` | Main unattended processing path; currently 0% coverage. | Unit/integration: discovery, output isolation, feature flags, export paths, failure report, and exit status. |
-| `pipeline_runner.py:run_pipeline(output_dir=...)` secondary artefacts | Existing tests only assert consensus path parent, not AI context, diarisation, subtitles, plain text, ZIP sidecars, or speaker names. | Integration: same-stem two-run manifest isolation. |
-| `export_engine/exporter.py:export_pdf()` and `export_docx()` | User-facing exports and sanitisation-sensitive path; many branches uncovered. | Unit: generated files, escaped transcript text, malformed Markdown, missing optional dependencies, and output directory override. |
-| `diarisation/diariser.py:diarise()` real pipeline interaction | External model/token/GPU behaviour is high variance. | Integration with mocked pyannote pipeline plus stub fallback tests for missing token, model load failure, and empty speaker turns. |
-| `nlp_reconstructor/reconstructor.py:reconstruct_low_tokens()` | Can change confidence tiers and transcript text. | Golden-data unit tests: names, acronyms, no-vector words, non-English text, and threshold boundaries. |
-| `transcription_engine/whisper_engine.py` model cache lifecycle | Long-lived UI process can retain large models. | Unit: unload after multi-model runs, bounded cache policy once implemented. |
-| Docker images | Deployment path can differ from native tests. | CI smoke: build or import-check CPU image and, where runner support exists, GPU image. |
-
-Three highest-value additions:
-
-1. Add batch processor tests for `run_batch()` option forwarding, output isolation, export paths, and failure reporting.
-2. Add a same-stem, custom-output-dir integration test that asserts every returned and side-effect artefact stays under the selected run directory.
-3. Add Streamlit workflow tests with mocked Whisper for upload, run, failure, and downloads.
+| `ui/hardware_survey.py::detect_hardware/recommend_settings` | Drives the one-click preset button's model/device/parallelism choice for every user who clicks it | Unit: mocked hardware profiles across RAM/GPU tiers (see PF-2) |
+| `ui/app.py` (lines 470-1726, most of the file) | Main UI; only render-smoke and dialog-trigger paths are covered (RA-3.2, this session) | Integration: `AppTest` coverage of results rendering, download buttons, batch progress |
+| `export_engine/exporter.py::export_pdf/export_docx` (lines 114-184, 218-294) | User-facing export formats with zero direct test evidence | Unit: fixture-based export + structural validation of output files |
+| `reconstruction/nlp.py` (lines 132-288) | The actual spaCy correction logic, as opposed to its already-tested degradation path | Unit: known LOW-token + context → expected correction assertions |
 
 ## Dependency audit
 
-| Dependency / Source | Pinning | Last-release status | CVE status | Notes |
-|---|---|---|---|---|
-| `requirements.txt` direct dependencies | Exact pins | Not verified live in this session | Not verified live in this session | Pins are good for reproducibility, but there is no generated lock file for transitives. |
-| `openai-whisper==20250625` | Exact | Appears current by version date | Not verified | Central runtime dependency; model downloads and FFmpeg behaviour should be smoke-tested. |
-| `librosa==0.11.0`, `soundfile==0.14.0`, `scipy==1.17.1`, `numpy==2.4.6` | Exact | Not verified live | Not verified | Heavy numerical stack; audio memory and Python-version compatibility matter. |
-| `pydub==0.25.1` | Exact | Potentially mature/slow-moving | Not verified | Small direct dependency; current code primarily uses librosa/soundfile, so reassess whether it is still needed. |
-| `nltk==3.9.4` | Exact | Not verified live | Not verified | Used for edit distance/token support; ensure NLTK data availability remains tested in Docker. |
-| `streamlit==1.58.0` | Exact | Not verified live | Not verified | Main UI framework; high regression impact because UI has no direct tests. |
-| `pyannote-audio==4.0.4` | Exact | Not verified live | Not verified | GPU Dockerfile separately installs `pyannote.audio==3.1.1`, creating skew. |
-| `spacy==3.8.13` | Exact | Not verified live | Not verified | Runtime dependency is installed, but language models are external and optional. |
-| `weasyprint==69.0`, `python-docx==1.2.0`, `Markdown==3.10.2` | Exact | Not verified live | Not verified | Export stack requires sanitisation tests and system-library awareness. |
-| `tqdm==4.68.2`, `watchdog==6.0.0`, `psutil==7.2.2` | Exact | Not verified live | Not verified | Utility dependencies; reassess ongoing need as features stabilise. |
-| `pyproject.toml` dev extras | Floating | Not verified live | Not verified | `black`, `ruff`, `isort`, `pytest`, and other dev tools float in extras while CI pins some versions separately. |
-
-Live CVE audit status: `pip-audit` is not installed in the repository `.venv` (`Package(s) not found: pip-audit`). CI installs and runs `pip-audit`, but the job currently allows failure with `|| true`, so it is advisory.
-
-Potential inline candidates: `pydub` should be reviewed because the observed processing path uses `librosa` and `soundfile`; keep it only if other supported formats or planned features need it. No other obvious single-purpose dependency is safe to inline because audio, ML, PDF, DOCX, and UI libraries carry substantial domain logic.
+- `pip-audit -r requirements.txt`: clean (0 known vulnerabilities) as of this review.
+- `pyproject.toml` had a real, undetected drift (see Risk #1) — now fixed in PR #129.
+- All GitHub Actions in all 4 workflow files are version-pinned (no `@main`/`@master`
+  floating refs) — good practice already in place.
+- Minor staleness, not urgent: `streamlit==1.58.0` (latest 1.59.1), `spacy==3.8.13`
+  (latest 3.8.14). No security releases missed; routine bump candidates.
+- No abandoned dependencies identified (all actively maintained, recent releases).
 
 ## CI/CD gaps
 
-| Gap | Current state | Fix snippet |
-|---|---|---|
-| Dependency audit does not block | `pip-audit ... || true` means known CVEs can pass CI. | See snippet 1. |
-| Coverage is measured manually, not enforced in CI | Tests run without coverage reporting or threshold. | See snippet 2. |
-| Runtime dependency packaging is not validated | CI installs editable package plus hand-picked runtime dependencies, not the package as users would consume it. | See snippet 3. |
-| Docker CPU image is not smoke-tested on PRs | Release builds images, but PR CI does not verify Docker runtime import/startup. | See snippet 4. |
-| Docker version labels are not checked | Version-sync tests cover README, tags, and roadmap, but not Docker labels. | See snippet 5. |
+| Check | Status |
+|---|---|
+| Tests run on every PR | ✅ `ci.yml` |
+| Lint + format check | ✅ `ci.yml` (black, ruff, isort) |
+| Secret scanning | ✅ `security.yml` (gitleaks + TruffleHog + detect-secrets, 3-layer) |
+| Actions pinned to versions | ✅ confirmed across all 4 workflows |
+| Scheduled dependency-drift detection | ✅ `ci.yml` weekly cron + `ollama-model-tags-check.yml` weekly cron |
+| Code scanning (CodeQL / SAST) | ❌ not configured (`code-scanning/default-setup` reports `not-configured`) |
+| `pip-audit` covers all dependency manifests | ❌ only scans `requirements.txt`, not `pyproject.toml` (Risk #2) |
+| Security policy / private vulnerability reporting | ❌ no `SECURITY.md`; private vulnerability reporting disabled on the GitHub repo |
+| Dependabot security updates (auto-PR on CVE) | ❌ disabled (routine version-update `dependabot.yml` is separate and already active) |
 
-Snippet 1: make dependency audit blocking after intentional ignores are documented.
-
+**Suggested CodeQL addition** (`.github/workflows/codeql.yml`):
 ```yaml
-  dependency-audit:
-    name: Dependency Audit
+name: CodeQL
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "0 10 * * 3"
+jobs:
+  analyze:
     runs-on: ubuntu-latest
-    needs: secret-scan
+    permissions:
+      security-events: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: github/codeql-action/init@v3
         with:
-          python-version: "3.11"
-      - name: pip-audit
-        run: |
-          python -m pip install --upgrade pip pip-audit
-          pip-audit -r requirements.txt --ignore-vuln PYSEC-2022-42969
-```
-
-Snippet 2: enforce coverage while allowing a ratchet period.
-
-```yaml
-      - name: Run tests with coverage
-        run: |
-          pytest --cov=. --cov-report=term-missing --cov-report=xml --cov-fail-under=75
-```
-
-Snippet 3: validate package install metadata.
-
-```yaml
-  package-install:
-    name: Package Install Smoke
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-      - name: Install package
-        run: |
-          python -m pip install --upgrade pip
-          pip install .
-          python -c "import pipeline_runner, audio_processor, consensus_merger"
-```
-
-Snippet 4: add CPU Docker smoke test.
-
-```yaml
-  docker-smoke:
-    name: Docker Smoke
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Build CPU image
-        run: docker build --target runtime -t chorus-smoke:ci .
-      - name: Import check
-        run: docker run --rm chorus-smoke:ci python -c "import streamlit, whisper, pipeline_runner"
-```
-
-Snippet 5: check Docker labels against `VERSION`.
-
-```yaml
-      - name: Docker label version check
-        run: |
-          VERSION=$(cat VERSION)
-          grep -q "LABEL version=\"${VERSION}\"" Dockerfile
-          grep -q "LABEL version=\"${VERSION}-gpu\"" Dockerfile.gpu
+          languages: python
+      - uses: github/codeql-action/analyze@v3
 ```
 
 ## Action roadmap
 
-### RA-1: Thread output directory through every artefact writer
+### RA-1: Prevent pyproject.toml / requirements.txt drift
 
-**Context:** `run_pipeline(output_dir=...)` isolates variants, transcripts, consensus Markdown, and JSON bundles, but AI context, diarisation, speaker names, plain text, subtitles, PDF, DOCX, ZIP sidecars, and batch reports still default to global `outputs/consensus`.
+**Context:** The two dependency manifests are hand-maintained and already drifted
+once, leaving a CVE open undetected (Risk #1, PF-1).
 
-**Success criteria:**
-- A same-stem two-run integration test proves every generated artefact stays under its selected output root.
-- No export, diarisation, speaker-name, AI context, or batch-report helper writes to `CONSENSUS_DIR` when a caller-provided output directory is available.
-- UI, CLI, and batch paths continue to return valid download paths.
+**Success criteria:** A CI check fails if any package version differs between the two
+files; the check runs on every PR that touches either file.
 
-**Files to change:** `pipeline_runner.py`, `export_engine/ai_context.py`, `export_engine/exporter.py`, `diarisation/diariser.py`, `batch_processor/batch_runner.py`, `ui/app.py`, `tests/test_integration.py`, `tests/test_exporter.py`, `tests/test_speaker_names.py`
+**Files to change:** `.github/workflows/ci.yml` (new step), possibly a small Python
+script under `devops-practices/`.
+
+**Estimated effort:** S
+
+### RA-2: Make pip-audit cover pyproject.toml's dependency list
+
+**Context:** `security.yml`'s `pip-audit` step only scans `requirements.txt`; a
+vulnerable pin unique to `pyproject.toml` is invisible to CI (Risk #2).
+
+**Success criteria:** `pip-audit` (or an equivalent check) runs against the installed
+package set from `pip install -e .`, not just `requirements.txt`.
+
+**Files to change:** `.github/workflows/security.yml`
+
+**Estimated effort:** S
+
+### RA-3: Add SECURITY.md and enable private vulnerability reporting
+
+**Context:** No coordinated-disclosure path exists for this public repo (Risk #3).
+
+**Success criteria:** `SECURITY.md` exists with a reporting contact/process; private
+vulnerability reporting is enabled in the GitHub repo settings.
+
+**Files to change:** new `SECURITY.md`; GitHub repo settings (not code)
+
+**Estimated effort:** XS
+
+### RA-4: Add CodeQL scanning
+
+**Context:** No SAST/code-scanning tool is configured (Risk #3, CI/CD gaps).
+
+**Success criteria:** `.github/workflows/codeql.yml` runs on PR + weekly schedule and
+reports to the Security tab.
+
+**Files to change:** new `.github/workflows/codeql.yml`
+
+**Estimated effort:** XS
+
+### RA-5: Test hardware_survey.py's detection and recommendation logic
+
+**Context:** 14% coverage on the code directly behind the one-click hardware preset
+button (Risk #5, PF-2).
+
+**Success criteria:** Unit tests cover `detect_hardware()` and
+`recommend_settings()`/`recommend_settings_background()` across at least 4 mocked
+hardware profiles (low-RAM CPU, mid NVIDIA, Apple Silicon, high-VRAM NVIDIA), asserting
+the correct model/device/parallelism recommendation for each.
+
+**Files to change:** new `tests/test_hardware_survey.py`
 
 **Estimated effort:** M
 
-### RA-2: Unify batch option handling with the main pipeline
+### RA-6: Verify ollama-model-tags-check.yml actually works under real CI
 
-**Context:** `batch_processor/batch_runner.py` re-applies NLP and diarisation after `run_pipeline()` and does not represent all single-file options, which makes batch output diverge from CLI/UI output.
+**Context:** This workflow has zero recorded runs since creation; its `workflow_dispatch`
+trigger and issue-filing logic are unverified in a real GitHub Actions environment
+(Risk #6).
 
-**Success criteria:**
-- `run_batch()` passes supported feature flags directly to `run_pipeline()`.
-- Batch exports are generated from returned pipeline artefacts without re-running NLP or diarisation.
-- Tests cover `--nlp`, `--diarise`, `--export`, `--output-dir`, and failure reporting.
+**Success criteria:** Manually trigger via `gh workflow run ollama-model-tags-check.yml`
+and confirm it completes successfully end-to-end (including the no-op "all tags valid"
+path).
 
-**Files to change:** `batch_processor/batch_runner.py`, `pipeline_runner.py`, `tests/test_batch_runner.py`, `tests/test_integration.py`
+**Files to change:** none expected unless a bug is found
+
+**Estimated effort:** XS
+
+### RA-7: Expand export_engine/exporter.py test coverage
+
+**Context:** 62% coverage; PDF/DOCX export paths have no direct test evidence
+(Risk #7).
+
+**Success criteria:** Each export format (PDF, DOCX) has at least one test asserting
+the output file is created and structurally valid (not just "doesn't crash").
+
+**Files to change:** `tests/test_exporter.py`
 
 **Estimated effort:** M
 
-### RA-3: Add Streamlit workflow regression tests
+### RA-8: Expand reconstruction/nlp.py test coverage beyond degradation paths
 
-**Context:** `ui/app.py` is the main user-facing surface and currently has 0% direct coverage. Changes to upload handling, option wiring, error rendering, or downloads can pass the core test suite.
+**Context:** 39% coverage; existing tests cover graceful degradation (spaCy missing)
+but not the actual grammatical-correction logic (Risk #10).
 
-**Success criteria:**
-- A mocked single-file UI run reaches the results section and exposes consensus, plain-text, ZIP, and JSON downloads.
-- A mocked multi-file run shows success and failure summaries correctly.
-- A failed processing run shows remediation guidance and does not leave temporary files behind.
+**Success criteria:** Tests cover known LOW-confidence-token + context inputs and
+assert the expected corrected output.
 
-**Files to change:** `ui/app.py`, `tests/test_ui_app.py`, optionally `tests/fixtures/`
+**Files to change:** `tests/test_reconstructor.py`
+
+**Estimated effort:** S
+
+### RA-9 (lower priority): Decompose ui/app.py
+
+**Context:** Single 1744-line file mixing multiple concerns (PF-3).
+
+**Success criteria:** Sidebar config, upload/run, and results rendering split into
+separate modules with a thin `ui/app.py` orchestrating them; existing `test_ui_app.py`
+suite still passes unchanged.
+
+**Files to change:** `ui/app.py`, new `ui/sidebar.py` / `ui/results.py` (naming TBD)
 
 **Estimated effort:** L
-
-### RA-4: Add audio preflight limits
-
-**Context:** `audio_processor/pipeline.py` decodes the full file into memory and then creates several full-length processed arrays. There is no configurable duration, file-size, or decoded-sample guard.
-
-**Success criteria:**
-- Files exceeding configured limits fail before full decode with a clear error message.
-- Limits can be configured for CLI, UI, Docker, and tests.
-- Tests cover acceptable files, over-limit files, and metadata-read failures.
-
-**Files to change:** `config.py`, `audio_processor/pipeline.py`, `pipeline_runner.py`, `ui/app.py`, `README.md`, `tests/test_audio_processor.py`, `tests/test_integration.py`
-
-**Estimated effort:** M
-
-### RA-5: Move runtime dependencies into package metadata
-
-**Context:** `requirements.txt` pins runtime dependencies, but `pyproject.toml` declares `dependencies = []`, so package-style installs miss required libraries.
-
-**Success criteria:**
-- `pip install .` installs enough dependencies for core CLI imports to succeed.
-- Optional extras exist for UI, export, diarisation, LLM, and dev tooling, or an equivalent documented grouping is present.
-- Docker, CI, and README installation commands use the chosen source of truth.
-
-**Files to change:** `pyproject.toml`, `requirements.txt`, `README.md`, `.github/workflows/ci.yml`, `Dockerfile`, `Dockerfile.gpu`
-
-**Estimated effort:** M
-
-### RA-6: Make dependency audit blocking
-
-**Context:** CI runs `pip-audit`, but the command is followed by `|| true`, so dependency vulnerabilities do not fail builds. The local `.venv` did not have `pip-audit` installed during this review.
-
-**Success criteria:**
-- CI fails on unignored `pip-audit` findings.
-- Any ignored vulnerability has an inline reason and review date.
-- Local setup docs include the command for maintainers to run the same audit.
-
-**Files to change:** `.github/workflows/ci.yml`, `README.md`, `.pre-commit-config.yaml` or `pyproject.toml`
-
-**Estimated effort:** S
-
-### RA-7: Sanitise transcript-derived export content
-
-**Context:** Consensus Markdown and AI context content can include transcript-derived text. PDF export converts Markdown to HTML and renders it with WeasyPrint without an explicit allowlist or escaping policy.
-
-**Success criteria:**
-- HTML-like transcript content renders as literal transcript text in Markdown preview, PDF, DOCX, AI context, and plain-text outputs.
-- Tests cover angle brackets, Markdown table delimiters, links, and script-like strings.
-- Export code documents which markup is generated by Chorus and which content is escaped.
-
-**Files to change:** `consensus_merger/renderer.py`, `export_engine/ai_context.py`, `export_engine/exporter.py`, `tests/test_exporter.py`, `tests/test_ai_context.py`, `tests/test_merger.py`
-
-**Estimated effort:** M
-
-### RA-8: Align GPU Docker dependencies with requirements
-
-**Context:** `Dockerfile.gpu` installs `requirements.txt`, then separately installs `pyannote.audio==3.1.1`, while `requirements.txt` pins `pyannote-audio==4.0.4`.
-
-**Success criteria:**
-- CPU and GPU images resolve the same intended pyannote version unless a documented GPU-specific constraint exists.
-- CI or a local script verifies imports for `torch`, `whisper`, `pyannote.audio`, and `pipeline_runner` inside the GPU image.
-- README GPU instructions mention any intentional version divergence.
-
-**Files to change:** `Dockerfile.gpu`, `requirements.txt`, `README.md`, `.github/workflows/release.yml`, optionally `.github/workflows/ci.yml`
-
-**Estimated effort:** S
-
-### RA-9: Replace runtime environment mutation with explicit config
-
-**Context:** The UI sets `os.environ` after importing modules that already captured configuration constants. This can make sidebar selections fail to affect processing consistently.
-
-**Success criteria:**
-- User-selected model, consensus models, noise mode, device, alignment strategy, and optional features are passed explicitly through a typed config object or function parameters.
-- Processing modules do not rely on UI-time `os.environ` mutation.
-- Tests prove sidebar-equivalent options reach audio processing and transcription orchestration.
-
-**Files to change:** `config.py`, `pipeline_runner.py`, `audio_processor/filters.py`, `audio_processor/pipeline.py`, `transcription_engine/orchestrator.py`, `ui/app.py`, `tests/test_config_models.py`, `tests/test_integration.py`, `tests/test_orchestrator.py`
-
-**Estimated effort:** L
-
-### RA-10: Add a bounded Whisper model cache policy
-
-**Context:** `transcription_engine/whisper_engine.py` caches models by `(model, device)` and only clears them when `unload_model()` is called manually. Multi-model consensus can keep several large models resident in a long-lived process.
-
-**Success criteria:**
-- Cache size or memory policy is configurable.
-- UI and batch runs can release unused models after completion.
-- Tests cover cache eviction, CPU fallback, and explicit unload after multi-model runs.
-
-**Files to change:** `config.py`, `transcription_engine/whisper_engine.py`, `pipeline_runner.py`, `ui/app.py`, `tests/test_whisper_engine.py`, `tests/test_integration.py`
-
-**Estimated effort:** M
-
-### RA-11: Build a reconstruction quality harness
-
-**Context:** `nlp_reconstructor/reconstructor.py` can upgrade LOW tokens to MEDIUM, but tests mainly cover graceful degradation. There is no golden-data gate for accuracy-preserving behaviour.
-
-**Success criteria:**
-- A small fixture set covers names, acronyms, technical terms, non-English text, and no-vector tokens.
-- Reconstruction must preserve or improve expected token choices in the fixture set.
-- Reconstructed tokens remain auditable in output metadata.
-
-**Files to change:** `nlp_reconstructor/reconstructor.py`, `consensus_merger/renderer.py`, `tests/test_reconstructor.py`, `tests/fixtures/`
-
-**Estimated effort:** M
-
-### RA-12: Synchronise Docker image metadata with project version
-
-**Context:** `Dockerfile` and `Dockerfile.gpu` labels still report `1.0.0` while `VERSION`, `pyproject.toml`, and README release examples report `3.1.1`.
-
-**Success criteria:**
-- Docker labels are populated from `VERSION` or CI build arguments.
-- Version-sync tests or devops scripts fail when Docker labels drift.
-- Release images expose the correct version through image inspection.
-
-**Files to change:** `Dockerfile`, `Dockerfile.gpu`, `docker-publish.sh`, `tests/test_version_sync.py`, `devops-practices/check-version-sync.sh`, `.github/workflows/release.yml`
-
-**Estimated effort:** S
-
----
-
-## v3.3.0 re-assessment & v4.0.0 readiness
-
-Re-validated 29 June 2026 against the v3.3.0 tree (193 test functions present;
-`VERSION`, `pyproject.toml`, and README all report 3.3.0). The original findings were
-checked against current code rather than recalled.
-
-### Findings that still stand (routed into v4.0.0)
-
-| Finding (original) | Status at v3.3.0 | Evidence | Routed to |
-|---|---|---|---|
-| Output isolation drift — global `CONSENSUS_DIR` writes/reads | **Still present** | `export_engine/exporter.py:600,605,610` (`build_export_zip` reads sidecars from `CONSENSUS_DIR`); `diarisation/diariser.py:337` (`_speaker_names_path` hardcodes `CONSENSUS_DIR`) | WP2 |
-| `pyproject.toml` `dependencies = []` — wheel installs no runtime deps | **Still present** | `pyproject.toml:12` | WP1 (RA-1.1) |
-| UI and batch surfaces near-zero coverage | **Still present** | no test imports `run_batch` or `ui/app.py` | WP3 |
-| `pip-audit` non-blocking in CI | **Still present** | `.github/workflows/ci.yml:120` ends with `\|\| true` | WP3 (RA-3.3) |
-| librosa audioread deprecation | **Still present** | `audio_processor/pipeline.py:69` `librosa.load(...)` falls back to deprecated path without `soundfile` | WP1 (RA-1.4) |
-
-### New observation since the original review
-
-- **Two reconstruction modules now coexist** — `nlp_reconstructor/` (spaCy) and
-  `llm_reconstructor/` (Ollama, added v3.0.0). They have overlapping responsibility and
-  separate pipeline wiring. Consolidating them behind one interface is the principal
-  breaking change that justifies the 4.0.0 major bump. Routed to **WP1 (RA-1.3)**.
-- `CLAUDE.md` "Core Modules" still lists only `nlp_reconstructor/`; it omits
-  `llm_reconstructor/`. WP1 updates this for documentation parity.
-
-### Path to 4.0.0
-
-The four work packages constituted the 4.0.0 scope and have all shipped. WP1 was
-breaking and earned the major version; WP2 and WP3 were correctness and
-test-parity hardening; WP4 was the visible
-feature payload. Recommended execution order: **WP2 → WP1 → WP3 → WP4**. The release
-owner bumps `VERSION` to 4.0.0 and writes the migration note once all four merge.
