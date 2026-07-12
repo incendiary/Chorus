@@ -56,6 +56,11 @@ def _get_readme_text() -> str:
     return (ROOT / "README.md").read_text(encoding="utf-8")
 
 
+def _get_docker_md_text() -> str:
+    """Read the full docs/DOCKER.md contents."""
+    return (ROOT / "docs" / "DOCKER.md").read_text(encoding="utf-8")
+
+
 def _get_git_tags() -> list[str]:
     """
     Get all git tags matching vX.Y.Z pattern, sorted in ascending version order.
@@ -154,23 +159,31 @@ class TestVersionSync:
             f"Update the clone command to match pyproject.toml version {version}."
         )
 
-    def test_readme_docker_cpu_pull_matches(self):
-        """docker pull ghcr.io/.../chorus:vX.Y.Z should match pyproject version."""
+    def test_docker_md_cpu_pull_matches(self):
+        """docker pull ghcr.io/.../chorus:vX.Y.Z should match pyproject version.
+
+        This content lives in docs/DOCKER.md, not README.md — the README only
+        links to it since v4.0.1's native-first restructuring.
+        """
         version = _get_pyproject_version()
-        readme = _get_readme_text()
+        docker_md = _get_docker_md_text()
         expected = f"ghcr.io/incendiary/chorus:v{version}"
-        assert expected in readme, (
-            f"README.md missing '{expected}'. "
+        assert expected in docker_md, (
+            f"docs/DOCKER.md missing '{expected}'. "
             f"Update Docker pull commands to match pyproject.toml version {version}."
         )
 
-    def test_readme_docker_gpu_pull_matches(self):
-        """docker pull ghcr.io/.../chorus:vX.Y.Z-gpu should match pyproject version."""
+    def test_docker_md_gpu_pull_matches(self):
+        """docker pull ghcr.io/.../chorus:vX.Y.Z-gpu should match pyproject version.
+
+        This content lives in docs/DOCKER.md, not README.md — the README only
+        links to it since v4.0.1's native-first restructuring.
+        """
         version = _get_pyproject_version()
-        readme = _get_readme_text()
+        docker_md = _get_docker_md_text()
         expected = f"ghcr.io/incendiary/chorus:v{version}-gpu"
-        assert expected in readme, (
-            f"README.md missing '{expected}'. "
+        assert expected in docker_md, (
+            f"docs/DOCKER.md missing '{expected}'. "
             f"Update GPU Docker pull commands to match pyproject.toml version {version}."
         )
 
