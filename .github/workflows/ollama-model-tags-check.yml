@@ -1,0 +1,60 @@
+name: Ollama Model Tags Check
+# Weekly check that every model tag recommended by
+# devops-practices/survey-ollama-env.sh still resolves in the Ollama registry.
+# Prevents the tag list silently rotting as models get renamed or deprecated
+# upstream — files an issue automatically if any tag stops resolving, the
+# same pattern already used by the Version-Tag Sync check in ci.yml.
+
+on:
+  schedule:
+    - cron: "0 9 * * 1"
+  workflow_dispatch:
+
+jobs:
+  check-model-tags:
+    name: Check Model Tags
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Validate recommended model tags against the Ollama registry
+        run: |
+          FAILED=""
+          TAGS=$(grep "RECOMMENDED_MODELS" devops-practices/survey-ollama-env.sh \
+            | grep -oE '"[a-zA-Z0-9._-]+:[a-zA-Z0-9._-]+"' | tr -d '"' | sort -u)
+
+          for spec in $TAGS; do
+            model="${spec%%:*}"
+            tag="${spec#*:}"
+            code=$(curl -s -o /dev/null -m 10 -w "%{http_code}" \
+              -H "Accept: application/vnd.docker.distribution.manifest.v2+json" \
+              "https://registry.ollama.ai/v2/library/${model}/manifests/${tag}")
+            echo "${spec} -> ${code}"
+            if [ "$code" != "200" ]; then
+              FAILED="${FAILED}${spec} (HTTP ${code})\n"
+            fi
+          done
+
+          if [ -n "$FAILED" ]; then
+            echo "FAILED_TAGS<<EOF" >> "$GITHUB_ENV"
+            printf '%b' "$FAILED" >> "$GITHUB_ENV"
+            echo "EOF" >> "$GITHUB_ENV"
+            exit 1
+          fi
+
+      - name: File an issue if any tag no longer resolves
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          EXISTING=$(gh issue list --search "Ollama model tag(s) no longer exist" --state open --json number --jq '.[0].number' || true)
+          if [ -z "$EXISTING" ]; then
+            gh issue create \
+              --title "Ollama model tag(s) no longer exist in survey-ollama-env.sh" \
+              --body "$(printf 'The weekly Ollama model tag check found one or more recommended model tags that no longer resolve in the Ollama registry:\n\n%s\nUpdate devops-practices/survey-ollama-env.sh to remove or replace them. Failed run: %s/%s/actions/runs/%s' "$FAILED_TAGS" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID")" \
+              --label "bug"
+          else
+            echo "Issue #${EXISTING} already open — skipping."
+          fi

@@ -1088,9 +1088,10 @@ with st.sidebar:
                 "```bash\n"
                 "brew install ollama          # macOS\n"
                 "ollama serve                 # keep this terminal open\n"
-                "ollama pull llama3.1:8b      # ~4.7 GB — run once\n"
+                "ollama pull qwen2.5:3b       # ~2 GB — run once\n"
                 "```\n\n"
-                "On 8 GB machines use `llama3.2:3b` instead. "
+                "For technical/rare-vocabulary audio, `qwen2.5:14b` (~9 GB) "
+                "retains more long-tail vocabulary at the cost of speed. "
                 "See the **Help** page in the sidebar for full setup guidance."
             )
             col1, col2 = st.columns(2)
