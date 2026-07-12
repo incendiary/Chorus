@@ -123,22 +123,6 @@ Tracked improvements identified during the June 2026 repository assessment.
 
 ---
 
-## From the 12 July 2026 holistic review
-
-Full findings, risk scoring, and predicted failure scenarios in `REVIEW.md`.
-
-- [ ] **RA-1: Prevent pyproject.toml / requirements.txt drift** — the two dependency manifests are hand-maintained and already drifted once, leaving a CVE open undetected. Add a CI check asserting every pinned version matches between the two files. (Effort: S)
-- [ ] **RA-2: Make pip-audit cover pyproject.toml's dependency list** — `security.yml`'s `pip-audit` step only scans `requirements.txt`; a vulnerable pin unique to `pyproject.toml` is invisible to CI. (Effort: S)
-- [ ] **RA-3: Add SECURITY.md and enable private vulnerability reporting** — no coordinated-disclosure path exists for this public repo. (Effort: XS)
-- [ ] **RA-4: Add CodeQL scanning** — no SAST/code-scanning tool is configured. (Effort: XS)
-- [ ] **RA-5: Test hardware_survey.py's detection and recommendation logic** — 14% coverage on the code directly behind the one-click hardware preset button. (Effort: M)
-- [ ] **RA-6: Verify ollama-model-tags-check.yml actually works under real CI** — zero recorded runs since creation; unverified in practice. (Effort: XS)
-- [ ] **RA-7: Expand export_engine/exporter.py test coverage** — 62% coverage; PDF/DOCX export paths have no direct test evidence. (Effort: M)
-- [ ] **RA-8: Expand reconstruction/nlp.py test coverage beyond degradation paths** — 39% coverage; the actual grammatical-correction logic is thin on direct tests. (Effort: S)
-- [ ] **RA-9: Decompose ui/app.py** — single 1744-line file mixing sidebar config, upload handling, pipeline invocation, and results rendering. Lower priority. (Effort: L)
-
----
-
 ## Completed — v3.2.1 UI Fixes & Code Quality
 
 - [x] **Black formatting drift resolved** (v3.2.1) — 9 files flagged by CI Black check reformatted. No logic changes; CI Black step now passes on main.
@@ -214,6 +198,32 @@ recorded under each item below).
 > The three pre-existing "Upcoming" items above (best-guess export, LLM context doc,
 > spaCy setup) are now folded into WP4. The MPS float64 warning cleanup remains a
 > standalone 3.x maintenance item and is **not** required for 4.0.0.
+
+---
+
+## Completed — v4.0.1 Patch
+
+- [x] **Fix nonexistent/stale Ollama model recommendations** (v4.0.1) — two hardcoded model tags (`neural-chat:13b`, `tiny-llama:latest`) never existed on the Ollama registry; replaced the whole recommendation philosophy with a research-backed default (`qwen2.5:3b`) plus an explicit jargon-heavy-transcript option (`qwen2.5:14b`), added runtime registry validation and a weekly CI staleness check, and fixed an "already installed" false-positive bug. (RA from user report)
+  - **Files changed:** `devops-practices/survey-ollama-env.sh`, `.github/workflows/ollama-model-tags-check.yml`, `config.py`, `.env.example`, `docker-compose.yml`, `docker-compose.ollama.yml`, `ui/app.py`, `ui/pages/1_Help.py`, `docs/CONFIGURATION.md`
+- [x] **Fix open nltk CVE in `pyproject.toml`** (v4.0.1) — `requirements.txt` was patched for PYSEC-2026-597 in v4.0.0, but `pyproject.toml`'s mirrored dependency list was never updated, leaving 2 open Dependabot alerts. (RA-1, partial — see below)
+  - **Files changed:** `pyproject.toml`
+- [x] **Restructure README native-first, split Docker into `docs/DOCKER.md`** (v4.0.1) — native installation is now the primary path (required for Apple Silicon MPS); removed a large stale/duplicate Ollama recommendations section; fixed a real bug in `docs/DOCKER.md` (invalid `docker-compose -f Dockerfile.gpu` syntax) and several stale defaults.
+  - **Files changed:** `README.md`, `docs/DOCKER.md`, `tests/test_version_sync.py`, `tests/version_consistency_test.sh`
+- [x] **Fresh holistic codebase review** (v4.0.1) — see `REVIEW.md` for full findings; added RA-1 through RA-9 below.
+
+### From the 12 July 2026 holistic review
+
+Full findings, risk scoring, and predicted failure scenarios in `REVIEW.md`.
+
+- [x] **RA-1: Prevent pyproject.toml / requirements.txt drift** (v4.0.1) — partial: the immediate drift (nltk) is fixed; the automated CI check preventing recurrence is not yet built. (Effort: S)
+- [ ] **RA-2: Make pip-audit cover pyproject.toml's dependency list** — `security.yml`'s `pip-audit` step only scans `requirements.txt`; a vulnerable pin unique to `pyproject.toml` is invisible to CI. (Effort: S)
+- [ ] **RA-3: Add SECURITY.md and enable private vulnerability reporting** — no coordinated-disclosure path exists for this public repo. (Effort: XS)
+- [ ] **RA-4: Add CodeQL scanning** — no SAST/code-scanning tool is configured. (Effort: XS)
+- [ ] **RA-5: Test hardware_survey.py's detection and recommendation logic** — 14% coverage on the code directly behind the one-click hardware preset button. (Effort: M)
+- [ ] **RA-6: Verify ollama-model-tags-check.yml actually works under real CI** — zero recorded runs since creation; unverified in practice. (Effort: XS)
+- [ ] **RA-7: Expand export_engine/exporter.py test coverage** — 62% coverage; PDF/DOCX export paths have no direct test evidence. (Effort: M)
+- [ ] **RA-8: Expand reconstruction/nlp.py test coverage beyond degradation paths** — 39% coverage; the actual grammatical-correction logic is thin on direct tests. (Effort: S)
+- [ ] **RA-9: Decompose ui/app.py** — single 1744-line file mixing sidebar config, upload handling, pipeline invocation, and results rendering. Lower priority. (Effort: L)
 
 ---
 
