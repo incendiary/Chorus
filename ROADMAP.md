@@ -116,27 +116,26 @@ Tracked improvements identified during the June 2026 repository assessment.
   - Consider upstream Whisper patches to avoid float64 requirement entirely.
   - Document the performance trade-off in the Help page for macOS users.
 
-- [ ] **Streamline spaCy model setup** — the NLP reconstruction path requires `en_core_web_md` to be downloaded separately via `python -m spacy download en_core_web_md`. Currently this surfaces as a silent fallback warning at runtime. Improve UX:
-  - Auto-download missing models on first use (with progress indication).
-  - Alternatively, document as a post-install setup step in README and Help page.
-  - Consider baking models into Docker image for containerised deployments.
-
-- [ ] **LLM context document** — create a comprehensive Markdown guide (`docs/CHORUS_FOR_LLMS.md`) that explains the project to language models in a format suitable for supplying alongside outputs:
-  - Project overview: what Chorus does, why, and high-level architecture.
-  - Output format reference: descriptions of all generated files (consensus.md, bundle.json, ai_context.md, diarised.md, etc).
-  - Confidence tier semantics: how to interpret HIGH/MEDIUM/LOW tiers, what they indicate about transcript reliability.
-  - Word-vote structure: explanation of the consensus algorithm and how variants influence confidence scores.
-  - Export formats: guide to PDF, DOCX, SRT, VTT metadata and markup conventions.
-  - Instructions for LLM-assisted analysis: examples of how to prompt an LLM to use Chorus outputs for downstream tasks (summarisation, fact-checking, speaker intent analysis).
-  - Metadata fields in bundle.json and how to extract structured data programmatically.
-
 - [x] **Live log window with user-configurable line count** (v3.2.1) — tail-N number input (default 50) added to the Logs page toolbar; shows only the last N entries. Consecutive identical messages deduplicated with ×N repeat badge. Existing Download and Clear buttons preserved.
 
-- [ ] **Human-readable "best guess" transcript export** — current plain-text exports include markup (`[word?]` for LOW-confidence, omitted words, or verbose statistics). Create a new export that is truly human-readable:
-  - Single, clean plain-text file (`{stem}_best_guess.txt`) with no annotations, brackets, or metadata.
-  - Contains only HIGH-confidence words and the single best-guess word for MEDIUM/LOW-confidence positions (selected by highest agreement across variants).
-  - Natural flow and paragraph breaks preserved from the consensus document.
-  - Suitable for distribution to non-technical users, archival, or downstream NLP processing without prior explanation.
+> The spaCy setup, LLM context document, and best-guess export items previously
+> listed here were folded into and shipped as v4.0.0's WP4 — see above.
+
+---
+
+## From the 12 July 2026 holistic review
+
+Full findings, risk scoring, and predicted failure scenarios in `REVIEW.md`.
+
+- [ ] **RA-1: Prevent pyproject.toml / requirements.txt drift** — the two dependency manifests are hand-maintained and already drifted once, leaving a CVE open undetected. Add a CI check asserting every pinned version matches between the two files. (Effort: S)
+- [ ] **RA-2: Make pip-audit cover pyproject.toml's dependency list** — `security.yml`'s `pip-audit` step only scans `requirements.txt`; a vulnerable pin unique to `pyproject.toml` is invisible to CI. (Effort: S)
+- [ ] **RA-3: Add SECURITY.md and enable private vulnerability reporting** — no coordinated-disclosure path exists for this public repo. (Effort: XS)
+- [ ] **RA-4: Add CodeQL scanning** — no SAST/code-scanning tool is configured. (Effort: XS)
+- [ ] **RA-5: Test hardware_survey.py's detection and recommendation logic** — 14% coverage on the code directly behind the one-click hardware preset button. (Effort: M)
+- [ ] **RA-6: Verify ollama-model-tags-check.yml actually works under real CI** — zero recorded runs since creation; unverified in practice. (Effort: XS)
+- [ ] **RA-7: Expand export_engine/exporter.py test coverage** — 62% coverage; PDF/DOCX export paths have no direct test evidence. (Effort: M)
+- [ ] **RA-8: Expand reconstruction/nlp.py test coverage beyond degradation paths** — 39% coverage; the actual grammatical-correction logic is thin on direct tests. (Effort: S)
+- [ ] **RA-9: Decompose ui/app.py** — single 1744-line file mixing sidebar config, upload handling, pipeline invocation, and results rendering. Lower priority. (Effort: L)
 
 ---
 
@@ -218,4 +217,4 @@ recorded under each item below).
 
 ---
 
-*Last updated: 11 July 2026*
+*Last updated: 12 July 2026*
