@@ -216,7 +216,7 @@ recorded under each item below).
 Full findings, risk scoring, and predicted failure scenarios in `REVIEW.md`.
 
 - [x] **RA-1: Prevent pyproject.toml / requirements.txt drift** (v4.0.1) — partial: the immediate drift (nltk) is fixed; the automated CI check preventing recurrence is not yet built. (Effort: S)
-- [ ] **RA-2: Make pip-audit cover pyproject.toml's dependency list** — `security.yml`'s `pip-audit` step only scans `requirements.txt`; a vulnerable pin unique to `pyproject.toml` is invisible to CI. (Effort: S)
+- [x] **RA-2: Make pip-audit cover pyproject.toml's dependency list** (v4.0.1) — `security.yml`'s `pip-audit` step now installs both `requirements.txt` and `.[dev]` extras before scanning, ensuring vulnerabilities in `pyproject.toml` are visible to CI. (Effort: S)
 - [x] **RA-3: Add SECURITY.md and enable private vulnerability reporting** (v4.0.1) — `SECURITY.md` added; private vulnerability reporting, secret scanning, and Dependabot security updates enabled via the GUI. (Effort: XS)
 - [x] **RA-4: Add CodeQL scanning** (v4.0.1) — handled via GitHub's default CodeQL setup (Security & Analysis GUI) rather than a checked-in workflow; a custom `codeql.yml` was tried first but conflicts with default setup and was dropped. (Effort: XS)
 - [ ] **RA-5: Test hardware_survey.py's detection and recommendation logic** — 14% coverage on the code directly behind the one-click hardware preset button. (Effort: M)
