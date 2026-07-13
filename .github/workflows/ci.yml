@@ -77,6 +77,9 @@ jobs:
       - name: Version consistency check (non-blocking release warning mode)
         run: bash tests/version_consistency_test.sh
 
+      - name: Dependency drift check (requirements.txt ↔ pyproject.toml)
+        run: bash tests/check_dependency_drift.sh
+
       - name: DevOps practices checks (unreleased-safe mode)
         run: |
           sh devops-practices/check-version-sync.sh --allow-unreleased
