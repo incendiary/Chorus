@@ -223,7 +223,7 @@ Full findings, risk scoring, and predicted failure scenarios in `REVIEW.md`.
 - [x] **RA-6: Verify ollama-model-tags-check.yml actually works under real CI** (v4.0.1) — workflow ran successfully on scheduled cron (2026-07-13 09:00) and validated three Ollama model tags (`qwen2.5:0.5b`, `qwen2.5:14b`, `qwen2.5:3b`) against the public Ollama registry; all tags resolved (HTTP 200).
 - [ ] **RA-7: Expand export_engine/exporter.py test coverage** — 62% coverage; PDF/DOCX export paths have no direct test evidence. (Effort: M)
 - [ ] **RA-8: Expand reconstruction/nlp.py test coverage beyond degradation paths** — 39% coverage; the actual grammatical-correction logic is thin on direct tests. (Effort: S)
-- [ ] **RA-9: Decompose ui/app.py** — single 1744-line file mixing sidebar config, upload handling, pipeline invocation, and results rendering. Lower priority. (Effort: L)
+- [x] **RA-9: Decompose ui/app.py** (v4.0.1) — split the single 1744-line file into focused modules: `ui/theme.py` (presets, page config, CSS, header), `ui/sidebar.py` (`render_sidebar` and the `SidebarConfig` dataclass), `ui/upload.py` (`render_upload`), `ui/pipeline_invocation.py` (`run_one_file` and `render_run_section`), and `ui/results.py` (render helpers, status panels, and `render_file_results`); `ui/app.py` is now a thin entry point wiring the page together and retaining the session-state log handler. Session-state keys, widget labels, and behaviour are unchanged; the nine `AppTest` smoke tests pass unmodified. (Effort: L)
 
 ---
 
