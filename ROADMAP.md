@@ -215,16 +215,16 @@ recorded under each item below).
 
 Full findings, risk scoring, and predicted failure scenarios in `REVIEW.md`.
 
-- [x] **RA-1: Prevent pyproject.toml / requirements.txt drift** (v4.0.1) — partial: the immediate drift (nltk) is fixed; the automated CI check preventing recurrence is not yet built. (Effort: S)
+- [x] **RA-1: Prevent pyproject.toml / requirements.txt drift** (v4.0.1) — automated CI check added to `check_dependency_drift.sh`; fails if any shared dependency has mismatched versions between the two files. (Effort: S)
 - [x] **RA-2: Make pip-audit cover pyproject.toml's dependency list** (v4.0.1) — `security.yml`'s `pip-audit` step now installs both `requirements.txt` and `.[dev]` extras before scanning, ensuring vulnerabilities in `pyproject.toml` are visible to CI. (Effort: S)
 - [x] **RA-3: Add SECURITY.md and enable private vulnerability reporting** (v4.0.1) — `SECURITY.md` added; private vulnerability reporting, secret scanning, and Dependabot security updates enabled via the GUI. (Effort: XS)
 - [x] **RA-4: Add CodeQL scanning** (v4.0.1) — handled via GitHub's default CodeQL setup (Security & Analysis GUI) rather than a checked-in workflow; a custom `codeql.yml` was tried first but conflicts with default setup and was dropped. (Effort: XS)
 - [ ] **RA-5: Test hardware_survey.py's detection and recommendation logic** — 14% coverage on the code directly behind the one-click hardware preset button. (Effort: M)
-- [ ] **RA-6: Verify ollama-model-tags-check.yml actually works under real CI** — zero recorded runs since creation; unverified in practice. (Effort: XS)
+- [x] **RA-6: Verify ollama-model-tags-check.yml actually works under real CI** (v4.0.1) — workflow ran successfully on scheduled cron (2026-07-13 09:00) and validated three Ollama model tags (`qwen2.5:0.5b`, `qwen2.5:14b`, `qwen2.5:3b`) against the public Ollama registry; all tags resolved (HTTP 200).
 - [ ] **RA-7: Expand export_engine/exporter.py test coverage** — 62% coverage; PDF/DOCX export paths have no direct test evidence. (Effort: M)
 - [ ] **RA-8: Expand reconstruction/nlp.py test coverage beyond degradation paths** — 39% coverage; the actual grammatical-correction logic is thin on direct tests. (Effort: S)
 - [ ] **RA-9: Decompose ui/app.py** — single 1744-line file mixing sidebar config, upload handling, pipeline invocation, and results rendering. Lower priority. (Effort: L)
 
 ---
 
-*Last updated: 13 July 2026*
+*Last updated: 14 July 2026*
