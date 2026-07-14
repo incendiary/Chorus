@@ -5,6 +5,8 @@ Covers:
   - Timestamp formatting helpers (SRT and VTT)
   - SRT export: file created, correct structure
   - VTT export: file created, starts with WEBVTT header
+  - PDF export: valid output, tier highlighting, empty transcript, output_dir isolation
+  - DOCX export: valid output, tier highlighting, empty transcript, output_dir isolation
   - ZIP export: honours output_dir for sidecars and does not contaminate global dir
 """
 
@@ -15,8 +17,11 @@ import re
 import zipfile
 
 from export_engine.exporter import (
+    _md_to_html,
     _seconds_to_srt_ts,
     _seconds_to_vtt_ts,
+    export_docx,
+    export_pdf,
     export_srt,
     export_vtt,
     export_zip,
@@ -344,6 +349,206 @@ class TestExportBestGuess:
         out_path = export_best_guess(consensus_path, "test", output_dir=isolated_dir)
 
         assert out_path.parent == isolated_dir
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Markdown → HTML conversion helper
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class TestMdToHtml:
+    def test_converts_heading_and_maps_medium_highlight_to_mark_tag(self):
+        html = _md_to_html("# Title\n\nhello ==world== plain")
+        assert "<h1>Title</h1>" in html
+        assert "<mark>world</mark>" in html
+
+    def test_empty_markdown_does_not_raise(self):
+        html = _md_to_html("")
+        assert isinstance(html, str)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PDF export
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _mixed_tier_votes():
+    from consensus_merger.alignment import WordVote
+
+    return [
+        WordVote(
+            word="hello",
+            count=4,
+            total=4,
+            confidence=1.0,
+            tier="HIGH",
+            variants=["hello"],
+        ),
+        WordVote(
+            word="world",
+            count=2,
+            total=4,
+            confidence=0.5,
+            tier="MEDIUM",
+            variants=["world", "word"],
+        ),
+        WordVote(
+            word="garbl",
+            count=1,
+            total=4,
+            confidence=0.25,
+            tier="LOW",
+            variants=["garbl"],
+        ),
+    ]
+
+
+def _render_mixed_tier_consensus(tmp_path, votes=None):
+    from consensus_merger.renderer import render_consensus
+
+    votes = _mixed_tier_votes() if votes is None else votes
+    transcripts_meta = {
+        "original": {"text": "hello world garbl", "model": "base", "language": "en"}
+    }
+    return render_consensus(votes, "test", transcripts_meta, consensus_dir=tmp_path)
+
+
+class TestPDFExport:
+    def test_pdf_export_creates_valid_pdf(self, tmp_path):
+        consensus_path = _render_mixed_tier_consensus(tmp_path)
+        out_path = export_pdf(consensus_path, "test", output_dir=tmp_path)
+
+        assert out_path.exists()
+        assert out_path.suffix == ".pdf"
+        data = out_path.read_bytes()
+        assert data.startswith(b"%PDF-")
+        assert len(data) > 500  # non-trivial size, not a truncated/empty file
+
+    def test_pdf_export_preserves_tier_highlighting(self, tmp_path, monkeypatch):
+        """MEDIUM markup must reach the HTML handed to WeasyPrint as a <mark>
+        tag, and LOW-tier text must not be silently dropped.
+
+        Note: the LOW-tier word is *not* wrapped in a <del> tag here — see the
+        bug flagged in the PR description — but it must still be present.
+        """
+        captured: dict[str, str] = {}
+
+        import weasyprint  # type: ignore
+
+        class _SpyHTML(weasyprint.HTML):
+            def __init__(self, *, string, **kwargs):
+                captured["html"] = string
+                super().__init__(string=string, **kwargs)
+
+        # export_pdf imports HTML from weasyprint lazily inside the function
+        # body, so the module attribute must be patched rather than the
+        # (non-existent) name in export_engine.exporter's namespace.
+        monkeypatch.setattr(weasyprint, "HTML", _SpyHTML)
+
+        consensus_path = _render_mixed_tier_consensus(tmp_path)
+        out_path = export_pdf(consensus_path, "test", output_dir=tmp_path)
+
+        assert out_path.read_bytes().startswith(b"%PDF-")
+        assert "<mark>world</mark>" in captured["html"]
+        assert "garbl" in captured["html"]
+
+    def test_pdf_export_empty_transcript_does_not_crash(self, tmp_path):
+        """Silence (no votes) must still produce a valid PDF, not raise."""
+        consensus_path = _render_mixed_tier_consensus(tmp_path, votes=[])
+        out_path = export_pdf(consensus_path, "silent", output_dir=tmp_path)
+
+        assert out_path.exists()
+        assert out_path.read_bytes().startswith(b"%PDF-")
+
+    def test_pdf_export_honours_output_dir(self, tmp_path, monkeypatch):
+        """File must land under the supplied output_dir, not the global dir."""
+        global_dir = tmp_path / "global"
+        global_dir.mkdir()
+        monkeypatch.setattr("export_engine.exporter.CONSENSUS_DIR", global_dir)
+
+        isolated_dir = tmp_path / "isolated"
+        isolated_dir.mkdir()
+        consensus_path = _render_mixed_tier_consensus(isolated_dir)
+
+        out_path = export_pdf(consensus_path, "test", output_dir=isolated_dir)
+
+        assert out_path.parent == isolated_dir
+        assert not any(global_dir.iterdir())
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DOCX export
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class TestDOCXExport:
+    def test_docx_export_creates_valid_document_with_expected_structure(self, tmp_path):
+        from docx import Document
+
+        consensus_path = _render_mixed_tier_consensus(tmp_path)
+        out_path = export_docx(consensus_path, "test", output_dir=tmp_path)
+
+        assert out_path.exists()
+        assert out_path.suffix == ".docx"
+
+        doc = Document(str(out_path))
+        headings = [p.text for p in doc.paragraphs if p.style.name == "Heading 1"]
+        assert "Chorus — Consensus Transcript" in headings
+        body_text = "\n".join(p.text for p in doc.paragraphs)
+        assert "hello" in body_text
+        assert "world" in body_text
+        assert "garbl" in body_text
+
+    def test_docx_export_preserves_tier_highlighting(self, tmp_path):
+        """HIGH/MEDIUM/LOW markup must round-trip into styled runs: MEDIUM as a
+        yellow highlight, LOW as a red highlight with strikethrough."""
+        from docx import Document
+        from docx.enum.text import WD_COLOR_INDEX
+
+        consensus_path = _render_mixed_tier_consensus(tmp_path)
+        out_path = export_docx(consensus_path, "test", output_dir=tmp_path)
+
+        doc = Document(str(out_path))
+        all_runs = [r for p in doc.paragraphs for r in p.runs]
+
+        high_runs = [r for r in all_runs if "hello" in r.text]
+        assert high_runs
+        assert high_runs[0].font.highlight_color is None
+
+        medium_runs = [r for r in all_runs if "world" in r.text]
+        assert medium_runs
+        assert medium_runs[0].font.highlight_color == WD_COLOR_INDEX.YELLOW
+
+        low_runs = [r for r in all_runs if "garbl" in r.text]
+        assert low_runs
+        assert low_runs[0].font.highlight_color == WD_COLOR_INDEX.RED
+        assert low_runs[0].font.strike is True
+
+    def test_docx_export_empty_transcript_does_not_crash(self, tmp_path):
+        """Silence (no votes) must still produce a valid, openable document."""
+        from docx import Document
+
+        consensus_path = _render_mixed_tier_consensus(tmp_path, votes=[])
+        out_path = export_docx(consensus_path, "silent", output_dir=tmp_path)
+
+        assert out_path.exists()
+        doc = Document(str(out_path))  # must open without raising
+        assert len(doc.paragraphs) > 0
+
+    def test_docx_export_honours_output_dir(self, tmp_path, monkeypatch):
+        """File must land under the supplied output_dir, not the global dir."""
+        global_dir = tmp_path / "global"
+        global_dir.mkdir()
+        monkeypatch.setattr("export_engine.exporter.CONSENSUS_DIR", global_dir)
+
+        isolated_dir = tmp_path / "isolated"
+        isolated_dir.mkdir()
+        consensus_path = _render_mixed_tier_consensus(isolated_dir)
+
+        out_path = export_docx(consensus_path, "test", output_dir=isolated_dir)
+
+        assert out_path.parent == isolated_dir
+        assert not any(global_dir.iterdir())
 
 
 # ─────────────────────────────────────────────────────────────────────────────

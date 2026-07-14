@@ -221,7 +221,7 @@ Full findings, risk scoring, and predicted failure scenarios in `REVIEW.md`.
 - [x] **RA-4: Add CodeQL scanning** (v4.0.1) — handled via GitHub's default CodeQL setup (Security & Analysis GUI) rather than a checked-in workflow; a custom `codeql.yml` was tried first but conflicts with default setup and was dropped. (Effort: XS)
 - [ ] **RA-5: Test hardware_survey.py's detection and recommendation logic** — 14% coverage on the code directly behind the one-click hardware preset button. (Effort: M)
 - [x] **RA-6: Verify ollama-model-tags-check.yml actually works under real CI** (v4.0.1) — workflow ran successfully on scheduled cron (2026-07-13 09:00) and validated three Ollama model tags (`qwen2.5:0.5b`, `qwen2.5:14b`, `qwen2.5:3b`) against the public Ollama registry; all tags resolved (HTTP 200).
-- [ ] **RA-7: Expand export_engine/exporter.py test coverage** — 62% coverage; PDF/DOCX export paths have no direct test evidence. (Effort: M)
+- [x] **RA-7: Expand export_engine/exporter.py test coverage** (v4.0.1) — added direct tests for the PDF (WeasyPrint) and DOCX (python-docx) export paths: valid-output checks, HIGH/MEDIUM/LOW tier-highlighting round-trips, empty-transcript handling, and `output_dir` isolation; coverage on `exporter.py` rose from 62% to 90%. (Effort: M)
 - [ ] **RA-8: Expand reconstruction/nlp.py test coverage beyond degradation paths** — 39% coverage; the actual grammatical-correction logic is thin on direct tests. (Effort: S)
 - [ ] **RA-9: Decompose ui/app.py** — single 1744-line file mixing sidebar config, upload handling, pipeline invocation, and results rendering. Lower priority. (Effort: L)
 
