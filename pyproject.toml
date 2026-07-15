@@ -20,7 +20,7 @@ dependencies = [
   "scipy==1.17.1",
   "numpy==2.4.6",
   "nltk==3.10.0",
-  "streamlit==1.58.0",
+  "streamlit==1.59.2",
   "watchdog==6.0.0",
   "psutil==7.2.2",
   "pyannote-audio==4.0.7",
@@ -28,7 +28,7 @@ dependencies = [
   "weasyprint==69.0",
   "python-docx==1.2.0",
   "Markdown==3.10.2",
-  "tqdm==4.68.3",
+  "tqdm==4.68.4",
 ]
 
 [tool.setuptools.packages.find]
