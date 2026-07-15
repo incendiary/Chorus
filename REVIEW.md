@@ -1,293 +1,179 @@
-# Chorus Engine Holistic Codebase Review
+# Chorus Engine — Holistic Review (15 July 2026)
 
-Date: 12 July 2026 (v4.0.0, post-release)
+> Second full review, at v4.0.1. Supersedes the 12 July 2026 review (see git history),
+> whose nine action items (RA-1–RA-9) all shipped in v4.0.1. This review was run
+> against a defined spec agreed with the maintainer: Chorus is a **personal working
+> tool** and a **learning vehicle**; the bar for "done" is **prove the core idea
+> works, then wind down to maintenance** after **one focused wrap-up push**.
 
-> This supersedes the previous 21 June / 29 June 2026 review. That review's findings
-> were routed into the four v4.0.0 work packages, all shipped. This is a fresh,
-> ground-up pass against the current tree — see `ROADMAP.md`'s "Completed — v4.0.0"
-> section for what shipped, and the action roadmap below for what's next.
+---
 
 ## Executive summary
 
-Chorus is in a healthy, well-tested state for its core pipeline (audio → transcription
-→ consensus → export), with 244 passing tests and 82% overall coverage. The most
-material risk found in this pass is not in the core pipeline but in **dependency
-manifest drift**: `pyproject.toml` and `requirements.txt` must be kept in sync by hand,
-and they silently drifted — a patched CVE in `requirements.txt` (nltk path traversal)
-was never applied to `pyproject.toml`, leaving two open Dependabot alerts undetected
-until this review (fix in progress, PR #129). The second-order risk is **coverage
-concentration**: the two files with the least test coverage — `ui/hardware_survey.py`
-(14%) and `ui/app.py` (36%) — are exactly the files behind the hardware-preset
-selector and the main UI, i.e. the surfaces most users touch first. CI is otherwise
-solid (secret scanning, pinned actions, scheduled drift checks), but has no code
-scanning (CodeQL) and no security policy for coordinated disclosure.
+The engineering fundamentals are in excellent shape: 326 tests, 88 % line coverage,
+clean dependency audit, layered CI with secret scanning, CodeQL, and blocking
+`pip-audit`. The single most important gap is that **the project's founding claim has
+never been measured**: nothing demonstrates that four-variant consensus transcription
+is more accurate than a single Whisper pass, nor that the HIGH/MEDIUM/LOW confidence
+tiers actually predict correctness. RB-2 (a WER + calibration benchmark) is the
+centrepiece of the wrap-up push and answers "does this project meet its goals" with a
+number. The most urgent operational bug is that **patch releases silently skip GitHub
+Release creation** (a `needs:` skip-cascade in `release.yml` — v4.0.1's release had to
+be backfilled by hand on 15 July). Output usability is largely a solved problem: clean
+transcripts and machine-readable confidence data are always produced, and
+`docs/CHORUS_FOR_LLMS.md` is an accurate, high-quality consumption contract — it just
+has nothing keeping it honest as the schema evolves.
+
+**Verdict against the maintainer's own bar:** as a learning vehicle, the project has
+unambiguously succeeded. As a personal working tool it is functionally complete but
+empirically unvalidated. Complete RB-1–RB-5 and the project has earned maintenance
+mode regardless of what the benchmark shows — a negative result (consensus no better
+than single-pass) would itself be a valid, honest conclusion, because the calibrated
+uncertainty tiers are a deliverable single-pass Whisper cannot provide.
+
+---
 
 ## Architecture
 
 | Module / Path | Responsibility | Concerns |
 |---|---|---|
-| `chorus/` | Stable public API façade (re-exports) | None — thin, low-risk by design |
-| `audio_processor/` | Audio cleaning: high-pass, normalise, denoise | None significant |
-| `transcription_engine/` | Whisper wrapper + multi-variant orchestration | None significant |
-| `consensus_merger/` | Word-vote alignment (sequence + positional) and Markdown rendering | None significant |
-| `diarisation/` | pyannote speaker ID + name persistence | 67% coverage; some untested branches (diariser.py:96-134, 164-194) |
-| `export_engine/` | PDF/DOCX/SRT/VTT/ZIP/plain-text/best-guess export | 62% coverage — largest untested surface in the core pipeline (exporter.py:114-184, 218-294) |
-| `reconstruction/` | Strategy-based LOW-token reconstruction (nlp/llm) | `nlp.py` at 39% — the actual spaCy grammatical-correction logic is thin on coverage vs. its degradation paths |
-| `ui/` | Streamlit web UI + hardware survey | `app.py` is a single 1744-line file at 36% coverage; `hardware_survey.py` at 14% — see Risk Inventory |
-| `batch_processor/` | Unattended multi-file CLI | 100% coverage (added WP3) |
-| `devops-practices/` | Shell scripts: version sync, survey-ollama-env, clone-ref checks | Manually maintained; no test harness for the shell scripts themselves beyond `version_consistency_test.sh` |
+| `audio_processor/` | Three cleaning filters (high-pass, normalise, denoise) + ingest validation | None — 92-93 % covered, property-based tests |
+| `transcription_engine/` | Whisper wrapper + model×variant orchestrator, device-aware parallelism | MPS float64 CPU fallback emits a noisy `UserWarning` (RB-6) |
+| `consensus_merger/` | Word-level alignment (Needleman-Wunsch or positional), voting, tier assignment, Markdown rendering | `alignment.py` (positional strategy) at 81 % — acceptable; non-default legacy path |
+| `reconstruction/` | LOW-token reconstruction, `"nlp"` (spaCy) or `"llm"` (Ollama) strategy | Sound; 92-97 % covered since RA-8 |
+| `diarisation/` | pyannote speaker separation fused with Whisper timestamps | 67 % coverage; degradation paths tested, happy path not — acceptable for wind-down |
+| `export_engine/` | Consensus → PDF/DOCX/SRT/VTT/plain/bundle/AI-context | **PDF LOW-tier styling silently broken** (RB-3); bundle lacks a version field (RB-4) |
+| `batch_processor/` | Unattended multi-file CLI | Sound, 83 % |
+| `ui/` | Streamlit dashboard, decomposed in v4.0.1 (RA-9) | **`pipeline_invocation.py` 13 %, `results.py` 12 %** — the daily-use path is the least-tested code in the repo (RB-5) |
+| `.github/workflows/` | CI, security, release automation | **Release skip-cascade breaks patch releases** (RB-1) |
 
-**Data flow:** audio file → `audio_processor` (4 variants) → `transcription_engine`
-(Whisper × variants × consensus models) → `consensus_merger` (word-vote alignment) →
-optional `reconstruction` (LOW-token cleanup via spaCy or Ollama) → optional
-`diarisation` → `export_engine` (all output formats) → filesystem (`output_dir` or
-global `CONSENSUS_DIR`). Entry points: `pipeline_runner.py` (CLI/API), `ui/app.py`
-(Streamlit), `batch_processor/batch_runner.py` (unattended batch).
+Data flow: audio file → sanitised stem → 4 cleaned variants → N Whisper passes →
+aligned word votes → (optional reconstruction, diarisation) → renderer/exporters →
+`outputs/<stem>/` (or per-run `output_dir`). Input validation at entry, no network
+exposure (local-first), no secrets in the tree.
+
+---
 
 ## Risk inventory
 
-| # | Category | Finding | Score | File / Location |
+| # | Category | Finding | Score | Location |
 |---|---|---|---|---|
-| 1 | Security | `pyproject.toml` and `requirements.txt` both declare runtime deps independently with no automated sync check; drifted silently, leaving an open CVE (nltk path traversal) unpatched in one manifest for weeks | 4 | `pyproject.toml`, `requirements.txt` |
-| 2 | Security | `pip-audit` in `security.yml` only scans `requirements.txt` — a vulnerable pin that exists *only* in `pyproject.toml` (as just happened) would never be caught by CI at all | 4 | `.github/workflows/security.yml` |
-| 3 | Security | No `SECURITY.md`, no private vulnerability reporting enabled, no CodeQL/code scanning configured | 3 | repo root, GitHub Security tab |
-| 4 | Maintainability | `ui/app.py` is a single 1744-line file mixing sidebar config, upload handling, pipeline invocation, results rendering, and dialog logic | 3 | `ui/app.py` |
-| 5 | Maintainability | `ui/hardware_survey.py` (RAM/CPU/GPU detection + Max/Background preset logic) is at 14% coverage — the exact code behind the one-click preset button documented as "the fastest way to get sensible settings" | 4 | `ui/hardware_survey.py` |
-| 6 | Reliability | New GitHub Actions workflow (`ollama-model-tags-check.yml`) has never actually executed (confirmed via `gh run list` — zero runs since creation); its correctness under real CI conditions is unverified | 3 | `.github/workflows/ollama-model-tags-check.yml` |
-| 7 | Maintainability | `export_engine/exporter.py` at 62% coverage — largest untested surface in the core (non-UI) pipeline; PDF/DOCX export paths specifically | 3 | `export_engine/exporter.py:114-184,218-294` |
-| 8 | Reliability | Documentation (README, docs/DOCKER.md) drifted independently of code multiple times this session with no detection mechanism — stale Docker-compose syntax, stale model names, stale defaults sat unnoticed until manually found | 3 | `README.md`, `docs/DOCKER.md` (now fixed) |
-| 9 | Dependency | `streamlit` (1.58.0 pinned, 1.59.1 latest) and `spacy` (3.8.13 pinned, 3.8.14 latest) are one release behind; not urgent, routine maintenance | 1 | `requirements.txt`, `pyproject.toml` |
-| 10 | Maintainability | `reconstruction/nlp.py` at 39% coverage — spaCy reconstruction logic itself (not just its degradation path) is thin on direct tests | 3 | `reconstruction/nlp.py:132-288` |
-
-## Predicted failure scenarios
-
-### PF-1: A future dependency CVE fix applied to only one manifest goes undetected (Security, score 4)
-
-**What happens:** Someone bumps a vulnerable package's pin in `requirements.txt` (the
-file CI's `pip-audit` actually scans) but not in `pyproject.toml` (or vice versa), and
-CI stays green while a real CVE remains exploitable via `pip install -e .`.
-
-**Trigger condition:** Any future dependency security fix — this has already happened
-once (nltk, this session) and the two manifests have no automated sync check.
-
-**Estimated timeline:** Will recur at the next CVE fix unless addressed; it is not a
-hypothetical, it already occurred.
-
-**Minimum fix:** Add a CI check (or pre-commit hook) asserting every pinned version in
-`pyproject.toml`'s `dependencies` matches the corresponding pin in `requirements.txt`.
-
-**Full fix (roadmap item):** Generate `pyproject.toml`'s dependency list from
-`requirements.txt` at build/lint time instead of maintaining two hand-written lists.
-
-### PF-2: A user with a genuinely unusual hardware configuration gets a wrong preset recommendation silently (Reliability, score 4)
-
-**What happens:** `ui/hardware_survey.py`'s `detect_hardware()`/`recommend_settings()`
-functions have almost no direct test coverage (14%). A logic error in GPU/VRAM
-detection or the recommendation thresholds would surface only as "the Max preset
-picked a model that OOMs" — a bad user experience with no test to have caught it
-first.
-
-**Trigger condition:** Any hardware configuration not resembling the developer's own
-test machine (e.g., unusual VRAM reporting, multi-GPU systems, non-standard `nvidia-smi`
-output parsing).
-
-**Estimated timeline:** Latent now; will surface as user-reported bugs, not CI
-failures, since there's no test harness exercising the actual detection logic against
-varied simulated hardware profiles.
-
-**Minimum fix:** Add unit tests for `detect_hardware()` and `recommend_settings()`
-mocking `nvidia-smi`/`system_profiler` output across a few representative hardware
-profiles (low-RAM CPU-only, mid-range NVIDIA, Apple Silicon, high-VRAM NVIDIA).
-
-**Full fix (roadmap item):** Extend to property-based testing across a wider input
-matrix, given this function's output directly drives what model runs on a user's
-machine.
-
-### PF-3: `ui/app.py`'s 1744-line single-file structure makes future changes increasingly risky (Maintainability, score 3)
-
-**What happens:** As features accumulate, the lack of separation between sidebar
-config, upload handling, pipeline invocation, and results rendering makes it harder to
-reason about side effects of a change — a change to one control's logic risks breaking
-an unrelated one via shared `st.session_state` keys.
-
-**Trigger condition:** Continued feature growth in the UI (already grown substantially
-across v3.1-v4.0).
-
-**Estimated timeline:** Not an immediate failure risk, but the maintenance cost is
-already visible — most new UI logic this session (survey preset, LLM/NLP setup
-dialogs) added to the same file rather than a decomposed module.
+| 1 | Reliability | `github-release` and `post-release-consistency` jobs `needs: docker-publish`, which is skipped for non-`.0.0` tags — every patch release silently produces no GitHub Release and skips the strict consistency check. v4.0.1 was affected (backfilled 15 Jul). | 4 | `.github/workflows/release.yml:117,139` |
+| 2 | Correctness (mission) | Core consensus claim unmeasured: no evidence multi-pass beats single-pass, no evidence confidence tiers are calibrated. All downstream guidance in `CHORUS_FOR_LLMS.md` §3 ("treat HIGH as reliable") is asserted, not demonstrated. | 4 | project-wide |
+| 3 | Correctness (output) | PDF export: LOW-tier `~~word~~` markup is never converted to `<del>` (no strikethrough extension configured in `_md_to_html`), so the red-strikethrough CSS rule never fires. LOW words render unmarked in PDFs — a silent loss of the product's key signal in one of its formats. | 3 | `export_engine/exporter.py` (`_md_to_html`) |
+| 4 | Maintainability | `ui/pipeline_invocation.py` (13 %) and `ui/results.py` (12 %) — run loop, retry/error rendering, download panels. Newly module-level (hence newly testable) after RA-9, but currently protected only by a render smoke test. | 3 | `ui/pipeline_invocation.py`, `ui/results.py` |
+| 5 | Maintainability | `bundle.json` has no schema/producer version field (the docstring even promises "chorus version" in `meta` but the code never writes it), and no test ties `docs/CHORUS_FOR_LLMS.md` §5 to the real schema — the consumption contract can drift silently. | 2 | `export_engine/exporter.py:731,765` |
+| 6 | Reliability | MPS float64 fallback emits a `UserWarning` on every affected pass on Apple Silicon — noise that trains the user to ignore warnings. Last unchecked legacy roadmap item. | 1 | `transcription_engine/whisper_engine.py` |
 
-**Minimum fix:** None required immediately — flagging for awareness.
+---
 
-**Full fix (roadmap item):** Split `ui/app.py` into `ui/sidebar.py`, `ui/upload.py`,
-`ui/results.py` modules called from a thin `ui/app.py` entry point, once the file
-exceeds ~2000 lines or the next major UI feature is added.
+## Predicted failure scenarios (score ≥ 3)
 
-## Test coverage gaps
+### PF-1: Next patch release ships without a GitHub Release (Reliability, 4)
 
-| Path | Why critical | Test type needed |
-|---|---|---|
-| `ui/hardware_survey.py::detect_hardware/recommend_settings` | Drives the one-click preset button's model/device/parallelism choice for every user who clicks it | Unit: mocked hardware profiles across RAM/GPU tiers (see PF-2) |
-| `ui/app.py` (lines 470-1726, most of the file) | Main UI; only render-smoke and dialog-trigger paths are covered (RA-3.2, this session) | Integration: `AppTest` coverage of results rendering, download buttons, batch progress |
-| `export_engine/exporter.py::export_pdf/export_docx` (lines 114-184, 218-294) | User-facing export formats with zero direct test evidence | Unit: fixture-based export + structural validation of output files |
-| `reconstruction/nlp.py` (lines 132-288) | The actual spaCy correction logic, as opposed to its already-tested degradation path | Unit: known LOW-token + context → expected correction assertions |
+**What happens:** Tagging `v4.0.2` runs tests, then skips Docker (by design), then
+skips `github-release` and `post-release-consistency` (by accident — skipped
+dependencies cascade in GitHub Actions). `version_consistency_test.sh --ci` check 8
+would have failed loudly, but it lives in the job that gets skipped. The tag exists,
+the release page doesn't, and `ci.yml`'s Version-Tag Sync files a confusing issue on
+the next push.
 
-## Dependency audit
+**Trigger condition:** any tag not ending `.0.0`. **Timeline:** the very next patch
+release. **Fix:** RB-1.
 
-- `pip-audit -r requirements.txt`: clean (0 known vulnerabilities) as of this review.
-- `pyproject.toml` had a real, undetected drift (see Risk #1) — now fixed in PR #129.
-- All GitHub Actions in all 4 workflow files are version-pinned (no `@main`/`@master`
-  floating refs) — good practice already in place.
-- Minor staleness, not urgent: `streamlit==1.58.0` (latest 1.59.1), `spacy==3.8.13`
-  (latest 3.8.14). No security releases missed; routine bump candidates.
-- No abandoned dependencies identified (all actively maintained, recent releases).
+### PF-2: The core value proposition quietly fails to exist (Mission, 4)
 
-## CI/CD gaps
+**What happens:** The maintainer (or anyone adopting the repo) spends 4× single-pass
+compute per transcription on the assumption that consensus improves accuracy. If
+consensus WER is not better than single-pass — plausible on clean audio, where
+aggressive denoising can *introduce* errors — the extra cost buys nothing, and nobody
+knows. Worse, if HIGH-tier words are not measurably more correct than average, the
+guidance baked into `CHORUS_FOR_LLMS.md` misleads every downstream LLM.
 
-| Check | Status |
-|---|---|
-| Tests run on every PR | ✅ `ci.yml` |
-| Lint + format check | ✅ `ci.yml` (black, ruff, isort) |
-| Secret scanning | ✅ `security.yml` (gitleaks + TruffleHog + detect-secrets, 3-layer) |
-| Actions pinned to versions | ✅ confirmed across all 4 workflows |
-| Scheduled dependency-drift detection | ✅ `ci.yml` weekly cron + `ollama-model-tags-check.yml` weekly cron |
-| Code scanning (CodeQL / SAST) | ❌ not configured (`code-scanning/default-setup` reports `not-configured`) |
-| `pip-audit` covers all dependency manifests | ❌ only scans `requirements.txt`, not `pyproject.toml` (Risk #2) |
-| Security policy / private vulnerability reporting | ❌ no `SECURITY.md`; private vulnerability reporting disabled on the GitHub repo |
-| Dependabot security updates (auto-PR on CVE) | ❌ disabled (routine version-update `dependabot.yml` is separate and already active) |
+**Trigger condition:** already latent; surfaces the first time anyone measures.
+**Timeline:** unknown until RB-2 runs — which is exactly why it must.
+**Fix:** RB-2. Note both possible outcomes are acceptable ends: "consensus wins on
+noisy audio" validates the design; "consensus ties but tiers are calibrated"
+repositions the product as *uncertainty-aware transcription*, and the docs get updated
+to say so honestly.
 
-**Suggested CodeQL addition** (`.github/workflows/codeql.yml`):
-```yaml
-name: CodeQL
-on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
-  schedule:
-    - cron: "0 10 * * 3"
-jobs:
-  analyze:
-    runs-on: ubuntu-latest
-    permissions:
-      security-events: write
-    steps:
-      - uses: actions/checkout@v7
-      - uses: github/codeql-action/init@v3
-        with:
-          languages: python
-      - uses: github/codeql-action/analyze@v3
-```
+### PF-3: PDF consumers act on unmarked low-confidence words (Correctness, 3)
 
-## Action roadmap
+**What happens:** A PDF is shared as the "formatted" transcript; a LOW word (often a
+single-variant hallucination) renders as ordinary text. The reader quotes it.
 
-### RA-1: Prevent pyproject.toml / requirements.txt drift
+**Trigger condition:** any PDF export containing LOW-tier words — i.e. most real
+transcripts. **Timeline:** happening now. **Fix:** RB-3 (markdown extension + the
+already-designed spy test asserting `<del>` reaches WeasyPrint).
 
-**Context:** The two dependency manifests are hand-maintained and already drifted
-once, leaving a CVE open undetected (Risk #1, PF-1).
+### PF-4: UI regression in the run loop ships unnoticed (Maintainability, 3)
 
-**Success criteria:** A CI check fails if any package version differs between the two
-files; the check runs on every PR that touches either file.
+**What happens:** A future change (even a dependency bump — Streamlit minor versions
+regularly change widget behaviour) breaks per-file progress, retry rendering, or a
+download button. The 9 AppTest smoke tests exercise the sidebar and dialogs, not the
+run/results path, so CI stays green.
 
-**Files to change:** `.github/workflows/ci.yml` (new step), possibly a small Python
-script under `devops-practices/`.
+**Trigger condition:** next Streamlit bump or UI edit. **Timeline:** months.
+**Fix:** RB-5.
 
-**Estimated effort:** S
+---
 
-### RA-2: Make pip-audit cover pyproject.toml's dependency list
+## Output usability assessment (maintainer's key question)
 
-**Context:** `security.yml`'s `pip-audit` step only scans `requirements.txt`; a
-vulnerable pin unique to `pyproject.toml` is invisible to CI (Risk #2).
+**Is Chorus producing usable output?** Yes, on both axes asked:
 
-**Success criteria:** `pip-audit` (or an equivalent check) runs against the installed
-package set from `pip install -e .`, not just `requirements.txt`.
+1. **Human transcript** — `{stem}_best_guess.txt` (clean, no markup) is always
+   generated, alongside `most_likely` variants and the annotated consensus Markdown.
+2. **AI-consumable ratings** — `{stem}_bundle.json` (full word-vote array with
+   tier/confidence/alternatives per word) and `{stem}_ai_context.md` (prompt-ready
+   methodology + statistics + uncertainty table) are always generated.
 
-**Files to change:** `.github/workflows/security.yml`
+**Is the AI-consumption contract described and current?** `docs/CHORUS_FOR_LLMS.md`
+is a genuinely strong contract document — schema reference, tier semantics, extraction
+recipes, worked prompts. Verified line-by-line against the implementation in this
+review: **accurate today**. Two things keep it from staying that way: the bundle
+carries no version identifier (a consumer cannot tell which contract revision produced
+it), and no test links the documented schema to the real one. RB-4 closes both.
 
-**Estimated effort:** S
+---
 
-### RA-3: Add SECURITY.md and enable private vulnerability reporting
+## Test coverage
 
-**Context:** No coordinated-disclosure path exists for this public repo (Risk #3).
+88 % overall, 326 tests, all passing. Gaps ranked by value:
 
-**Success criteria:** `SECURITY.md` exists with a reporting contact/process; private
-vulnerability reporting is enabled in the GitHub repo settings.
+| Path | Coverage | Why critical | Test needed |
+|---|---|---|---|
+| `ui/pipeline_invocation.py` / `ui/results.py` | 13 % / 12 % | The daily-use execution path; only smoke-tested | AppTest with mocked `run_pipeline`: sequential + all-at-once modes, per-file failure rendering, download panel presence (RB-5) |
+| Bundle ↔ doc contract | n/a | Contract drift is silent | Structural test: doc §5 example keys match real bundle keys (RB-4) |
+| `diarisation/diariser.py` | 67 % | Optional feature, degradation paths already tested | Accept as-is for wind-down |
 
-**Files to change:** new `SECURITY.md`; GitHub repo settings (not code)
+---
 
-**Estimated effort:** XS
+## Dependency & CI audit
 
-### RA-4: Add CodeQL scanning
+- All runtime pins exact and mirrored between `requirements.txt` and `pyproject.toml`,
+  enforced by the RA-1 drift check. `pip-audit` (both scoped and whole-environment)
+  green as of this review; setuptools CVE remediated 14 July.
+- CI: tests, Black/Ruff/isort, GitLeaks, detect-secrets, bandit, CodeQL (default
+  setup), Dependabot, weekly security and Ollama-tag cron runs. No gaps found beyond
+  RB-1. Action versions pinned by major tag (acceptable).
 
-**Context:** No SAST/code-scanning tool is configured (Risk #3, CI/CD gaps).
-
-**Success criteria:** `.github/workflows/codeql.yml` runs on PR + weekly schedule and
-reports to the Security tab.
-
-**Files to change:** new `.github/workflows/codeql.yml`
-
-**Estimated effort:** XS
-
-### RA-5: Test hardware_survey.py's detection and recommendation logic
-
-**Context:** 14% coverage on the code directly behind the one-click hardware preset
-button (Risk #5, PF-2).
-
-**Success criteria:** Unit tests cover `detect_hardware()` and
-`recommend_settings()`/`recommend_settings_background()` across at least 4 mocked
-hardware profiles (low-RAM CPU, mid NVIDIA, Apple Silicon, high-VRAM NVIDIA), asserting
-the correct model/device/parallelism recommendation for each.
-
-**Files to change:** new `tests/test_hardware_survey.py`
-
-**Estimated effort:** M
-
-### RA-6: Verify ollama-model-tags-check.yml actually works under real CI
-
-**Context:** This workflow has zero recorded runs since creation; its `workflow_dispatch`
-trigger and issue-filing logic are unverified in a real GitHub Actions environment
-(Risk #6).
-
-**Success criteria:** Manually trigger via `gh workflow run ollama-model-tags-check.yml`
-and confirm it completes successfully end-to-end (including the no-op "all tags valid"
-path).
-
-**Files to change:** none expected unless a bug is found
-
-**Estimated effort:** XS
-
-### RA-7: Expand export_engine/exporter.py test coverage
-
-**Context:** 62% coverage; PDF/DOCX export paths have no direct test evidence
-(Risk #7).
-
-**Success criteria:** Each export format (PDF, DOCX) has at least one test asserting
-the output file is created and structurally valid (not just "doesn't crash").
-
-**Files to change:** `tests/test_exporter.py`
-
-**Estimated effort:** M
-
-### RA-8: Expand reconstruction/nlp.py test coverage beyond degradation paths
-
-**Context:** 39% coverage; existing tests cover graceful degradation (spaCy missing)
-but not the actual grammatical-correction logic (Risk #10).
-
-**Success criteria:** Tests cover known LOW-confidence-token + context inputs and
-assert the expected corrected output.
-
-**Files to change:** `tests/test_reconstructor.py`
-
-**Estimated effort:** S
-
-### RA-9 (lower priority): Decompose ui/app.py
-
-**Context:** Single 1744-line file mixing multiple concerns (PF-3).
-
-**Success criteria:** Sidebar config, upload/run, and results rendering split into
-separate modules with a thin `ui/app.py` orchestrating them; existing `test_ui_app.py`
-suite still passes unchanged.
-
-**Files to change:** `ui/app.py`, new `ui/sidebar.py` / `ui/results.py` (naming TBD)
-
-**Estimated effort:** L
+---
+
+## Action roadmap — the wrap-up push (target: v4.1.0)
+
+Detailed, self-contained execution plans for each item live in `docs/tasks/RB-*.md`,
+written for delegation to less-capable agents. Model assignments follow the
+model-selection framework (verifiability × blast radius).
+
+| ID | Title | Effort | Model | Why this tier |
+|---|---|---|---|---|
+| RB-1 | Fix release.yml skip-cascade for patch releases | XS | Haiku | Exact YAML given; verified by workflow re-run |
+| RB-2 | WER + confidence-calibration benchmark | L | Sonnet | Judgment in data handling; "wrong but green" risk mitigated by designed sanity gates |
+| RB-3 | Fix LOW-tier strikethrough in PDF export | S | Haiku | Known one-line fix + prescribed test |
+| RB-4 | Version the bundle schema + contract test | S | Haiku | Exact spec, strong deterministic gate |
+| RB-5 | Test the UI run loop and results rendering | M | Sonnet | Mocking judgment; hollow-test risk needs mid-tier |
+| RB-6 | Silence redundant MPS float64 warning (optional) | XS | Haiku | Mechanical, gated by warning absence |
+
+After RB-1–RB-5 merge: release v4.1.0, write the benchmark result into the README
+(whatever it shows), and move the project to maintenance.
