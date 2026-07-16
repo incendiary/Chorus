@@ -233,7 +233,7 @@ The final bounded work package before the project moves to maintenance. Full fin
 in `REVIEW.md`; per-task execution plans (written for delegated agents) in
 `docs/tasks/RB-*.md`.
 
-- [ ] **RB-1: Fix release.yml skip-cascade for patch releases** — `github-release` and `post-release-consistency` depend on `docker-publish`, which is skipped for non-`.0.0` tags, so patch releases silently skip GitHub Release creation and the strict consistency check. (Effort: XS, Haiku)
+- [x] **RB-1: Fix release.yml skip-cascade for patch releases** — `github-release` now needs `[test, docker-publish]` with an `if:` that accepts a skipped `docker-publish`, `post-release-consistency` follows the same pattern, and the release-creation step is idempotent (skips creation when the release already exists). (Effort: XS, Haiku)
 - [ ] **RB-2: WER + confidence-calibration benchmark** — measure whether four-variant consensus beats single-pass Whisper (word error rate, clean and noise-augmented audio), and whether HIGH/MEDIUM/LOW tiers actually predict word correctness. Answers the project's founding question with numbers; the result goes in the README either way. (Effort: L, Sonnet)
 - [ ] **RB-3: Fix LOW-tier strikethrough in PDF export** — `_md_to_html` never converts `~~word~~` to `<del>`, so the red-strikethrough CSS for LOW-confidence words never fires in PDFs. (Effort: S, Haiku)
 - [ ] **RB-4: Version the bundle schema and add a contract test** — add `meta.chorus_version` and `meta.schema_version` to `bundle.json` (the docstring already promises the former), and add a test asserting `docs/CHORUS_FOR_LLMS.md` §5's documented keys match the real bundle structure. (Effort: S, Haiku)
