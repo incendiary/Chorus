@@ -235,11 +235,11 @@ in `REVIEW.md`; per-task execution plans (written for delegated agents) in
 
 - [x] **RB-1: Fix release.yml skip-cascade for patch releases** — `github-release` now needs `[test, docker-publish]` with an `if:` that accepts a skipped `docker-publish`, `post-release-consistency` follows the same pattern, and the release-creation step is idempotent (skips creation when the release already exists). (Effort: XS, Haiku)
 - [ ] **RB-2: WER + confidence-calibration benchmark** — measure whether four-variant consensus beats single-pass Whisper (word error rate, clean and noise-augmented audio), and whether HIGH/MEDIUM/LOW tiers actually predict word correctness. Answers the project's founding question with numbers; the result goes in the README either way. (Effort: L, Sonnet)
-- [ ] **RB-3: Fix LOW-tier strikethrough in PDF export** — `_md_to_html` never converts `~~word~~` to `<del>`, so the red-strikethrough CSS for LOW-confidence words never fires in PDFs. (Effort: S, Haiku)
+- [x] **RB-3: Fix LOW-tier strikethrough in PDF export** — pre-processed strikethrough syntax via regex (`~~text~~` → `<del>text</del>`) before markdown conversion, allowing the CSS `del strong, strong del` rule to apply. Added unit and integration tests covering strikethrough conversion and regression-guarding MEDIUM highlights.
 - [ ] **RB-4: Version the bundle schema and add a contract test** — add `meta.chorus_version` and `meta.schema_version` to `bundle.json` (the docstring already promises the former), and add a test asserting `docs/CHORUS_FOR_LLMS.md` §5's documented keys match the real bundle structure. (Effort: S, Haiku)
 - [ ] **RB-5: Test the UI run loop and results rendering** — `ui/pipeline_invocation.py` (13%) and `ui/results.py` (12%) are the least-tested code in the repo and back the daily-use path. AppTest coverage with a mocked pipeline. (Effort: M, Sonnet)
 - [ ] **RB-6 (optional): Silence redundant MPS float64 warning** — folds in the long-standing "Suppress or optimise MPS float64 warnings" item above. (Effort: XS, Haiku)
 
 ---
 
-*Last updated: 15 July 2026*
+*Last updated: 16 July 2026*
