@@ -68,6 +68,10 @@ def _strip_md_markup(text: str) -> str:
 
 def _md_to_html(md_text: str) -> str:
     """Convert Markdown to HTML with basic highlight support."""
+    # Pre-process strikethrough syntax: ~~text~~ → <del>text</del>
+    # This must happen before markdown processing so the raw HTML passes through.
+    md_text = re.sub(r"~~(.+?)~~", r"<del>\1</del>", md_text)
+
     try:
         import markdown as md_lib
 

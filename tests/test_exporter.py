@@ -366,6 +366,25 @@ class TestMdToHtml:
         html = _md_to_html("")
         assert isinstance(html, str)
 
+    def test_converts_strikethrough_tilde_syntax_to_del_tag(self):
+        """Strikethrough `~~word~~` must convert to `<del>word</del>`."""
+        html = _md_to_html("hello ~~garbl~~ world")
+        assert "<del>garbl</del>" in html
+        # Literal tildes must NOT appear in the output
+        assert "~~" not in html
+
+    def test_strikethrough_regression_medium_highlight_still_works(self):
+        """Regression guard: ==word== must still map to <mark> after strikethrough fix."""
+        html = _md_to_html("hello ==medium== word")
+        assert "<mark>medium</mark>" in html
+
+    def test_single_tilde_passes_through_unchanged(self):
+        """A single tilde (not doubled) must not be affected by strikethrough processing."""
+        html = _md_to_html("hello ~ world")
+        # Should not crash or mangle; the tilde survives (possibly escaped)
+        assert "hello" in html
+        assert "world" in html
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PDF export
@@ -451,6 +470,33 @@ class TestPDFExport:
         assert out_path.read_bytes().startswith(b"%PDF-")
         assert "<mark>world</mark>" in captured["html"]
         assert "garbl" in captured["html"]
+
+    def test_pdf_export_low_tier_strikethrough_converted_to_del(
+        self, tmp_path, monkeypatch
+    ):
+        """LOW-confidence word in Markdown as **~~word~~** must be converted to
+        <del>word</del> in HTML so the CSS rule `del strong, strong del` can style it.
+        Literal `~~` must not appear in the HTML.
+        """
+        captured: dict[str, str] = {}
+
+        import weasyprint  # type: ignore
+
+        class _SpyHTML(weasyprint.HTML):
+            def __init__(self, *, string, **kwargs):
+                captured["html"] = string
+                super().__init__(string=string, **kwargs)
+
+        monkeypatch.setattr(weasyprint, "HTML", _SpyHTML)
+
+        consensus_path = _render_mixed_tier_consensus(tmp_path)
+        out_path = export_pdf(consensus_path, "test", output_dir=tmp_path)
+
+        assert out_path.read_bytes().startswith(b"%PDF-")
+        # LOW-confidence word must be wrapped in <del> tag
+        assert "<del>garbl</del>" in captured["html"]
+        # Literal tilde characters must not appear in the HTML
+        assert "~~" not in captured["html"]
 
     def test_pdf_export_empty_transcript_does_not_crash(self, tmp_path):
         """Silence (no votes) must still produce a valid PDF, not raise."""
