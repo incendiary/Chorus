@@ -8,51 +8,6 @@ Voting across acoustic perspectives does not make the words more accurate — be
 
 ---
 
-## Features
-
-- **Acoustic Pre-processing Pipeline:** Applies dynamic range normalisation, high-pass filtering, and spectral subtraction denoising via `librosa` and `scipy`. Supports VAD-based noise floor detection.
-- **Local Transcription:** Fully offline transcription using OpenAI's `whisper` models. No audio data leaves your machine. Word-level timestamps always enabled.
-- **Dual Alignment Strategies:** Choose between Needleman-Wunsch sequence alignment (handles insertions/deletions) or legacy positional alignment (fast, word-by-word).
-- **Consensus Voting Logic:** Multi-variant alignment that compares transcripts word-for-word, grouping near-matches using NLTK fuzzy similarity.
-- **Confidence Highlighting:** The final output is an annotated Markdown document where words are highlighted based on inter-variant agreement.
-- **AI Context Pack:** Machine-generated structured document for LLM consumption — includes methodology, confidence data, uncertainty annotations, and usage guidance.
-- **Speaker Diarisation:** `pyannote.audio` integration for multi-speaker identification with persistent editable speaker names.
-- **Word-Level Subtitles:** SRT/VTT exports use per-word timestamps for precise subtitle synchronisation.
-- **Parallel Transcription Orchestration:** Configurable worker pool (`TRANSCRIPTION_PARALLELISM`) with device-aware assignment, including multi-CUDA-device round-robin support.
-- **Memory-Optimised Pipeline:** Eager disk writes and prompt memory release for processing long recordings.
-- **Streamlit Interface:** A clean, responsive web UI with confidence visualisation, strategy selectors, batch auto-switch, and processing time display.
-- **Containerised:** Ready to deploy via Docker and `docker-compose`.
-
----
-
-## Measured accuracy (v4.1.0 benchmark)
-
-The consensus architecture was benchmarked against single-pass Whisper in July
-2026 (15 LibriSpeech utterances, clean and SNR 5 dB noise-augmented conditions,
-Whisper `base`, identical text normalisation — full method and per-file numbers
-in [`benchmarks/RESULTS.md`](benchmarks/RESULTS.md)):
-
-| Condition | Single-pass WER | Chorus consensus WER |
-|---|---|---|
-| Clean | 0.0314 | **0.0288** |
-| Noisy (SNR 5 dB) | **0.1024** | 0.1107 |
-
-**The honest headline: Chorus is not a better transcriber — it's a transcriber
-that knows when it's wrong.** Consensus does *not* reliably improve raw accuracy
-over a single Whisper pass: most per-file scores are identical, and on noisy
-audio single-pass was slightly better. What the multi-pass architecture *does*
-buy, strongly, is **calibrated uncertainty**: HIGH-tier words were 97.8 %
-correct on clean audio and 92.7 % on noisy audio, while every MEDIUM- and
-LOW-tier word in the noisy condition was wrong. The confidence tiers tell you
-exactly which words to distrust — something a single Whisper pass cannot do.
-Treat the tiers, the annotated consensus document, and the machine-readable
-`bundle.json` as the product; treat the transcript accuracy as equivalent to
-plain Whisper. If raw accuracy is all you need, a larger Whisper model run
-once is the cheaper path. (Caveats: single speaker, read speech, small
-MEDIUM/LOW sample — see the results file.)
-
----
-
 ## Prerequisites
 
 Native installation (recommended — see below) requires:
@@ -157,6 +112,51 @@ Chorus produces a final `.md` file in the `outputs/consensus/` directory. This f
 Alongside the annotated Markdown, every run also writes a `{stem}_best_guess.txt` file — a clean, fully human-readable transcript with no brackets, highlighting, or statistics at all. Every MEDIUM/LOW-confidence position is resolved to its single best-guess word (the highest-agreement candidate already selected by the consensus vote), making it suitable for distribution to non-technical readers or downstream NLP processing.
 
 Download individual formats from the results panel, or **Download All** for a ZIP bundle. Every completed run is also browsable later from the **Past Jobs** page in the sidebar — no need to keep the browser tab open.
+
+---
+
+## Features
+
+- **Acoustic Pre-processing Pipeline:** Applies dynamic range normalisation, high-pass filtering, and spectral subtraction denoising via `librosa` and `scipy`. Supports VAD-based noise floor detection.
+- **Local Transcription:** Fully offline transcription using OpenAI's `whisper` models. No audio data leaves your machine. Word-level timestamps always enabled.
+- **Dual Alignment Strategies:** Choose between Needleman-Wunsch sequence alignment (handles insertions/deletions) or legacy positional alignment (fast, word-by-word).
+- **Consensus Voting Logic:** Multi-variant alignment that compares transcripts word-for-word, grouping near-matches using NLTK fuzzy similarity.
+- **Confidence Highlighting:** The final output is an annotated Markdown document where words are highlighted based on inter-variant agreement.
+- **AI Context Pack:** Machine-generated structured document for LLM consumption — includes methodology, confidence data, uncertainty annotations, and usage guidance.
+- **Speaker Diarisation:** `pyannote.audio` integration for multi-speaker identification with persistent editable speaker names.
+- **Word-Level Subtitles:** SRT/VTT exports use per-word timestamps for precise subtitle synchronisation.
+- **Parallel Transcription Orchestration:** Configurable worker pool (`TRANSCRIPTION_PARALLELISM`) with device-aware assignment, including multi-CUDA-device round-robin support.
+- **Memory-Optimised Pipeline:** Eager disk writes and prompt memory release for processing long recordings.
+- **Streamlit Interface:** A clean, responsive web UI with confidence visualisation, strategy selectors, batch auto-switch, and processing time display.
+- **Containerised:** Ready to deploy via Docker and `docker-compose`.
+
+---
+
+## Measured accuracy (v4.1.0 benchmark)
+
+The consensus architecture was benchmarked against single-pass Whisper in July
+2026 (15 LibriSpeech utterances, clean and SNR 5 dB noise-augmented conditions,
+Whisper `base`, identical text normalisation — full method and per-file numbers
+in [`benchmarks/RESULTS.md`](benchmarks/RESULTS.md)):
+
+| Condition | Single-pass WER | Chorus consensus WER |
+|---|---|---|
+| Clean | 0.0314 | **0.0288** |
+| Noisy (SNR 5 dB) | **0.1024** | 0.1107 |
+
+**The honest headline: Chorus is not a better transcriber — it's a transcriber
+that knows when it's wrong.** Consensus does *not* reliably improve raw accuracy
+over a single Whisper pass: most per-file scores are identical, and on noisy
+audio single-pass was slightly better. What the multi-pass architecture *does*
+buy, strongly, is **calibrated uncertainty**: HIGH-tier words were 97.8 %
+correct on clean audio and 92.7 % on noisy audio, while every MEDIUM- and
+LOW-tier word in the noisy condition was wrong. The confidence tiers tell you
+exactly which words to distrust — something a single Whisper pass cannot do.
+Treat the tiers, the annotated consensus document, and the machine-readable
+`bundle.json` as the product; treat the transcript accuracy as equivalent to
+plain Whisper. If raw accuracy is all you need, a larger Whisper model run
+once is the cheaper path. (Caveats: single speaker, read speech, small
+MEDIUM/LOW sample — see the results file.)
 
 ---
 
@@ -388,7 +388,6 @@ unchanged — only the underlying import paths moved.
 **Runtime dependencies now declared.** `pip install chorus-engine` (or `pip install .`)
 now installs its runtime dependencies directly; previously only `requirements.txt`
 carried them.
-
 ## Documentation
 
 | Document | Description |
