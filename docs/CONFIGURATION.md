@@ -418,8 +418,18 @@ Diarisation requires a HuggingFace access token with the pyannote model licence
 accepted:
 
 1. Create a free account at [huggingface.co](https://huggingface.co).
-2. Accept the terms for `pyannote/speaker-diarization-3.1`.
-3. Set `HUGGINGFACE_TOKEN=<your-token>` in `.env`.
+2. Create an access token at
+   [huggingface.co/settings/tokens/new](https://huggingface.co/settings/tokens/new),
+   choosing token type **Read** — Chorus only downloads model weights, so
+   read-only is sufficient and least-privilege. (A fine-grained token also
+   works if granted read access to gated repositories; never use Write.)
+3. Accept the terms for
+   [`pyannote/speaker-diarization-3.1`](https://huggingface.co/pyannote/speaker-diarization-3.1)
+   while signed in — the token alone is not enough without accepting the
+   model licence.
+4. Set `HUGGINGFACE_TOKEN=<your-token>` in `.env` — or run
+   `bash devops-practices/survey-ollama-env.sh`, which validates the token
+   (including confirming gated-model access) and writes it to `.env` for you.
 
 ### Performance
 
