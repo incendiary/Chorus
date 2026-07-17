@@ -36,6 +36,7 @@ from pathlib import Path
 from config import (
     ALIGNMENT_STRATEGY,
     CONSENSUS_DIR,
+    CONSENSUS_THRESHOLD,
     NOISE_FLOOR_MODE,
     VARIANT_LABELS,
     WHISPER_DEVICE,
@@ -50,9 +51,15 @@ logger = logging.getLogger(__name__)
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def _methodology_section() -> str:
+def _format_pct(threshold: float) -> str:
+    """Format a fractional threshold as a percentage string without trailing zeros."""
+    return f"{threshold * 100:g}"
+
+
+def _methodology_section(consensus_threshold: float) -> str:
     """Return the standard methodology explanation block."""
-    return """## Methodology
+    pct_str = _format_pct(consensus_threshold)
+    return f"""## Methodology
 
 Chorus is a **multi-pass consensus transcription engine** that improves
 transcription accuracy through redundancy and voting:
@@ -67,7 +74,7 @@ transcription accuracy through redundancy and voting:
 
 3. **Word-Level Consensus Voting** — All transcripts are aligned
    word-by-word and a confidence vote is computed for each position:
-   - **HIGH (≥ 75% agreement):** The word appears in most or all variants.
+   - **HIGH (≥ {pct_str}% agreement):** The word appears in most or all variants.
      Very likely correct.
    - **MEDIUM (50% agreement):** The word appears in roughly half the
      variants. Probably correct but worth a second look.
@@ -82,15 +89,16 @@ particularly for noisy audio, accented speech, or domain-specific terminology.
 """
 
 
-def _build_uncertainty_table(votes: list) -> str:
+def _build_uncertainty_table(votes: list, consensus_threshold: float) -> str:
     """Build a Markdown table of all uncertain (non-HIGH) words."""
     uncertain = [(idx, v) for idx, v in enumerate(votes) if v.tier != "HIGH"]
 
     if not uncertain:
+        pct_str = _format_pct(consensus_threshold)
         return (
             "## Uncertainty Annotations\n\n"
             "✅ **No uncertain words** — all words achieved HIGH confidence "
-            "(≥ 75% agreement across variants).\n"
+            f"(≥ {pct_str}% agreement across variants).\n"
         )
 
     lines = [
@@ -142,6 +150,7 @@ def generate_ai_context_pack(
     speaker_names: dict[str, str] | None = None,
     source_filename: str | None = None,
     output_dir: Path | None = None,
+    consensus_threshold: float | None = None,
 ) -> Path:
     """
     Generate an AI-ready context pack for the given transcription.
@@ -165,12 +174,19 @@ def generate_ai_context_pack(
         Ordered list of detected speaker labels.
     speaker_names : dict[str, str], optional
         Mapping of speaker label → human-readable name.
+    consensus_threshold : float, optional
+        Agreement fraction at or above which a word is tier HIGH, used to
+        render an accurate methodology/statistics narrative.  Defaults to
+        ``config.CONSENSUS_THRESHOLD`` when *None*.
 
     Returns
     -------
     Path
         Path to the written ``{stem}_ai_context.md`` file.
     """
+    if consensus_threshold is None:
+        consensus_threshold = CONSENSUS_THRESHOLD
+    pct_str = _format_pct(consensus_threshold)
     now = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
     strategy = alignment_strategy or ALIGNMENT_STRATEGY
 
@@ -204,7 +220,7 @@ def generate_ai_context_pack(
     sections.append("\n".join(header_lines))
 
     # ── Methodology ──────────────────────────────────────────────────────────
-    sections.append(_methodology_section())
+    sections.append(_methodology_section(consensus_threshold))
 
     # ── Processing Metadata ──────────────────────────────────────────────────
     sections.append(
@@ -242,7 +258,7 @@ def generate_ai_context_pack(
 
 | Tier | Count | Percentage | Interpretation |
 |------|------:|----------:|----------------|
-| HIGH | {n_high} | {n_high / total * 100:.1f}% | ≥ 75% variant agreement — very likely correct |
+| HIGH | {n_high} | {n_high / total * 100:.1f}% | ≥ {pct_str}% variant agreement — very likely correct |
 | MEDIUM | {n_med} | {n_med / total * 100:.1f}% | 50% agreement — probably correct, worth reviewing |
 | LOW | {n_low} | {n_low / total * 100:.1f}% | 25% agreement — single variant only, possibly an error |
 
@@ -277,7 +293,7 @@ def generate_ai_context_pack(
     sections.append("")
 
     # ── Uncertainty Annotations ──────────────────────────────────────────────
-    sections.append(_build_uncertainty_table(votes))
+    sections.append(_build_uncertainty_table(votes, consensus_threshold))
 
     # ── Usage Guidance ───────────────────────────────────────────────────────
     sections.append(

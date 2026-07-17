@@ -80,6 +80,7 @@ def merge_transcripts_with_votes(
         transcripts,
         consensus_dir=consensus_dir,
         source_filename=source_filename,
+        consensus_threshold=consensus_threshold,
     )
     return out_path, votes
 
