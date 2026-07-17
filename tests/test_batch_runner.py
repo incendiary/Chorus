@@ -71,6 +71,48 @@ def _fake_pipeline_result(audio_path: Path, output_dir: Path | None = None) -> d
 # ─────────────────────────────────────────────────────────────────────────────
 
 
+class TestFormatIntake:
+    def test_ffmpeg_only_formats_are_discovered(self, tmp_path):
+        """Extensions the ffmpeg decode fallback supports (.opus, .wma, .mov
+        video containers, …) must pass the intake filter, while non-audio
+        files stay excluded. Regression guard for the intake allowlist that
+        previously rejected formats the loader could actually decode."""
+        for name in ("a.opus", "b.wma", "c.mov", "d.aiff", "e.m4b"):
+            (tmp_path / name).write_bytes(b"stub")
+        (tmp_path / "notes.txt").write_bytes(b"stub")
+        (tmp_path / "image.png").write_bytes(b"stub")
+
+        from batch_processor.batch_runner import discover_audio_files
+
+        found = {p.name for p in discover_audio_files([str(tmp_path)])}
+        assert found == {"a.opus", "b.wma", "c.mov", "d.aiff", "e.m4b"}
+
+    def test_uploader_allowlist_matches_config(self):
+        """The UI uploader and batch scanner must share one extension list."""
+        import ast
+        from pathlib import Path as UploadPath
+
+        from config import SUPPORTED_AUDIO_EXTENSIONS
+
+        upload_src = UploadPath("ui/upload.py").read_text(encoding="utf-8")
+        assert (
+            "SUPPORTED_AUDIO_EXTENSIONS" in upload_src
+        ), "ui/upload.py no longer derives its type list from config"
+        tree = ast.parse(upload_src)
+        hardcoded = [
+            n
+            for n in ast.walk(tree)
+            if isinstance(n, ast.List)
+            and any(
+                isinstance(e, ast.Constant) and str(e.value).lower() in {"wav", "mp3"}
+                for e in n.elts
+            )
+        ]
+        assert not hardcoded, "uploader has a hard-coded extension list again"
+        assert ".opus" in SUPPORTED_AUDIO_EXTENSIONS
+        assert ".mov" in SUPPORTED_AUDIO_EXTENSIONS
+
+
 class TestDiscoverAudioFiles:
     """Tests for the file-discovery helper."""
 

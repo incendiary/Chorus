@@ -108,6 +108,36 @@ OLLAMA_TIMEOUT_SECONDS = float(os.environ.get("OLLAMA_TIMEOUT_SECONDS", "20"))
 # ─────────────────────────────────────────────
 # Audio Processing Configuration
 # ─────────────────────────────────────────────
+# Accepted input extensions, shared by the UI uploader and the batch scanner.
+# The loader decodes natively via libsndfile where possible and falls back to
+# ffmpeg for everything else, so this list covers common audio formats plus
+# video containers whose audio track ffmpeg can extract. An unreadable file
+# still fails per-file with a clear error rather than being silently skipped.
+SUPPORTED_AUDIO_EXTENSIONS = frozenset(
+    {
+        ".wav",
+        ".mp3",
+        ".m4a",
+        ".m4b",
+        ".mp4",
+        ".aac",
+        ".ogg",
+        ".oga",
+        ".opus",
+        ".flac",
+        ".webm",
+        ".wma",
+        ".amr",
+        ".3gp",
+        ".aif",
+        ".aiff",
+        ".caf",
+        ".mka",
+        ".mkv",
+        ".mov",
+    }
+)
+
 # Sample rate used throughout the pipeline (Hz)
 TARGET_SAMPLE_RATE = 16_000
 

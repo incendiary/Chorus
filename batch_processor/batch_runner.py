@@ -39,22 +39,13 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
-from config import CONSENSUS_DIR, ensure_output_dirs
+from config import CONSENSUS_DIR, SUPPORTED_AUDIO_EXTENSIONS, ensure_output_dirs
 
 logger = logging.getLogger(__name__)
 
-# Supported audio extensions
-AUDIO_EXTENSIONS = {
-    ".wav",
-    ".mp3",
-    ".mp4",
-    ".m4a",
-    ".ogg",
-    ".flac",
-    ".aac",
-    ".webm",
-    ".opus",
-}
+# Supported audio extensions — single source of truth in config, shared with
+# the UI uploader. Kept under its historical name for backwards compatibility.
+AUDIO_EXTENSIONS = SUPPORTED_AUDIO_EXTENSIONS
 
 
 # ─────────────────────────────────────────────────────────────────────────────
