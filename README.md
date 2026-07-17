@@ -25,6 +25,32 @@ This approach dramatically reduces single-model hallucinations and improves word
 
 ---
 
+## Measured accuracy (v4.1.0 benchmark)
+
+The consensus architecture was benchmarked against single-pass Whisper in July
+2026 (15 LibriSpeech utterances, clean and SNR 5 dB noise-augmented conditions,
+Whisper `base`, identical text normalisation — full method and per-file numbers
+in [`benchmarks/RESULTS.md`](benchmarks/RESULTS.md)):
+
+| Condition | Single-pass WER | Chorus consensus WER |
+|---|---|---|
+| Clean | 0.0314 | **0.0288** |
+| Noisy (SNR 5 dB) | **0.1024** | 0.1107 |
+
+**The honest headline:** consensus does *not* reliably improve raw accuracy over
+a single Whisper pass — most per-file scores are identical, and on noisy audio
+single-pass was slightly better. What the multi-pass architecture *does* buy,
+strongly, is **calibrated uncertainty**: HIGH-tier words were 97.8 % correct on
+clean audio and 92.7 % on noisy audio, while every MEDIUM- and LOW-tier word in
+the noisy condition was wrong. In other words, Chorus's confidence tiers tell
+you exactly which words to distrust — something a single Whisper pass cannot do.
+Treat the tiers, the annotated consensus document, and the machine-readable
+`bundle.json` as the product; treat the transcript accuracy as equivalent to
+plain Whisper. (Caveats: single speaker, read speech, small MEDIUM/LOW sample —
+see the results file.)
+
+---
+
 ## Prerequisites
 
 Native installation (recommended — see below) requires:
@@ -54,7 +80,7 @@ environment yourself.
 2. **Clone the repository at the current release:**
 
    ```bash
-   git clone -b v4.0.1 https://github.com/incendiary/Chorus.git
+   git clone -b v4.1.0 https://github.com/incendiary/Chorus.git
    cd Chorus
    ```
 
@@ -247,7 +273,7 @@ Prefer an isolated environment over managing a Python venv? See
 (Linux and Windows/WSL2), and GHCR pre-built image instructions.
 
 ```bash
-git clone -b v4.0.1 https://github.com/incendiary/Chorus.git
+git clone -b v4.1.0 https://github.com/incendiary/Chorus.git
 cd Chorus
 docker-compose up --build
 ```

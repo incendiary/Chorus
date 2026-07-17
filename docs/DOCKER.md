@@ -12,7 +12,7 @@ This builds the image locally from source.
 1. **Clone the repository:**
 
    ```bash
-   git clone -b v4.0.1 https://github.com/incendiary/Chorus.git
+   git clone -b v4.1.0 https://github.com/incendiary/Chorus.git
    cd Chorus
    ```
 
@@ -102,15 +102,15 @@ on every tagged release — no local build step required.
 **CPU:**
 
 ```bash
-docker pull ghcr.io/incendiary/chorus:v4.0.1
-docker run --rm -p 8501:8501 ghcr.io/incendiary/chorus:v4.0.1
+docker pull ghcr.io/incendiary/chorus:v4.1.0
+docker run --rm -p 8501:8501 ghcr.io/incendiary/chorus:v4.1.0
 ```
 
 **GPU (NVIDIA CUDA):**
 
 ```bash
-docker pull ghcr.io/incendiary/chorus:v4.0.1-gpu
-docker run --rm -p 8501:8501 --gpus all ghcr.io/incendiary/chorus:v4.0.1-gpu
+docker pull ghcr.io/incendiary/chorus:v4.1.0-gpu
+docker run --rm -p 8501:8501 --gpus all ghcr.io/incendiary/chorus:v4.1.0-gpu
 ```
 
 Access the UI at [http://localhost:8501](http://localhost:8501).
