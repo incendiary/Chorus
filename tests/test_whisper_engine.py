@@ -180,6 +180,48 @@ def test_transcribe_mps_float64_fallback_retries_on_cpu(tmp_path, monkeypatch):
     assert call_count["n"] == 1
 
 
+def test_mps_float64_fallback_warns_once_then_info(tmp_path, monkeypatch, caplog):
+    """Two consecutive MPS float64 fallbacks emit exactly one WARNING; the
+    second occurrence logs at INFO level instead."""
+    import logging
+
+    audio_path = tmp_path / "sample.wav"
+    audio_path.write_bytes(b"fake")
+
+    cpu_model = _DummyModel(text="cpu result")
+
+    class MpsModel(_DummyModel):
+        def transcribe(self, audio_path: str, **kwargs) -> dict:
+            raise TypeError(
+                "Cannot convert a MPS Tensor to float64 dtype as the MPS "
+                "framework doesn't support float64."
+            )
+
+    def fake_get_model(device=None, model_name=None):
+        if device == "cpu":
+            return cpu_model, "cpu", model_name or "base"
+        return MpsModel(), "mps", model_name or "base"
+
+    monkeypatch.setattr(whisper_engine, "_get_model", fake_get_model)
+    monkeypatch.setattr(whisper_engine, "_mps_float64_warned", False)
+
+    with caplog.at_level(logging.INFO, logger="transcription_engine.whisper_engine"):
+        for variant in ("original", "highpass"):
+            whisper_engine.transcribe(
+                audio_path=audio_path,
+                variant_key=variant,
+                stem="sample",
+                device="mps",
+                transcripts_dir=tmp_path,
+            )
+
+    fallback_records = [r for r in caplog.records if "MPS" in r.getMessage()]
+    warnings = [r for r in fallback_records if r.levelno == logging.WARNING]
+    infos = [r for r in fallback_records if r.levelno == logging.INFO]
+    assert len(warnings) == 1
+    assert len(infos) == 1
+
+
 def test_transcribe_non_mps_type_error_is_reraised(tmp_path, monkeypatch):
     audio_path = tmp_path / "sample.wav"
     audio_path.write_bytes(b"fake")

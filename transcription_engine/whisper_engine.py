@@ -39,6 +39,10 @@ logger = logging.getLogger(__name__)
 
 # Module-level model cache, keyed by (model size, device).
 _models: dict[tuple[str, str], whisper.Whisper] = {}
+
+# The MPS float64 fallback fires once per pass on Apple Silicon; warn the
+# user once per process and keep subsequent occurrences at INFO level.
+_mps_float64_warned = False
 _model_lock = threading.Lock()
 
 
@@ -162,10 +166,19 @@ def transcribe(
         # MPS does not support. Fall back to CPU and retry with the same options.
         if "float64" not in str(exc) and "MPS" not in str(exc):
             raise
-        logger.warning(
-            "MPS does not support float64 required for word-timestamp alignment — "
-            "retrying on CPU. Transcription will succeed; inference speed is reduced."
-        )
+        global _mps_float64_warned
+        if not _mps_float64_warned:
+            _mps_float64_warned = True
+            logger.warning(
+                "MPS does not support float64 word-timestamp alignment; affected "
+                "passes will retry on CPU. This is expected on Apple Silicon and "
+                "only logged once per run — later occurrences log at INFO level."
+            )
+        else:
+            logger.info(
+                "MPS float64 fallback — retrying pass on CPU (expected on Apple "
+                "Silicon)."
+            )
         cpu_model, _, _ = _get_model(model_name=active_model, device="cpu")
         result = cpu_model.transcribe(str(audio_path), **decode_options)
 
