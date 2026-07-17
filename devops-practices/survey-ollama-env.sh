@@ -52,7 +52,7 @@ echo -e "${BLUE}═════════════════════�
 # System Info
 # ─────────────────────────────────────────────────────────────────────────────
 
-echo -e "${YELLOW}[1/7] System Information${NC}"
+echo -e "${YELLOW}[1/8] System Information${NC}"
 UNAME=$(uname -s)
 echo "OS: $UNAME"
 
@@ -74,7 +74,7 @@ echo "CPU Cores: $CPU_CORES"
 # GPU Detection
 # ─────────────────────────────────────────────────────────────────────────────
 
-echo -e "\n${YELLOW}[2/7] GPU Detection${NC}"
+echo -e "\n${YELLOW}[2/8] GPU Detection${NC}"
 
 GPU_TYPE="none"
 GPU_VRAM_GB=0
@@ -105,7 +105,7 @@ fi
 # Ollama Installation
 # ─────────────────────────────────────────────────────────────────────────────
 
-echo -e "\n${YELLOW}[3/7] Ollama Installation Status${NC}"
+echo -e "\n${YELLOW}[3/8] Ollama Installation Status${NC}"
 
 OLLAMA_INSTALLED=false
 OLLAMA_RUNNING=false
@@ -138,7 +138,7 @@ fi
 # Disk Space
 # ─────────────────────────────────────────────────────────────────────────────
 
-echo -e "\n${YELLOW}[4/7] Disk Space${NC}"
+echo -e "\n${YELLOW}[4/8] Disk Space${NC}"
 
 if [[ "$UNAME" == "Darwin" ]]; then
   DISK_FREE_GB=$(df / | tail -1 | awk '{print $4/1024/1024}')
@@ -152,7 +152,7 @@ echo "Free space on /: ${DISK_FREE_GB%.0f}GB"
 # Model Recommendations
 # ─────────────────────────────────────────────────────────────────────────────
 
-echo -e "\n${YELLOW}[5/7] Model Recommendations${NC}"
+echo -e "\n${YELLOW}[5/8] Model Recommendations${NC}"
 
 RECOMMENDED_MODELS=()
 REASONING=""
@@ -298,7 +298,7 @@ echo "  See docs/CONFIGURATION.md for full model comparison."
 # Setup Instructions & Interactive Actions
 # ─────────────────────────────────────────────────────────────────────────────
 
-echo -e "\n${YELLOW}[6/7] Setup & Installation${NC}"
+echo -e "\n${YELLOW}[6/8] Setup & Installation${NC}"
 
 SELECTED_OLLAMA_MODEL=""
 
@@ -430,10 +430,69 @@ echo "  streamlit run ui/app.py"
 echo ""
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Hugging Face Token (Speaker Diarisation)
+# ─────────────────────────────────────────────────────────────────────────────
+
+echo -e "\n${YELLOW}[7/8] Hugging Face Token (Speaker Diarisation)${NC}"
+
+echo ""
+echo "Speaker diarisation downloads the gated pyannote/speaker-diarization-3.1"
+echo "model, which requires a free Hugging Face access token:"
+echo ""
+echo "  1. Create a token — choose type 'Read' (Chorus only downloads model"
+echo "     weights, so read-only is sufficient; never use Write):"
+echo "     https://huggingface.co/settings/tokens/new"
+echo "  2. Accept the model terms while signed in:"
+echo "     https://huggingface.co/pyannote/speaker-diarization-3.1"
+echo ""
+echo "Full guide: docs/CONFIGURATION.md — Speaker Diarisation, Requirements."
+echo "Skip this if you don't need multi-speaker attribution."
+echo ""
+printf "Paste a token to validate and store (input hidden), or Enter to skip: "
+HF_TOKEN_VALUE=""
+read -rs HF_TOKEN_VALUE || true
+echo ""
+
+HF_TOKEN_OK=false
+if [[ -n "$HF_TOKEN_VALUE" ]]; then
+  WHOAMI_JSON=$(curl -s -m 8 -H "Authorization: Bearer ${HF_TOKEN_VALUE}" \
+    https://huggingface.co/api/whoami-v2 2>/dev/null || true)
+  HF_USER=$(printf '%s' "$WHOAMI_JSON" | { grep -o '"name":"[^"]*"' || true; } | head -1 | cut -d'"' -f4)
+  if [[ -n "$HF_USER" ]]; then
+    echo -e "${GREEN}✓ Token is valid (account: ${HF_USER})${NC}"
+    # A valid token is not enough on its own — the gated model licence must
+    # also be accepted, so probe an actual weights file.
+    GATED_CODE=$(curl -s -o /dev/null -m 8 -w "%{http_code}" -L \
+      -H "Authorization: Bearer ${HF_TOKEN_VALUE}" \
+      "https://huggingface.co/pyannote/speaker-diarization-3.1/resolve/main/config.yaml" 2>/dev/null || echo "000")
+    if [[ "$GATED_CODE" == "200" ]]; then
+      echo -e "${GREEN}✓ pyannote/speaker-diarization-3.1 access confirmed — diarisation is ready${NC}"
+      HF_TOKEN_OK=true
+    elif [[ "$GATED_CODE" == "000" ]]; then
+      echo -e "${YELLOW}⚠ Could not reach Hugging Face to confirm model access — storing anyway${NC}"
+      HF_TOKEN_OK=true
+    else
+      echo -e "${YELLOW}⚠ Token works, but the model licence has not been accepted (HTTP ${GATED_CODE}).${NC}"
+      echo "  Accept the terms at https://huggingface.co/pyannote/speaker-diarization-3.1"
+      echo "  and diarisation will work — storing the token now."
+      HF_TOKEN_OK=true
+    fi
+  elif [[ -z "$WHOAMI_JSON" ]]; then
+    echo -e "${YELLOW}⚠ Could not reach Hugging Face to validate the token — storing unverified${NC}"
+    HF_TOKEN_OK=true
+  else
+    echo -e "${RED}✗ Token rejected by Hugging Face — not storing it.${NC}"
+    echo "  Create a Read token at https://huggingface.co/settings/tokens/new and re-run."
+  fi
+else
+  echo "Skipped — set HUGGINGFACE_TOKEN in .env later (see docs/CONFIGURATION.md)."
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
 # .env Configuration
 # ─────────────────────────────────────────────────────────────────────────────
 
-echo -e "${YELLOW}[7/7] Apply Settings to .env${NC}"
+echo -e "${YELLOW}[8/8] Apply Settings to .env${NC}"
 
 # Build the list of recommended env vars
 ENV_REC_KEYS=()
@@ -452,6 +511,12 @@ ENV_REC_KEYS+=("OLLAMA_BASE_URL")
 ENV_REC_VALUES+=("http://localhost:11434")
 ENV_REC_DESCS+=("Ollama server address")
 
+if [[ "$HF_TOKEN_OK" == true ]]; then
+  ENV_REC_KEYS+=("HUGGINGFACE_TOKEN")
+  ENV_REC_VALUES+=("$HF_TOKEN_VALUE")
+  ENV_REC_DESCS+=("Hugging Face token for speaker diarisation")
+fi
+
 echo ""
 echo "The following settings are recommended for your system:"
 echo ""
@@ -462,13 +527,21 @@ for i in "${!ENV_REC_KEYS[@]}"; do
   if [[ -f "$ENV_FILE" ]]; then
     CURRENT_VAL=$(grep "^${ENV_REC_KEYS[$i]}=" "$ENV_FILE" 2>/dev/null | cut -d'=' -f2 || true)
   fi
-  if [[ -n "$CURRENT_VAL" ]] && [[ "$CURRENT_VAL" != "${ENV_REC_VALUES[$i]}" ]]; then
+  DISPLAY_VAL="${ENV_REC_VALUES[$i]}"
+  if [[ "${ENV_REC_KEYS[$i]}" == "HUGGINGFACE_TOKEN" ]]; then
+    DISPLAY_VAL="…${DISPLAY_VAL: -4} (hidden)"
+    if [[ -n "$CURRENT_VAL" ]] && [[ "$CURRENT_VAL" != "${ENV_REC_VALUES[$i]}" ]]; then
+      CURRENT_NOTE="  (a different token is currently set)"
+    else
+      CURRENT_NOTE=""
+    fi
+  elif [[ -n "$CURRENT_VAL" ]] && [[ "$CURRENT_VAL" != "${ENV_REC_VALUES[$i]}" ]]; then
     CURRENT_NOTE="  (currently: ${CURRENT_VAL})"
   else
     CURRENT_NOTE=""
   fi
   printf "  %d) %-20s = %-20s  %s%s\n" \
-    "$IDX" "${ENV_REC_KEYS[$i]}" "${ENV_REC_VALUES[$i]}" "${ENV_REC_DESCS[$i]}" "$CURRENT_NOTE"
+    "$IDX" "${ENV_REC_KEYS[$i]}" "$DISPLAY_VAL" "${ENV_REC_DESCS[$i]}" "$CURRENT_NOTE"
   IDX=$((IDX + 1))
 done
 
@@ -505,7 +578,11 @@ if [[ -n "$ENV_SELECTION" ]] && [[ "$ENV_SELECTION" != "0" ]]; then
     if [[ "$num" =~ ^[0-9]+$ ]] && [[ "$num" -ge 1 ]] && [[ "$num" -le "${#ENV_REC_KEYS[@]}" ]]; then
       IDX=$((num - 1))
       set_env_var "${ENV_REC_KEYS[$IDX]}" "${ENV_REC_VALUES[$IDX]}" "$ENV_FILE"
-      echo -e "  ${GREEN}✓ Set ${ENV_REC_KEYS[$IDX]}=${ENV_REC_VALUES[$IDX]}${NC}"
+      if [[ "${ENV_REC_KEYS[$IDX]}" == "HUGGINGFACE_TOKEN" ]]; then
+        echo -e "  ${GREEN}✓ Set HUGGINGFACE_TOKEN=…${ENV_REC_VALUES[$IDX]: -4} (hidden)${NC}"
+      else
+        echo -e "  ${GREEN}✓ Set ${ENV_REC_KEYS[$IDX]}=${ENV_REC_VALUES[$IDX]}${NC}"
+      fi
     fi
   done
   echo ""
