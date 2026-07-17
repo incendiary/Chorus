@@ -111,11 +111,6 @@ Tracked improvements identified during the June 2026 repository assessment.
 
 ## Upcoming
 
-- [ ] **Suppress or optimise MPS float64 warnings** — on macOS with Apple Silicon, Whisper's word-level timestamp alignment requires float64, which Metal Performance Shaders does not support. The CPU fallback works correctly but generates a `UserWarning`. Investigate options:
-  - Detect MPS availability earlier and suppress the redundant retry message.
-  - Consider upstream Whisper patches to avoid float64 requirement entirely.
-  - Document the performance trade-off in the Help page for macOS users.
-
 - [x] **Live log window with user-configurable line count** (v3.2.1) — tail-N number input (default 50) added to the Logs page toolbar; shows only the last N entries. Consecutive identical messages deduplicated with ×N repeat badge. Existing Download and Clear buttons preserved.
 
 > The spaCy setup, LLM context document, and best-guess export items previously
@@ -238,7 +233,7 @@ in `REVIEW.md`; per-task execution plans (written for delegated agents) in
 - [x] **RB-3: Fix LOW-tier strikethrough in PDF export** — pre-processed strikethrough syntax via regex (`~~text~~` → `<del>text</del>`) before markdown conversion, allowing the CSS `del strong, strong del` rule to apply. Added unit and integration tests covering strikethrough conversion and regression-guarding MEDIUM highlights.
 - [ ] **RB-4: Version the bundle schema and add a contract test** — add `meta.chorus_version` and `meta.schema_version` to `bundle.json` (the docstring already promises the former), and add a test asserting `docs/CHORUS_FOR_LLMS.md` §5's documented keys match the real bundle structure. (Effort: S, Haiku)
 - [x] **RB-5: Test the UI run loop and results rendering** — added `tests/test_ui_run_loop.py` (11 tests: `run_one_file` config forwarding and error propagation, sequential and all-at-once run loops with per-file panels and partial-failure rendering via AppTest, and `render_file_results` download/statistics/degradation checks with a mocked pipeline); coverage rose from 13% to 94% on `ui/pipeline_invocation.py` and from 12% to 84% on `ui/results.py`. (Effort: M, Sonnet)
-- [ ] **RB-6 (optional): Silence redundant MPS float64 warning** — folds in the long-standing "Suppress or optimise MPS float64 warnings" item above. (Effort: XS, Haiku)
+- [x] **RB-6 (optional): Silence redundant MPS float64 warning** — the MPS float64 CPU fallback in `transcription_engine/whisper_engine.py` now emits its user-facing WARNING once per process and logs subsequent occurrences at INFO level; behaviour unchanged. Folds in the long-standing "Suppress or optimise MPS float64 warnings" item above. (Effort: XS, Haiku)
 
 ---
 
