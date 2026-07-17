@@ -1,10 +1,10 @@
 # Chorus Engine
 
-**A multi-pass consensus audio transcription engine powered by OpenAI Whisper.**
+**Chorus is not a better transcriber — it's a transcriber that knows when it's wrong.**
 
-Chorus automates high-fidelity audio transcription by applying a multi-pass methodology. It ingests raw audio, generates distinct cleaned variants (high-pass, normalised, denoised), transcribes each independently, and synthesises the results into a single, confidence-weighted "consensus transcript".
+A multi-pass consensus audio transcription engine powered by OpenAI Whisper. Chorus ingests raw audio, generates distinct cleaned variants (high-pass, normalised, denoised), transcribes each independently, and synthesises the results into a single, confidence-weighted "consensus transcript".
 
-This approach dramatically reduces single-model hallucinations and improves word-error rates (WER) on challenging audio by mathematically voting on word-level alignment across multiple acoustic perspectives.
+Voting across acoustic perspectives does not make the words more accurate — benchmarking showed transcript accuracy on par with a single Whisper pass (see [Measured accuracy](#measured-accuracy-v410-benchmark)). What it does produce is **calibrated uncertainty**: word-level confidence tiers that reliably separate the words you can trust from the words you should check. Plain Whisper hands you a transcript with its errors invisibly distributed; Chorus hands you the same transcript with the errors flagged — for your own review, or for a downstream LLM told exactly which words to distrust.
 
 ---
 
@@ -37,17 +37,19 @@ in [`benchmarks/RESULTS.md`](benchmarks/RESULTS.md)):
 | Clean | 0.0314 | **0.0288** |
 | Noisy (SNR 5 dB) | **0.1024** | 0.1107 |
 
-**The honest headline:** consensus does *not* reliably improve raw accuracy over
-a single Whisper pass — most per-file scores are identical, and on noisy audio
-single-pass was slightly better. What the multi-pass architecture *does* buy,
-strongly, is **calibrated uncertainty**: HIGH-tier words were 97.8 % correct on
-clean audio and 92.7 % on noisy audio, while every MEDIUM- and LOW-tier word in
-the noisy condition was wrong. In other words, Chorus's confidence tiers tell
-you exactly which words to distrust — something a single Whisper pass cannot do.
+**The honest headline: Chorus is not a better transcriber — it's a transcriber
+that knows when it's wrong.** Consensus does *not* reliably improve raw accuracy
+over a single Whisper pass: most per-file scores are identical, and on noisy
+audio single-pass was slightly better. What the multi-pass architecture *does*
+buy, strongly, is **calibrated uncertainty**: HIGH-tier words were 97.8 %
+correct on clean audio and 92.7 % on noisy audio, while every MEDIUM- and
+LOW-tier word in the noisy condition was wrong. The confidence tiers tell you
+exactly which words to distrust — something a single Whisper pass cannot do.
 Treat the tiers, the annotated consensus document, and the machine-readable
 `bundle.json` as the product; treat the transcript accuracy as equivalent to
-plain Whisper. (Caveats: single speaker, read speech, small MEDIUM/LOW sample —
-see the results file.)
+plain Whisper. If raw accuracy is all you need, a larger Whisper model run
+once is the cheaper path. (Caveats: single speaker, read speech, small
+MEDIUM/LOW sample — see the results file.)
 
 ---
 
