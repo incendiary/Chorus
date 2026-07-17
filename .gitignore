@@ -130,3 +130,6 @@ desktop.ini
 *.rar
 *.7z
 gh_init.sh
+
+# ── Benchmarks ────────────────────────────────────────────────────────────────
+benchmarks/data/
