@@ -67,10 +67,13 @@ st.markdown(
     "how many of the four audio variants agreed on it:\n\n"
     "| Display | Tier | Agreement | Recommended Action |\n"
     "|---------|------|-----------|--------------------|\n"
-    "| Plain text | **HIGH** (≥ 75 %) | 3–4 variants | Accept |\n"
+    "| Plain text | **HIGH** (≥ 75 % by default) | 3–4 variants | Accept |\n"
     "| `==highlighted==` | **MEDIUM** (50 %) | 2 variants | Review |\n"
     "| **~~struck bold~~** | **LOW** (25 %) | 1 variant | Flag or discard |\n\n"
-    "These thresholds are configurable in `config.py`."
+    "These are the *default* thresholds set in `config.py`. The sidebar's "
+    "**Consensus threshold** and **Similarity threshold** sliders override them "
+    "per run — the legend on each generated document reflects the value actually "
+    "used for that run."
 )
 
 # ── Export formats ────────────────────────────────────────────────────────────

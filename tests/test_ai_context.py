@@ -431,3 +431,39 @@ class TestEdgeCases:
         )
         text = path.read_text(encoding="utf-8")
         assert "positional" in text
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Per-run consensus threshold reflected in the rendered legend
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class TestConsensusThresholdLegend:
+    def test_custom_threshold_reflected_in_legend(
+        self, tmp_consensus_dir, sample_votes, sample_transcripts_meta
+    ):
+        """Passing consensus_threshold=0.9 must render '90' in the legend and
+        must not claim the default '75 %' bar anywhere the threshold applies."""
+        path = generate_ai_context_pack(
+            votes=sample_votes,
+            stem="test",
+            transcripts_meta=sample_transcripts_meta,
+            consensus_threshold=0.9,
+        )
+        text = path.read_text(encoding="utf-8")
+        assert "≥ 90%" in text
+        assert "≥ 75%" not in text
+
+    def test_default_threshold_omitted_matches_current_wording(
+        self, tmp_consensus_dir, sample_votes, sample_transcripts_meta
+    ):
+        """Omitting consensus_threshold must reproduce the existing default
+        wording exactly (regression guard)."""
+        path = generate_ai_context_pack(
+            votes=sample_votes,
+            stem="test",
+            transcripts_meta=sample_transcripts_meta,
+        )
+        text = path.read_text(encoding="utf-8")
+        assert "≥ 75% agreement" in text
+        assert "≥ 75% variant agreement — very likely correct" in text

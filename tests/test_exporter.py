@@ -465,6 +465,52 @@ class TestMdToHtml:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Per-run consensus threshold reflected in the rendered legend
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class TestRenderConsensusThresholdLegend:
+    def _votes(self):
+        from consensus_merger.alignment import WordVote
+
+        return [
+            WordVote(
+                word="hello",
+                count=4,
+                total=4,
+                confidence=1.0,
+                tier="HIGH",
+                variants=["hello"],
+            ),
+        ]
+
+    def _render(self, tmp_path, **kwargs):
+        from consensus_merger.renderer import render_consensus
+
+        transcripts_meta = {
+            "original": {"text": "hello", "model": "base", "language": "en"}
+        }
+        return render_consensus(
+            self._votes(), "test", transcripts_meta, consensus_dir=tmp_path, **kwargs
+        )
+
+    def test_custom_threshold_reflected_in_legend(self, tmp_path):
+        """Passing consensus_threshold=0.9 must render '90' in the legend and
+        must not render the default '75 %' bar."""
+        consensus_path = self._render(tmp_path, consensus_threshold=0.9)
+        text = consensus_path.read_text(encoding="utf-8")
+        assert "≥ 90 %" in text
+        assert "75 %" not in text
+
+    def test_default_threshold_omitted_matches_current_wording(self, tmp_path):
+        """Omitting consensus_threshold must reproduce the existing default
+        wording exactly (regression guard)."""
+        consensus_path = self._render(tmp_path)
+        text = consensus_path.read_text(encoding="utf-8")
+        assert "≥ 75 %" in text
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # PDF export
 # ─────────────────────────────────────────────────────────────────────────────
 

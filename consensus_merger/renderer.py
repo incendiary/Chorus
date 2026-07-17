@@ -21,7 +21,7 @@ import logging
 from datetime import UTC, datetime
 from pathlib import Path
 
-from config import CONSENSUS_DIR, VARIANT_LABELS
+from config import CONSENSUS_DIR, CONSENSUS_THRESHOLD, VARIANT_LABELS
 from consensus_merger.alignment import WordVote
 
 logger = logging.getLogger(__name__)
@@ -30,6 +30,11 @@ logger = logging.getLogger(__name__)
 # ─────────────────────────────────────────────────────────────────────────────
 # Rendering helpers
 # ─────────────────────────────────────────────────────────────────────────────
+
+
+def _format_pct(threshold: float) -> str:
+    """Format a fractional threshold as a percentage string without trailing zeros."""
+    return f"{threshold * 100:g}"
 
 
 def _render_word(vote: WordVote) -> str:
@@ -70,6 +75,7 @@ def render_consensus(
     transcripts_meta: dict[str, dict],
     consensus_dir: Path | None = None,
     source_filename: str | None = None,
+    consensus_threshold: float | None = None,
 ) -> Path:
     """
     Render the consensus Markdown document and write it to consensus_dir.
@@ -86,12 +92,19 @@ def render_consensus(
     consensus_dir : Path, optional
         Directory to write the consensus ``.md`` file into.  Defaults to
         ``config.CONSENSUS_DIR`` when *None*.
+    consensus_threshold : float, optional
+        Agreement fraction at or above which a word is tier HIGH, used to
+        render an accurate legend.  Defaults to ``config.CONSENSUS_THRESHOLD``
+        when *None*.
 
     Returns
     -------
     Path
         Absolute path of the written ``.md`` file.
     """
+    if consensus_threshold is None:
+        consensus_threshold = CONSENSUS_THRESHOLD
+    pct_str = _format_pct(consensus_threshold)
     stats = _build_stats(votes)
     now = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
 
@@ -132,7 +145,7 @@ def render_consensus(
         "",
         "| Tier | Count | Percentage | Meaning |",
         "|------|------:|-----------:|---------|",
-        f"| HIGH   | {stats['high']}   | {stats['high']/total*100:.1f}% | Present in ≥ 75 % of transcripts — kept as-is |",  # noqa: E501
+        f"| HIGH   | {stats['high']}   | {stats['high']/total*100:.1f}% | Present in ≥ {pct_str} % of transcripts — kept as-is |",  # noqa: E501
         f"| MEDIUM | {stats['medium']} | {stats['medium']/total*100:.1f}% | Present in 2 transcripts — highlighted for review |",  # noqa: E501
         f"| LOW    | {stats['low']}    | {stats['low']/total*100:.1f}% | Present in only 1 transcript — flagged for removal |",  # noqa: E501
         "",
@@ -160,12 +173,12 @@ def render_consensus(
         "",
         "| Rendering | Confidence Tier | Recommended Action |",
         "|-----------|----------------|--------------------|",
-        "| Plain text | **HIGH** (≥ 75 %) | Accept — high agreement across all variants |",  # noqa: E501
+        f"| Plain text | **HIGH** (≥ {pct_str} %) | Accept — high agreement across all variants |",  # noqa: E501
         "| `==highlighted==` | **MEDIUM** (50 %) | Review — present in 2 of 4 transcripts |",  # noqa: E501
         "| **~~struck bold~~** | **LOW** (25 %) | Flag — single-transcript word; likely artefact |",  # noqa: E501
         "",
         "> **Note:** Percentages above are relative to the total number of transcription variants "  # noqa: E501
-        "(default: 4).  Thresholds are configurable via `config.py`.",
+        "(default: 4).  Configurable via the UI sidebar sliders per run, with defaults in `config.py`.",  # noqa: E501
         "",
     ]
 

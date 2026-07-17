@@ -207,6 +207,7 @@ def run_pipeline(
         alignment_strategy=alignment_strategy,
         source_filename=source_filename,
         output_dir=consensus_dir,
+        consensus_threshold=consensus_threshold,
     )
 
     bundle_path = export_transcript_bundle(
@@ -259,6 +260,7 @@ def run_pipeline(
                 source_filename=source_filename,
                 output_dir=consensus_dir,
                 speaker_names=speaker_map,
+                consensus_threshold=consensus_threshold,
             )
         except Exception as exc:
             logger.warning("Diarisation failed: %s", exc)
