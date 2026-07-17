@@ -128,3 +128,60 @@ class TestPerformance:
 
         assert len(result) == 10_000
         assert elapsed < 2.0, f"Alignment took {elapsed:.2f}s — exceeds 2s limit"
+
+
+class TestConfigurableThresholds:
+    """Per-run threshold overrides must change tier and grouping behaviour."""
+
+    VARIANTS = {
+        "a": "hello world",
+        "b": "hello world",
+        "c": "hello world",
+        "d": "hello there",
+    }
+
+    def _tier_of(self, votes, word):
+        return next(v.tier for v in votes if v.word == word)
+
+    def test_consensus_threshold_override_changes_tier_both_strategies(self):
+        from consensus_merger.alignment import align_transcripts
+
+        for strategy in ("sequence", "positional"):
+            # 3-of-4 agreement on "world": HIGH at the 0.75 default…
+            default_votes = align_transcripts(self.VARIANTS, strategy=strategy)
+            assert self._tier_of(default_votes, "world") == "HIGH"
+
+            # …but MEDIUM when the bar is raised above 0.75.
+            strict_votes = align_transcripts(
+                self.VARIANTS, strategy=strategy, consensus_threshold=0.9
+            )
+            assert self._tier_of(strict_votes, "world") == "MEDIUM"
+
+    def test_similarity_threshold_override_changes_grouping(self):
+        from consensus_merger.alignment import align_transcripts
+
+        # "colour" vs "color" — similar but not identical spellings.
+        variants = {"a": "colour", "b": "color", "c": "colour", "d": "colour"}
+
+        # Permissive similarity groups them into one 4-of-4 HIGH vote.
+        merged = align_transcripts(
+            variants, strategy="positional", similarity_threshold=0.6
+        )
+        assert len(merged) == 1
+        assert merged[0].count == 4
+
+        # A 1.0 threshold demands exact matches, splitting the group.
+        split = align_transcripts(
+            variants, strategy="positional", similarity_threshold=1.0
+        )
+        assert split[0].count == 3
+
+    def test_default_behaviour_unchanged_when_omitted(self):
+        from config import CONSENSUS_THRESHOLD
+        from consensus_merger.alignment import align_transcripts
+
+        explicit = align_transcripts(
+            self.VARIANTS, consensus_threshold=CONSENSUS_THRESHOLD
+        )
+        implicit = align_transcripts(self.VARIANTS)
+        assert [v.tier for v in explicit] == [v.tier for v in implicit]

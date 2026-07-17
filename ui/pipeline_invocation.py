@@ -70,6 +70,8 @@ def run_one_file(
         ollama_model=config_obj.ollama_model,
         enable_diarisation=config_obj.enable_diarisation,
         alignment_strategy=config_obj.alignment_choice,
+        consensus_threshold=config_obj.consensus_threshold,
+        similarity_threshold=config_obj.similarity_threshold,
         progress_callback=_progress,
     )
     return results, tmp_path, original_stem

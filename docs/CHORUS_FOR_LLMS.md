@@ -67,7 +67,7 @@ default is four variants: original, high-pass, normalised, denoised):
 
 | Tier | Agreement | Meaning | Rendering in `.md` files |
 |------|-----------|---------|---------------------------|
-| **HIGH** | ≥ 75 % (configurable via `CONSENSUS_THRESHOLD` in `config.py`) | The word was heard consistently across variants. Treat as reliable. | Plain text, no decoration. |
+| **HIGH** | ≥ 75 % (configurable via `CONSENSUS_THRESHOLD` in `config.py`, or per-run via the UI sidebar sliders) | The word was heard consistently across variants. Treat as reliable. | Plain text, no decoration. |
 | **MEDIUM** | Exactly 2 of 4 variants (a 50 % split) | Real disagreement between variants — worth a second look but usually not noise. | `==word==` (Markdown highlight syntax). |
 | **LOW** | Present in only 1 variant | Likely a mishearing, filler artefact, or hallucination introduced by a single audio-cleaning pass. | `**~~word~~**[^NN%: variant / variant]` — bold, struck through, with a footnote naming the observed forms and the percentage. |
 
