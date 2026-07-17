@@ -130,7 +130,9 @@ verified against the current implementation:
   "meta": {
     "stem": "recording",
     "source_filename": "recording.m4a",
-    "generated_at": "2026-07-11T12:00:00+00:00"
+    "generated_at": "2026-07-11T12:00:00+00:00",
+    "chorus_version": "4.0.1",
+    "schema_version": 1
   },
   "variants": {
     "original": {
@@ -164,6 +166,12 @@ verified against the current implementation:
   }
 }
 ```
+
+`meta.schema_version` identifies the contract revision of this file (currently
+`1`); it is bumped only when a field is renamed or removed, so consumers can
+rely on the fields above being present for any bundle with the same
+`schema_version`. `meta.chorus_version` records the Chorus release that
+produced the bundle.
 
 To extract structured data programmatically:
 

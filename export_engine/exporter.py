@@ -37,6 +37,20 @@ from config import CONSENSUS_DIR
 
 logger = logging.getLogger(__name__)
 
+# Contract revision of {stem}_bundle.json, documented in
+# docs/CHORUS_FOR_LLMS.md §5. Bump only when a field is renamed or removed
+# (additions are backwards-compatible).
+BUNDLE_SCHEMA_VERSION = 1
+
+
+def _read_version() -> str:
+    """Read the Chorus version from the root VERSION file."""
+    try:
+        version_file = Path(__file__).resolve().parent.parent / "VERSION"
+        return version_file.read_text(encoding="utf-8").strip()
+    except OSError:
+        return "unknown"
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Helpers
@@ -732,7 +746,7 @@ def export_transcript_bundle(
     Write a structured JSON transcript bundle for programmatic consumption.
 
     The bundle contains:
-    - ``meta``           — stem, chorus version, timestamp, source filename
+    - ``meta``           — stem, source filename, timestamp, chorus_version, schema_version
     - ``variants``       — all variant transcript dicts (text, language, model, device)
     - ``consensus``      — word-vote sequence with tier/confidence per word
     - ``statistics``     — HIGH/MEDIUM/LOW word counts and percentages
@@ -771,6 +785,8 @@ def export_transcript_bundle(
             "stem": stem,
             "source_filename": source_filename,
             "generated_at": datetime.now(UTC).isoformat(),
+            "chorus_version": _read_version(),
+            "schema_version": BUNDLE_SCHEMA_VERSION,
         },
         "variants": {
             key: {
