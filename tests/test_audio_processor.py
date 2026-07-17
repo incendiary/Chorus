@@ -9,6 +9,8 @@ Covers:
 
 from __future__ import annotations
 
+import shutil
+
 import numpy as np
 import pytest
 
@@ -314,6 +316,53 @@ class TestPipeline:
             "librosa audioread deprecation warning was emitted; "
             "the soundfile decode path was not taken."
         )
+
+    @pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="ffmpeg not available")
+    def test_m4a_decodes_via_ffmpeg_fallback(self, tmp_path):
+        """An MP4/AAC container (.m4a — the Apple Voice Memos format) must
+        decode through the ffmpeg fallback, since libsndfile cannot open it.
+
+        Regression test for the v4.0.0 audioread-retirement change, which
+        silently dropped every ffmpeg-only format and made all .m4a uploads
+        fail with "Format not recognised"."""
+        import subprocess
+
+        import soundfile as sf
+
+        from config import TARGET_SAMPLE_RATE
+
+        wav_path = tmp_path / "tone.wav"
+        t = np.linspace(0, 1.0, SR, endpoint=False, dtype=np.float32)
+        sf.write(str(wav_path), 0.4 * np.sin(2 * np.pi * 440 * t), SR, subtype="PCM_16")
+
+        m4a_path = tmp_path / "tone.m4a"
+        subprocess.run(
+            [
+                "ffmpeg",
+                "-y",
+                "-loglevel",
+                "error",
+                "-i",
+                str(wav_path),
+                "-c:a",
+                "aac",
+                str(m4a_path),
+            ],
+            check=True,
+        )
+
+        from audio_processor.pipeline import _load_audio, process_audio
+
+        audio, sr = _load_audio(m4a_path)
+        assert sr == TARGET_SAMPLE_RATE
+        assert audio.dtype == np.float32
+        assert audio.ndim == 1
+        assert len(audio) > 0
+        assert 0.0 < np.abs(audio).max() <= 1.5  # sane, non-silent signal
+
+        outputs = process_audio(m4a_path, output_dir=tmp_path / "variants")
+        assert set(outputs) == {"original", "highpass", "normalised", "denoised"}
+        assert all(p.exists() for p in outputs.values())
 
     def test_non_target_rate_is_resampled(self, tmp_path):
         """A non-target sample rate is resampled to TARGET_SAMPLE_RATE."""
