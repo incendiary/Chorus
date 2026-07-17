@@ -88,6 +88,7 @@ Once the UI is open at [http://localhost:8501](http://localhost:8501), configura
 - **Compute device:** Auto-detect (recommended), CPU, NVIDIA CUDA, or Apple MPS.
 - **Auto parallelism / worker count:** how many variants transcribe simultaneously.
 - **Alignment strategy** and **noise floor mode:** advanced tuning — defaults are sensible for most audio.
+- **Confidence thresholds:** two sliders set the HIGH-tier agreement bar and the word-match similarity per run, overriding the `config.py` defaults without editing any files.
 - **Speaker Diarisation, LLM reconstruction, NLP reconstruction:** optional toggles. If a required local dependency (Ollama, a spaCy model) isn't set up yet, a setup dialog explains exactly what to install rather than failing silently.
 - **Export formats:** PDF, Word (.docx), and word-level SRT subtitles are opt-in checkboxes — the annotated Markdown, best-guess plain text, and JSON bundle are always generated.
 
@@ -107,7 +108,7 @@ Chorus produces a final `.md` file in the `outputs/consensus/` directory. This f
 | `==highlighted==` | **MEDIUM** (50 %) | Word appears in exactly 2 variants. | Review — split consensus. |
 | **~~struck bold~~** | **LOW** (25 %) | Word appears in only 1 variant. | Flag — likely an artefact. |
 
-*Note: The exact threshold percentages are configurable in `config.py`.*
+*Note: The exact threshold percentages are configurable in `config.py`, or per-run via the two confidence-threshold sliders in the UI sidebar.*
 
 Alongside the annotated Markdown, every run also writes a `{stem}_best_guess.txt` file — a clean, fully human-readable transcript with no brackets, highlighting, or statistics at all. Every MEDIUM/LOW-confidence position is resolved to its single best-guess word (the highest-agreement candidate already selected by the consensus vote), making it suitable for distribution to non-technical readers or downstream NLP processing.
 

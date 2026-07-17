@@ -54,7 +54,11 @@ def _score_pair(a: str, b: str) -> int:
     return _MISMATCH_PENALTY
 
 
-def _needleman_wunsch(seq_a: list[str], seq_b: list[str]) -> list[tuple[str, str]]:
+def _needleman_wunsch(
+    seq_a: list[str],
+    seq_b: list[str],
+    similarity_threshold: float = SIMILARITY_THRESHOLD,
+) -> list[tuple[str, str]]:
     """
     Align two token sequences using Needleman-Wunsch global alignment.
 
@@ -85,7 +89,7 @@ def _needleman_wunsch(seq_a: list[str], seq_b: list[str]) -> list[tuple[str, str
         b_tok = seq_b[j]
         if a_tok == b_tok:
             return _MATCH_SCORE
-        if _normalised_similarity(a_tok, b_tok) >= SIMILARITY_THRESHOLD:
+        if _normalised_similarity(a_tok, b_tok) >= similarity_threshold:
             return _MATCH_SCORE
         return _MISMATCH_PENALTY
 
@@ -147,6 +151,7 @@ def _needleman_wunsch(seq_a: list[str], seq_b: list[str]) -> list[tuple[str, str
 
 def _build_multi_alignment(
     token_lists: dict[str, list[str]],
+    similarity_threshold: float = SIMILARITY_THRESHOLD,
 ) -> list[dict[str, str]]:
     """
     Align all token sequences against the longest (reference) sequence.
@@ -169,7 +174,9 @@ def _build_multi_alignment(
     for key, tokens in token_lists.items():
         if key == ref_key:
             continue
-        pairwise_alignments[key] = _needleman_wunsch(ref_tokens, tokens)
+        pairwise_alignments[key] = _needleman_wunsch(
+            ref_tokens, tokens, similarity_threshold
+        )
 
     # Build multi-alignment columns from pairwise results
     # The reference alignment defines the column structure
@@ -224,7 +231,12 @@ def _build_multi_alignment(
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def align_transcripts_sequence(transcripts: dict[str, str]) -> list[WordVote]:
+def align_transcripts_sequence(
+    transcripts: dict[str, str],
+    *,
+    consensus_threshold: float | None = None,
+    similarity_threshold: float | None = None,
+) -> list[WordVote]:
     """
     Align multiple transcript strings using Needleman-Wunsch sequence alignment.
 
@@ -235,12 +247,23 @@ def align_transcripts_sequence(transcripts: dict[str, str]) -> list[WordVote]:
     ----------
     transcripts : dict[str, str]
         Mapping of variant key → plain-text transcript string.
+    consensus_threshold : float, optional
+        Agreement fraction at or above which a word is tier HIGH.
+        Defaults to ``config.CONSENSUS_THRESHOLD``.
+    similarity_threshold : float, optional
+        Normalised similarity at or above which two word forms count as the
+        same word. Defaults to ``config.SIMILARITY_THRESHOLD``.
 
     Returns
     -------
     list[WordVote]
         Ordered list of WordVote objects representing the consensus sequence.
     """
+    if consensus_threshold is None:
+        consensus_threshold = CONSENSUS_THRESHOLD
+    if similarity_threshold is None:
+        similarity_threshold = SIMILARITY_THRESHOLD
+
     if not transcripts:
         return []
 
@@ -253,7 +276,7 @@ def align_transcripts_sequence(transcripts: dict[str, str]) -> list[WordVote]:
         return []
 
     # Build multi-alignment
-    columns = _build_multi_alignment(token_lists)
+    columns = _build_multi_alignment(token_lists, similarity_threshold)
 
     votes: list[WordVote] = []
 
@@ -270,7 +293,7 @@ def align_transcripts_sequence(transcripts: dict[str, str]) -> list[WordVote]:
             placed = False
             for canonical in list(groups.keys()):
                 score = _normalised_similarity(token, canonical)
-                if score >= SIMILARITY_THRESHOLD:
+                if score >= similarity_threshold:
                     groups[canonical].append(token)
                     placed = True
                     break
@@ -283,7 +306,7 @@ def align_transcripts_sequence(transcripts: dict[str, str]) -> list[WordVote]:
         confidence = count / n_transcripts
 
         # Assign confidence tier
-        if confidence >= CONSENSUS_THRESHOLD:
+        if confidence >= consensus_threshold:
             tier = "HIGH"
         elif count >= 2:
             tier = "MEDIUM"

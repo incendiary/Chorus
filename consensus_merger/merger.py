@@ -49,13 +49,20 @@ def merge_transcripts_with_votes(
     ollama_model: str | None = None,
     consensus_dir: Path | None = None,
     source_filename: str | None = None,
+    consensus_threshold: float | None = None,
+    similarity_threshold: float | None = None,
 ) -> tuple[Path, list[WordVote]]:
     """Run consensus alignment/render and return both output path and votes."""
     non_empty = _extract_non_empty_text_map(transcripts)
 
     logger.info("Merging %d transcript variants for stem '%s'.", len(non_empty), stem)
 
-    votes = align_transcripts(non_empty, strategy=strategy)
+    votes = align_transcripts(
+        non_empty,
+        strategy=strategy,
+        consensus_threshold=consensus_threshold,
+        similarity_threshold=similarity_threshold,
+    )
 
     if enable_nlp:
         from reconstruction import reconstruct

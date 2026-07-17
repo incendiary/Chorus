@@ -9,7 +9,9 @@ import streamlit as st
 from config import (
     ALIGNMENT_STRATEGY,
     CONSENSUS_MODELS,
+    CONSENSUS_THRESHOLD,
     NOISE_FLOOR_MODE,
+    SIMILARITY_THRESHOLD,
     VARIANT_LABELS,
     WHISPER_DEVICE,
     WHISPER_MODEL,
@@ -33,6 +35,8 @@ class SidebarConfig:
     parallelism_choice: str
     language: str | None
     alignment_choice: str
+    consensus_threshold: float
+    similarity_threshold: float
     noise_mode_choice: str
     enable_nlp: bool
     enable_llm: bool
@@ -258,6 +262,33 @@ def render_sidebar() -> SidebarConfig:
             ),
         )
 
+        consensus_threshold = st.slider(
+            "HIGH-confidence threshold",
+            min_value=0.50,
+            max_value=1.00,
+            value=float(CONSENSUS_THRESHOLD),
+            step=0.05,
+            help=(
+                "Fraction of transcription passes that must agree on a word for "
+                "it to count as HIGH confidence (rendered plain, trusted). With "
+                "the default 4 passes, 0.75 means 3-of-4 agreement. Lower it to "
+                "trust more words; raise it to be flagged about more of them."
+            ),
+        )
+        similarity_threshold = st.slider(
+            "Word-match similarity",
+            min_value=0.50,
+            max_value=0.95,
+            value=float(SIMILARITY_THRESHOLD),
+            step=0.05,
+            help=(
+                "How similar two spellings must be (0–1, Levenshtein-based) to "
+                "count as the same word when voting — e.g. grouping 'colour' "
+                "and 'color'. Lower values merge more variant spellings; higher "
+                "values treat near-misses as disagreements."
+            ),
+        )
+
         # ── Audio Cleaning ────────────────────────────────────────────────────
         st.subheader("Audio Cleaning")
         noise_mode_choice = st.selectbox(
@@ -454,6 +485,8 @@ def render_sidebar() -> SidebarConfig:
         parallelism_choice=parallelism_choice,
         language=language,
         alignment_choice=alignment_choice,
+        consensus_threshold=consensus_threshold,
+        similarity_threshold=similarity_threshold,
         noise_mode_choice=noise_mode_choice,
         enable_nlp=enable_nlp,
         enable_llm=enable_llm,

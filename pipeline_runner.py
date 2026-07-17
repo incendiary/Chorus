@@ -46,6 +46,8 @@ def run_pipeline(
     ollama_model: str | None = None,
     enable_diarisation: bool = False,
     alignment_strategy: str | None = None,
+    consensus_threshold: float | None = None,
+    similarity_threshold: float | None = None,
     progress_callback: Callable[[str, float], None] | None = None,
     output_dir: Path | None = None,
 ) -> dict[str, Path]:
@@ -187,6 +189,8 @@ def run_pipeline(
         ollama_model=ollama_model,
         consensus_dir=consensus_dir,
         source_filename=source_filename,
+        consensus_threshold=consensus_threshold,
+        similarity_threshold=similarity_threshold,
     )
     _progress("Consensus document generated.", 0.95)
 

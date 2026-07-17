@@ -73,6 +73,8 @@ def _make_config(**overrides) -> SidebarConfig:
         "parallelism_choice": "auto",
         "language": "en",
         "alignment_choice": "sequence",
+        "consensus_threshold": 0.75,
+        "similarity_threshold": 0.80,
         "noise_mode_choice": "vad",
         "enable_nlp": False,
         "enable_llm": True,
@@ -182,6 +184,8 @@ class TestRunOneFile:
         assert kwargs["ollama_model"] == "qwen2.5:3b"
         assert kwargs["enable_diarisation"] is False
         assert kwargs["alignment_strategy"] == "sequence"
+        assert kwargs["consensus_threshold"] == 0.75
+        assert kwargs["similarity_threshold"] == 0.80
         assert callable(kwargs["progress_callback"])
         assert Path(kwargs["audio_path"]).suffix == ".wav"
         assert Path(kwargs["audio_path"]).name.startswith("My_Interview_")

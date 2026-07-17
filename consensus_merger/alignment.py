@@ -123,7 +123,12 @@ def _best_fuzzy_match(
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def _align_positional(transcripts: dict[str, str]) -> list[WordVote]:
+def _align_positional(
+    transcripts: dict[str, str],
+    *,
+    consensus_threshold: float | None = None,
+    similarity_threshold: float | None = None,
+) -> list[WordVote]:
     """
     Align multiple transcript strings using positional (index-based) comparison.
 
@@ -141,6 +146,11 @@ def _align_positional(transcripts: dict[str, str]) -> list[WordVote]:
     list[WordVote]
         Ordered list of WordVote objects representing the consensus sequence.
     """
+    if consensus_threshold is None:
+        consensus_threshold = CONSENSUS_THRESHOLD
+    if similarity_threshold is None:
+        similarity_threshold = SIMILARITY_THRESHOLD
+
     if not transcripts:
         return []
 
@@ -166,7 +176,7 @@ def _align_positional(transcripts: dict[str, str]) -> list[WordVote]:
             placed = False
             for canonical in list(groups.keys()):
                 score = _normalised_similarity(token, canonical)
-                if score >= SIMILARITY_THRESHOLD:
+                if score >= similarity_threshold:
                     groups[canonical].append(token)
                     placed = True
                     break
@@ -179,7 +189,7 @@ def _align_positional(transcripts: dict[str, str]) -> list[WordVote]:
         confidence = count / n_transcripts
 
         # Assign confidence tier
-        if confidence >= CONSENSUS_THRESHOLD:
+        if confidence >= consensus_threshold:
             tier = "HIGH"
         elif count >= 2:
             tier = "MEDIUM"
@@ -215,6 +225,9 @@ def _align_positional(transcripts: dict[str, str]) -> list[WordVote]:
 def align_transcripts(
     transcripts: dict[str, str],
     strategy: str | None = None,
+    *,
+    consensus_threshold: float | None = None,
+    similarity_threshold: float | None = None,
 ) -> list[WordVote]:
     """
     Align multiple transcript strings and produce a word-level vote sequence.
@@ -229,6 +242,12 @@ def align_transcripts(
     strategy : str, optional
         Override the alignment strategy: ``"sequence"`` (Needleman-Wunsch) or
         ``"positional"`` (legacy index-based). Defaults to config value.
+    consensus_threshold : float, optional
+        Agreement fraction at or above which a word is tier HIGH.
+        Defaults to ``config.CONSENSUS_THRESHOLD``.
+    similarity_threshold : float, optional
+        Normalised similarity at or above which two word forms count as the
+        same word. Defaults to ``config.SIMILARITY_THRESHOLD``.
 
     Returns
     -------
@@ -240,6 +259,14 @@ def align_transcripts(
     if strategy == "sequence":
         from consensus_merger.sequence_alignment import align_transcripts_sequence
 
-        return align_transcripts_sequence(transcripts)
+        return align_transcripts_sequence(
+            transcripts,
+            consensus_threshold=consensus_threshold,
+            similarity_threshold=similarity_threshold,
+        )
 
-    return _align_positional(transcripts)
+    return _align_positional(
+        transcripts,
+        consensus_threshold=consensus_threshold,
+        similarity_threshold=similarity_threshold,
+    )
