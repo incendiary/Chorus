@@ -33,28 +33,54 @@ logger = logging.getLogger(__name__)
 # ─────────────────────────────────────────────────────────────────────────────
 
 
+def _decode_with_ffmpeg(input_path: Path) -> tuple[np.ndarray, int]:
+    """Decode *input_path* through ffmpeg via ``pydub``.
+
+    Covers the compressed containers that libsndfile cannot open — most
+    importantly MP4/AAC (``.m4a``, the Apple Voice Memos format) — using the
+    ffmpeg binary that is already a documented installation prerequisite.
+    Returns a mono float32 signal and its native sample rate.
+    """
+    from pydub import AudioSegment
+
+    segment = AudioSegment.from_file(str(input_path))
+    samples = np.array(segment.get_array_of_samples(), dtype=np.float32)
+    if segment.channels > 1:
+        samples = samples.reshape(-1, segment.channels).mean(axis=1)
+    samples /= float(1 << (8 * segment.sample_width - 1))
+    return samples, segment.frame_rate
+
+
 def _load_audio(input_path: Path) -> tuple[np.ndarray, int]:
     """Decode *input_path* to a mono, float32 signal at ``TARGET_SAMPLE_RATE``.
 
-    Audio is decoded through ``soundfile`` (PySoundFile) so that the deprecated
-    ``librosa`` ``audioread`` fallback is never taken; ``librosa`` is used only
-    for its non-deprecated resampling routine.  The signal is mixed down to mono
-    and resampled to the target rate to preserve the previous behaviour exactly.
+    Audio is decoded through ``soundfile`` (PySoundFile) first — the fast,
+    native path for WAV/FLAC/MP3 — falling back to ffmpeg via ``pydub`` for
+    formats libsndfile does not support (``.m4a`` and other MP4/AAC
+    containers).  The signal is mixed down to mono and resampled to the
+    target rate.
 
     Raises
     ------
     RuntimeError
-        If the file cannot be decoded (for example, a corrupt or unsupported
-        file).  The message names the offending file and suggests a remedy.
+        If neither decoder can read the file (for example, a corrupt or
+        genuinely unsupported file).  The message names the offending file
+        and suggests a remedy.
     """
     try:
         audio, native_sr = sf.read(str(input_path), dtype="float32", always_2d=False)
-    except Exception as exc:  # noqa: BLE001
-        raise RuntimeError(
-            f"Failed to decode audio file: {input_path}. The file may be corrupt "
-            "or in an unsupported format; please supply a valid WAV, FLAC, or "
-            "MP3 file."
-        ) from exc
+    except Exception:  # noqa: BLE001
+        # libsndfile cannot open MP4/AAC containers (.m4a, .mp4, .aac);
+        # retry through ffmpeg before declaring the file unreadable.
+        try:
+            audio, native_sr = _decode_with_ffmpeg(input_path)
+        except Exception as exc:  # noqa: BLE001
+            raise RuntimeError(
+                f"Failed to decode audio file: {input_path}. The file may be "
+                "corrupt, or in a format neither libsndfile nor ffmpeg could "
+                "read; please supply a valid audio file (WAV, FLAC, MP3, M4A, "
+                "and other ffmpeg-supported formats are accepted)."
+            ) from exc
 
     # Mix down to mono by averaging channels when the source is multi-channel.
     if audio.ndim > 1:
