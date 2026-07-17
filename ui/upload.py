@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import streamlit as st
 
+from config import SUPPORTED_AUDIO_EXTENSIONS
+
 
 def render_upload() -> list:
     """Render the upload area and stage overview, returning the uploaded files."""
@@ -14,9 +16,13 @@ def render_upload() -> list:
         st.subheader("1 · Upload Audio Files")
         uploaded_files = st.file_uploader(
             "Drag and drop or click to browse — multiple files supported",
-            type=["wav", "mp3", "mp4", "m4a", "ogg", "flac", "aac", "webm"],
+            type=sorted(ext.lstrip(".") for ext in SUPPORTED_AUDIO_EXTENSIONS),
             accept_multiple_files=True,
-            help="Any audio format supported by FFmpeg. Upload multiple files to process them in one session.",  # noqa: E501
+            help=(
+                "Any audio format supported by FFmpeg, including video "
+                "containers with an audio track. Upload multiple files to "
+                "process them in one session."
+            ),
         )
 
     with col_info:
