@@ -233,6 +233,84 @@ class TestExportTranscriptBundle:
         assert data["statistics"]["low"] == 1
         assert data["statistics"]["total_words"] == 3
 
+    def test_bundle_meta_versioned(self, tmp_path):
+        """meta carries the producing Chorus version and the schema revision."""
+        import json
+        from pathlib import Path
+
+        from export_engine.exporter import (
+            BUNDLE_SCHEMA_VERSION,
+            export_transcript_bundle,
+        )
+
+        path = export_transcript_bundle(
+            self._make_transcripts(), self._make_votes(), "test", output_dir=tmp_path
+        )
+        data = json.loads(path.read_text(encoding="utf-8"))
+        repo_root = Path(__file__).resolve().parent.parent
+        expected_version = (repo_root / "VERSION").read_text(encoding="utf-8").strip()
+        assert data["meta"]["chorus_version"] == expected_version
+        assert data["meta"]["schema_version"] == BUNDLE_SCHEMA_VERSION
+        assert data["meta"]["schema_version"] == 1
+
+    def test_bundle_matches_documented_contract(self, tmp_path):
+        """docs/CHORUS_FOR_LLMS.md §5 and the real bundle must agree.
+
+        If a bundle field is added, renamed, or removed without updating the
+        documented schema — or vice versa — this test fails, pointing at both
+        export_engine/exporter.py::export_transcript_bundle and
+        docs/CHORUS_FOR_LLMS.md §5.
+        """
+        import json
+        import re
+        from pathlib import Path
+
+        from export_engine.exporter import export_transcript_bundle
+
+        doc = (
+            Path(__file__).resolve().parent.parent / "docs" / "CHORUS_FOR_LLMS.md"
+        ).read_text(encoding="utf-8")
+        section = doc.split("## 5.")[1].split("\n## ")[0]
+        fence = re.search(r"```json\n(.*?)```", section, re.S)
+        assert fence, "no JSON example found in CHORUS_FOR_LLMS.md §5"
+        example = fence.group(1)
+
+        path = export_transcript_bundle(
+            self._make_transcripts(), self._make_votes(), "test", output_dir=tmp_path
+        )
+        data = json.loads(path.read_text(encoding="utf-8"))
+
+        # Every key the real bundle produces must appear in the documented
+        # example (as a quoted string), at each structural level.
+        for key in data:
+            assert f'"{key}"' in example, f"bundle key {key!r} missing from doc §5"
+        for key in data["meta"]:
+            assert f'"{key}"' in example, f"meta key {key!r} missing from doc §5"
+        for key in data["consensus"][0]:
+            assert f'"{key}"' in example, f"consensus key {key!r} missing from doc §5"
+        for key in data["statistics"]:
+            assert f'"{key}"' in example, f"statistics key {key!r} missing from doc §5"
+
+        # And the documented consensus-entry keys must all exist in the real
+        # bundle, so removals/renames are caught in both directions.
+        documented_consensus_keys = {
+            "word",
+            "tier",
+            "confidence",
+            "count",
+            "total",
+            "variants",
+        }
+        assert set(data["consensus"][0]) == documented_consensus_keys
+        documented_meta_keys = {
+            "stem",
+            "source_filename",
+            "generated_at",
+            "chorus_version",
+            "schema_version",
+        }
+        assert set(data["meta"]) == documented_meta_keys
+
     def test_bundle_in_pipeline_output(self, tmp_path):
         """run_pipeline should return bundle_path in its result dict."""
         from unittest.mock import patch
