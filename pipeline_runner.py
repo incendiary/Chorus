@@ -197,7 +197,11 @@ def run_pipeline(
     # ── AI Context Pack (always generated) ───────────────────────────────────
     _progress("Generating AI context pack…", 0.96)
     from export_engine.ai_context import generate_ai_context_pack
-    from export_engine.exporter import export_best_guess, export_transcript_bundle
+    from export_engine.exporter import (
+        BUNDLE_SCHEMA_VERSION,
+        export_best_guess,
+        export_transcript_bundle,
+    )
 
     ai_context_path = generate_ai_context_pack(
         votes=votes,
@@ -208,6 +212,8 @@ def run_pipeline(
         source_filename=source_filename,
         output_dir=consensus_dir,
         consensus_threshold=consensus_threshold,
+        similarity_threshold=similarity_threshold,
+        schema_version=BUNDLE_SCHEMA_VERSION,
     )
 
     bundle_path = export_transcript_bundle(
@@ -223,6 +229,15 @@ def run_pipeline(
         stem,
         output_dir=consensus_dir,
     )
+
+    # ── Copy parsing guide to output directory ───────────────────────────────
+    parsing_guide_src = Path(__file__).resolve().parent / "docs" / "CHORUS_FOR_LLMS.md"
+    if parsing_guide_src.exists() and consensus_dir:
+        parsing_guide_dst = consensus_dir / "HOW_TO_PARSE_CHORUS_OUTPUT.md"
+        parsing_guide_dst.write_text(
+            parsing_guide_src.read_text(encoding="utf-8"), encoding="utf-8"
+        )
+        logger.info("Parsing guide written → %s", parsing_guide_dst)
 
     # ── Optional: Speaker Diarisation ────────────────────────────────────────
     diarised_path = None
@@ -261,6 +276,8 @@ def run_pipeline(
                 output_dir=consensus_dir,
                 speaker_names=speaker_map,
                 consensus_threshold=consensus_threshold,
+                similarity_threshold=similarity_threshold,
+                schema_version=BUNDLE_SCHEMA_VERSION,
             )
         except Exception as exc:
             logger.warning("Diarisation failed: %s", exc)
