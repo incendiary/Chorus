@@ -100,7 +100,31 @@ Once the UI is open at [http://localhost:8501](http://localhost:8501), configura
 
 ### 3. Understanding the output
 
-Chorus produces a final `.md` file in the `outputs/consensus/` directory. This file uses standard Markdown and extended highlighting syntax to indicate confidence levels:
+Every run produces **three output files** — all written to `outputs/consensus/{stem}_*` — designed to be loadable directly into an AI assistant:
+
+#### 1. Clean Transcript
+**File:** `{stem}_best_guess.txt` — a fully human-readable plain-text transcript with no brackets, highlighting, or metadata. Every position is resolved to its single best-guess word, suitable for distribution to non-technical readers or downstream NLP processing.
+
+#### 2. Full Metadata & Confidence
+**File:** `{stem}_ai_context.md` — a structured Markdown document containing:
+- **Methodology** — explains how Chorus generated the transcript
+- **Processing Configuration** — which models, devices, and thresholds were used this run
+- **Confidence Statistics** — HIGH/MEDIUM/LOW word distribution and overall reliability score
+- **Speaker Information** — if diarisation was enabled
+- **Clean Transcript** — plain text for reference
+- **Uncertainty Annotations** — every non-HIGH word with its observed variants
+- **Machine-Readable Companion** — reference to the adjacent `{stem}_bundle.json` for word-level vote data on all words
+
+This file is designed to sit directly in an LLM prompt: it carries all the context an AI needs to understand confidence, provenance, and uncertainty.
+
+Also generated per-run: `{stem}_bundle.json`, a structured JSON file with every variant's raw text, the complete word-vote sequence, and aggregate statistics — suitable for programmatic extraction.
+
+#### 3. Parsing Description
+**File:** `HOW_TO_PARSE_CHORUS_OUTPUT.md` — a static guide (written alongside each run, updated from the repo docs) explaining output formats, confidence tier semantics, the word-vote structure, and worked LLM prompts. Paste this with your outputs when asking an assistant to reason about the transcript.
+
+---
+
+**Confidence Tier Rendering** — The annotated `.md` consensus document uses:
 
 | Rendering | Confidence Tier | Meaning | Recommended Action |
 |-----------|-----------------|---------|--------------------|
@@ -110,7 +134,7 @@ Chorus produces a final `.md` file in the `outputs/consensus/` directory. This f
 
 *Note: The exact threshold percentages are configurable in `config.py`, or per-run via the two confidence-threshold sliders in the UI sidebar.*
 
-Alongside the annotated Markdown, every run also writes a `{stem}_best_guess.txt` file — a clean, fully human-readable transcript with no brackets, highlighting, or statistics at all. Every MEDIUM/LOW-confidence position is resolved to its single best-guess word (the highest-agreement candidate already selected by the consensus vote), making it suitable for distribution to non-technical readers or downstream NLP processing.
+---
 
 Download individual formats from the results panel, or **Download All** for a ZIP bundle. Every completed run is also browsable later from the **Past Jobs** page in the sidebar — no need to keep the browser tab open.
 
