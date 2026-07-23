@@ -180,6 +180,44 @@ def test_transcribe_mps_float64_fallback_retries_on_cpu(tmp_path, monkeypatch):
     assert call_count["n"] == 1
 
 
+def test_mps_routes_straight_to_cpu_after_first_fallback(tmp_path, monkeypatch):
+    """Once the float64 fallback fires, later MPS passes in the same process
+    skip the doomed MPS attempt and go straight to CPU."""
+    audio_path = tmp_path / "sample.wav"
+    audio_path.write_bytes(b"fake")
+
+    cpu_model = _DummyModel(text="cpu result")
+    mps_attempts = {"n": 0}
+
+    class MpsModel(_DummyModel):
+        def transcribe(self, audio_path: str, **kwargs) -> dict:
+            mps_attempts["n"] += 1
+            raise TypeError(
+                "Cannot convert a MPS Tensor to float64 dtype as the MPS "
+                "framework doesn't support float64."
+            )
+
+    def fake_get_model(device=None, model_name=None):
+        if device == "cpu":
+            return cpu_model, "cpu", model_name or "base"
+        return MpsModel(), "mps", model_name or "base"
+
+    monkeypatch.setattr(whisper_engine, "_get_model", fake_get_model)
+
+    for variant in ("original", "highpass", "normalised"):
+        result = whisper_engine.transcribe(
+            audio_path=audio_path,
+            variant_key=variant,
+            stem="sample",
+            device="mps",
+            transcripts_dir=tmp_path,
+        )
+        assert result["text"] == "cpu result"
+
+    # Only the first pass attempts MPS; the next two route straight to CPU.
+    assert mps_attempts["n"] == 1
+
+
 def test_mps_float64_fallback_warns_once_then_info(tmp_path, monkeypatch, caplog):
     """Two consecutive MPS float64 fallbacks emit exactly one WARNING; the
     second occurrence logs at INFO level instead."""

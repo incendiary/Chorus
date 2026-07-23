@@ -43,6 +43,9 @@ _models: dict[tuple[str, str], whisper.Whisper] = {}
 # The MPS float64 fallback fires once per pass on Apple Silicon; warn the
 # user once per process and keep subsequent occurrences at INFO level.
 _mps_float64_warned = False
+# Once the float64 fallback has been observed, route subsequent transcribe()
+# calls straight to CPU rather than repeating the doomed MPS attempt.
+_mps_float64_route_cpu = False
 _model_lock = threading.Lock()
 
 
@@ -140,14 +143,29 @@ def transcribe(
     FileNotFoundError
         If *audio_path* does not exist.
     """
+    global _mps_float64_warned, _mps_float64_route_cpu
+
     audio_path = Path(audio_path)
     if not audio_path.exists():
         raise FileNotFoundError(f"Audio variant not found: {audio_path}")
 
-    model, active_device, active_model = _get_model(
-        device=device,
-        model_name=model_name,
-    )
+    requested_device = device or WHISPER_DEVICE
+    if requested_device == "mps" and _mps_float64_route_cpu:
+        # A prior pass in this process already showed MPS cannot do float64
+        # word-timestamp alignment — skip the doomed MPS attempt entirely.
+        logger.info(
+            "Routing transcription straight to CPU (MPS float64 fallback "
+            "already observed this process)."
+        )
+        model, active_device, active_model = _get_model(
+            device="cpu",
+            model_name=model_name,
+        )
+    else:
+        model, active_device, active_model = _get_model(
+            device=device,
+            model_name=model_name,
+        )
     lang = language or WHISPER_LANGUAGE
 
     logger.info("Transcribing variant '%s': %s", variant_key, audio_path.name)
@@ -159,6 +177,11 @@ def transcribe(
     # Always enable word-level timestamps for richer export options
     decode_options["word_timestamps"] = True
 
+    # Whisper's default fp16=True triggers a "FP16 is not supported on CPU"
+    # UserWarning; silence it at source whenever the effective device is CPU.
+    if active_device == "cpu":
+        decode_options["fp16"] = False
+
     try:
         result = model.transcribe(str(audio_path), **decode_options)
     except TypeError as exc:
@@ -166,7 +189,6 @@ def transcribe(
         # MPS does not support. Fall back to CPU and retry with the same options.
         if "float64" not in str(exc) and "MPS" not in str(exc):
             raise
-        global _mps_float64_warned
         if not _mps_float64_warned:
             _mps_float64_warned = True
             logger.warning(
@@ -179,8 +201,11 @@ def transcribe(
                 "MPS float64 fallback — retrying pass on CPU (expected on Apple "
                 "Silicon)."
             )
+        _mps_float64_route_cpu = True
         cpu_model, _, _ = _get_model(model_name=active_model, device="cpu")
+        decode_options["fp16"] = False
         result = cpu_model.transcribe(str(audio_path), **decode_options)
+        active_device = "cpu"
 
     # Augment result with metadata
     result["variant"] = variant_key
@@ -208,6 +233,8 @@ def transcribe(
 
 def unload_model() -> None:
     """Release all cached models from memory (useful for testing)."""
+    global _mps_float64_route_cpu
     with _model_lock:
         _models.clear()
+    _mps_float64_route_cpu = False
     logger.info("Whisper model cache cleared.")
