@@ -44,10 +44,18 @@ logger = logging.getLogger(__name__)
 # Configuration
 # ─────────────────────────────────────────────────────────────────────────────
 
-HF_TOKEN: str | None = os.environ.get("HUGGINGFACE_TOKEN")
-
 # Minimum speaker-turn duration to retain (seconds)
 MIN_SEGMENT_DURATION: float = 0.5
+
+
+def _get_hf_token() -> str | None:
+    """Read HUGGINGFACE_TOKEN lazily, at pipeline-load time.
+
+    Reading at call time (rather than caching a module-level constant at
+    import) ensures the token is always seen, regardless of import order
+    relative to ``.env`` being loaded (see ``config.py``).
+    """
+    return os.environ.get("HUGGINGFACE_TOKEN")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -97,7 +105,8 @@ def _load_pipeline():
         import torch
         from pyannote.audio import Pipeline  # type: ignore
 
-        if not HF_TOKEN:
+        hf_token = _get_hf_token()
+        if not hf_token:
             logger.warning(
                 "HUGGINGFACE_TOKEN not set — diarisation will use stub mode. "
                 "Set the token to enable full speaker identification."
@@ -107,7 +116,7 @@ def _load_pipeline():
         logger.info("Loading pyannote speaker-diarization-3.1 pipeline…")
         pipeline = Pipeline.from_pretrained(
             "pyannote/speaker-diarization-3.1",
-            use_auth_token=HF_TOKEN,
+            use_auth_token=hf_token,
         )
 
         # Use GPU if available

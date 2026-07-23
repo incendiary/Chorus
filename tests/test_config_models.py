@@ -51,3 +51,33 @@ def test_consensus_models_empty_value_falls_back_to_default(monkeypatch):
     cfg = _reload_config(monkeypatch, whisper_model="small", consensus_models=" , , ")
     assert cfg.CONSENSUS_MODELS == ("small",)
     assert cfg.CONSENSUS_MODEL_LABELS == {"small": "Whisper small"}
+
+
+class TestDotenvLoader:
+    """config._load_dotenv populates os.environ from a .env file."""
+
+    def test_loads_values_and_strips_quotes(self, tmp_path, monkeypatch):
+        env = tmp_path / ".env"
+        env.write_text(
+            'HUGGINGFACE_TOKEN="hf_abc123"\n' "# a comment\n" "\n" "PLAIN=value\n",
+            encoding="utf-8",
+        )
+        monkeypatch.delenv("HUGGINGFACE_TOKEN", raising=False)
+        monkeypatch.delenv("PLAIN", raising=False)
+
+        config_module._load_dotenv(env)
+
+        assert config_module.os.environ["HUGGINGFACE_TOKEN"] == "hf_abc123"
+        assert config_module.os.environ["PLAIN"] == "value"
+
+    def test_real_environment_takes_precedence(self, tmp_path, monkeypatch):
+        env = tmp_path / ".env"
+        env.write_text("HUGGINGFACE_TOKEN=from_dotenv\n", encoding="utf-8")
+        monkeypatch.setenv("HUGGINGFACE_TOKEN", "from_real_env")
+
+        config_module._load_dotenv(env)
+
+        assert config_module.os.environ["HUGGINGFACE_TOKEN"] == "from_real_env"
+
+    def test_missing_file_is_a_noop(self, tmp_path):
+        config_module._load_dotenv(tmp_path / "does_not_exist.env")  # no raise
