@@ -565,3 +565,58 @@ class TestOutputTriad:
         assert "≥ 90%" in text  # methodology section
         assert "Consensus threshold | 90%" in text  # config table
         assert "Similarity threshold | 75%" in text
+
+
+class TestParsingGuideWrittenPerRun:
+    """HOW_TO_PARSE_CHORUS_OUTPUT.md is written wherever consensus outputs land."""
+
+    def test_written_to_output_dir_when_given(self, tmp_path):
+        from unittest.mock import patch
+
+        from tests.test_integration import (
+            _generate_sine_wav,
+            _mock_run_transcription_pass,
+        )
+
+        audio = _generate_sine_wav(tmp_path / "audio.wav")
+        with patch(
+            "pipeline_runner.run_transcription_pass",
+            side_effect=_mock_run_transcription_pass,
+        ):
+            from pipeline_runner import run_pipeline
+
+            run_pipeline(audio_path=audio, language="en", output_dir=tmp_path / "out")
+
+        guide = tmp_path / "out" / "consensus" / "HOW_TO_PARSE_CHORUS_OUTPUT.md"
+        assert guide.exists()
+        assert "Chorus" in guide.read_text(encoding="utf-8")
+
+    def test_written_to_global_consensus_dir_when_output_dir_omitted(
+        self, tmp_path, monkeypatch
+    ):
+        """The default path (no output_dir) must still yield the guide."""
+        from unittest.mock import patch
+
+        import config
+        import export_engine.exporter as exporter
+        from tests.test_integration import (
+            _generate_sine_wav,
+            _mock_run_transcription_pass,
+        )
+
+        redirected = tmp_path / "global_consensus"
+        monkeypatch.setattr(config, "CONSENSUS_DIR", redirected)
+        monkeypatch.setattr(exporter, "CONSENSUS_DIR", redirected)
+        # pipeline_runner imports CONSENSUS_DIR by name at module load
+        import pipeline_runner
+
+        monkeypatch.setattr(pipeline_runner, "CONSENSUS_DIR", redirected)
+
+        audio = _generate_sine_wav(tmp_path / "audio.wav")
+        with patch(
+            "pipeline_runner.run_transcription_pass",
+            side_effect=_mock_run_transcription_pass,
+        ):
+            pipeline_runner.run_pipeline(audio_path=audio, language="en")
+
+        assert (redirected / "HOW_TO_PARSE_CHORUS_OUTPUT.md").exists()

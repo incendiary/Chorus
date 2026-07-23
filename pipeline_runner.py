@@ -21,7 +21,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from audio_processor.pipeline import process_audio
-from config import ensure_output_dirs
+from config import CONSENSUS_DIR, ensure_output_dirs
 from transcription_engine.orchestrator import run_transcription_pass
 from utils import sanitise_stem
 
@@ -231,9 +231,14 @@ def run_pipeline(
     )
 
     # ── Copy parsing guide to output directory ───────────────────────────────
+    # Write it wherever the consensus outputs land: the per-run directory when
+    # output_dir was given, else the global CONSENSUS_DIR — so every run
+    # (UI, CLI, and batch) yields the parsing guide alongside its outputs.
     parsing_guide_src = Path(__file__).resolve().parent / "docs" / "CHORUS_FOR_LLMS.md"
-    if parsing_guide_src.exists() and consensus_dir:
-        parsing_guide_dst = consensus_dir / "HOW_TO_PARSE_CHORUS_OUTPUT.md"
+    parsing_guide_dir = consensus_dir if consensus_dir is not None else CONSENSUS_DIR
+    if parsing_guide_src.exists():
+        parsing_guide_dir.mkdir(parents=True, exist_ok=True)
+        parsing_guide_dst = parsing_guide_dir / "HOW_TO_PARSE_CHORUS_OUTPUT.md"
         parsing_guide_dst.write_text(
             parsing_guide_src.read_text(encoding="utf-8"), encoding="utf-8"
         )
