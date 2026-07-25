@@ -6,6 +6,7 @@ import logging
 import os
 import tempfile
 import time
+import uuid
 from pathlib import Path
 
 import streamlit as st
@@ -13,6 +14,7 @@ import streamlit as st
 import config
 from config import WHISPER_DEVICE
 from pipeline_runner import run_pipeline
+from transcription_engine.orchestrator import load_transcripts_from_disk
 from ui.results import (
     build_file_anchors,
     hw_recommendation,
@@ -26,6 +28,9 @@ from ui.results import (
     render_result_navigation,
     render_run_status,
 )
+from ui.run_manager import RunManager, get_run_manager
+from ui.run_state import RUNS_DIR, FileEntry, RunJob
+from ui.run_status_panel import render_file_status_panel
 from ui.sidebar import SidebarConfig
 from utils import sanitise_stem
 
@@ -58,8 +63,9 @@ def run_one_file(
         progress_slot.progress(min(frac, 1.0), text=label)
         status_slot.markdown(f"**Status:** {label}")
         log_lines.append(f"`{frac * 100:.0f}%` — {label}")
-        with log_expander:
-            st.markdown("\n\n".join(log_lines))
+        # O(1): render only the latest line, not the whole joined history
+        # (a 197-segment file used to re-render ~19k cumulative lines).
+        log_expander.markdown(log_lines[-1])
 
     results = run_pipeline(
         audio_path=tmp_path,
@@ -77,8 +83,47 @@ def run_one_file(
     return results, tmp_path, original_stem
 
 
+def spool_upload(uf: object, dest_dir: Path) -> tuple[Path, str]:
+    """Spool an uploaded file into *dest_dir*; return (path, sanitised stem).
+
+    Mirrors ``run_one_file``'s tempfile/sanitise logic, but writes into a
+    run-specific directory (rather than the system temp dir) so the file
+    survives on disk for the background thread to read after this script
+    run has ended.
+    """
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    stem = sanitise_stem(Path(uf.name).stem, fallback="upload")
+    suffix = Path(uf.name).suffix.lower()
+    tmp_fd = tempfile.NamedTemporaryFile(
+        suffix=suffix, prefix=f"{stem}_", dir=str(dest_dir), delete=False
+    )
+    path = Path(tmp_fd.name)
+    tmp_fd.write(uf.read())
+    tmp_fd.close()
+    return path, stem
+
+
 def render_run_section(uploaded_files: list, config_obj: SidebarConfig) -> None:
-    """Render the upload prompt, run controls, and per-file results."""
+    """Render the run section as a three-state dispatcher on ``RunManager``.
+
+    Idle — preflight/upload/mode UI and the Start button.
+    Running — a live, poll-driven status view fed from the on-disk state
+      file, so progress survives a refresh or tab close.
+    Finished — the results view, fed from the manager's in-memory registry
+      with a disk-rehydration fallback.
+    """
+    manager = get_run_manager()
+    state = manager.get_state()
+    status = state.get("status") if state else None
+
+    if status == "running":
+        _render_running_fragment(manager)
+        return
+
+    if status in ("finished", "interrupted"):
+        _render_finished_state(manager, state)
+        return
+
     if not uploaded_files:
         st.info(
             "Upload one or more audio files above to begin. "
@@ -87,24 +132,34 @@ def render_run_section(uploaded_files: list, config_obj: SidebarConfig) -> None:
         )
         return
 
+    _render_idle_state(uploaded_files, config_obj, manager)
+
+
+def _render_idle_state(
+    uploaded_files: list, config_obj: SidebarConfig, manager: RunManager
+) -> None:
+    """Preflight/upload/mode UI and the Start Chorus button."""
     st.markdown('<div id="run-section"></div>', unsafe_allow_html=True)
     st.divider()
     st.subheader("2 · Run Pipeline")
 
     # ── Processing mode (only shown for multiple files) ───────────────────────
+    # Background runs always process files one at a time (RunManager enforces
+    # a single active run and run_worker.execute_run loops sequentially); this
+    # choice is kept for preflight/expectation-setting parity but no longer
+    # branches execution.
     rec_mode, rec_reason = hw_recommendation()
 
     if len(uploaded_files) > 1:
         # Auto-switch to batch view for 3+ files
         if len(uploaded_files) >= 3:
-            mode_choice = "All at once — results shown at end"
             st.info(
                 f"📁 **Batch mode** — {len(uploaded_files)} files detected. "
                 "All files will be processed before results are displayed.",
                 icon="📁",
             )
         else:
-            mode_choice = st.radio(
+            st.radio(
                 "Processing mode",
                 options=[
                     "Sequential — results appear per file",
@@ -122,9 +177,6 @@ def render_run_section(uploaded_files: list, config_obj: SidebarConfig) -> None:
                 ),
             )
         st.caption(rec_reason)
-        sequential = mode_choice.startswith("Sequential")
-    else:
-        sequential = True
 
     # ── LOW-word display toggle ───────────────────────────────────────────────
     show_low = st.toggle(
@@ -164,6 +216,7 @@ def render_run_section(uploaded_files: list, config_obj: SidebarConfig) -> None:
             f"▶ Start Chorus ({n} file{'s' if n > 1 else ''})",
             type="primary",
             use_container_width=True,
+            disabled=manager.is_running(),
         )
 
     render_recent_runs()
@@ -197,202 +250,208 @@ def render_run_section(uploaded_files: list, config_obj: SidebarConfig) -> None:
         if checked
     ]
 
-    # ── Main run loop ─────────────────────────────────────────────────────────
+    run_id = uuid.uuid4().hex
+    run_dir = RUNS_DIR / run_id
+    files: list[FileEntry] = []
+    for uf in uploaded_files:
+        spool_path, stem = spool_upload(uf, run_dir)
+        files.append(
+            FileEntry(name=str(uf.name), stem=stem, spool_path=str(spool_path))
+        )
+
+    job = RunJob(
+        run_id=run_id,
+        config={
+            "language": config_obj.language,
+            "consensus_models": config_obj.consensus_models,
+            "enable_nlp": config_obj.enable_nlp,
+            "enable_llm": config_obj.enable_llm,
+            "ollama_model": config_obj.ollama_model,
+            "enable_diarisation": config_obj.enable_diarisation,
+            "alignment_strategy": config_obj.alignment_choice,
+            "consensus_threshold": config_obj.consensus_threshold,
+            "similarity_threshold": config_obj.similarity_threshold,
+        },
+        files=files,
+        show_low=show_low,
+        formats_to_export=formats_to_export,
+    )
+
+    if not manager.start(job):
+        st.warning(
+            "A run is already in progress. Please wait for it to finish.",
+            icon="⚠️",
+        )
+        return
+
+    # Under CHORUS_SYNC_RUN=1, start() blocks until the run has finished, so
+    # the state file already says "finished" here; under real threading it
+    # says "running". Either way, a full-app rerun lets the dispatcher at the
+    # top of render_run_section re-read the state and switch views.
+    st.rerun()
+
+
+@st.fragment(run_every=2)
+def _render_running_fragment(manager: RunManager) -> None:
+    """Poll-driven live view of the in-progress run (survives refresh/close)."""
+    state = manager.get_state()
+    if state is None:
+        return
+    if state.get("status") != "running":
+        # The run finished between the last poll and this one — hand control
+        # back to the full-page dispatcher so it can render the Finished view.
+        st.rerun(scope="app")
+        return
+
+    files = state["files"]
+    total_files = len(files)
+    completed_files = sum(1 for f in files if f["status"] == "done")
+    failed_files = sum(1 for f in files if f["status"] == "error")
 
     st.markdown('<div id="results-section"></div>', unsafe_allow_html=True)
     st.divider()
     st.subheader("3 · Results")
-    run_started_at = time.time()
-    run_status_slot = st.empty()
-    completed_files = 0
-    failed_files = 0
-    failed_file_names: list[str] = []
 
     render_run_status(
-        container=run_status_slot,
-        total_files=len(uploaded_files),
+        container=st.container(),
+        total_files=total_files,
         completed_files=completed_files,
         failed_files=failed_files,
-        start_time=run_started_at,
+        start_time=state.get("started_at") or time.time(),
     )
 
-    if sequential:
-        file_names = [str(uf.name) for uf in uploaded_files]
-        file_anchors = build_file_anchors(file_names)
-        render_result_navigation(file_names, file_anchors)
-        sequential_results: list[tuple[object, dict, Path, str]] = []
+    run_config = state.get("config", {})
+    for file_state in files:
+        with st.expander(f"📄 {file_state['name']}", expanded=True):
+            panel_state = {**file_state, "_config": run_config}
+            render_file_status_panel(panel_state)
 
-        # Process and render each file as it completes
-        for uf in uploaded_files:
-            section_anchor = file_anchors[str(uf.name)]
-            st.markdown(f'<div id="{section_anchor}"></div>', unsafe_allow_html=True)
-            render_run_status(
-                container=run_status_slot,
-                total_files=len(uploaded_files),
-                completed_files=completed_files,
-                failed_files=failed_files,
-                start_time=run_started_at,
-                current_file=uf.name,
-            )
-            with st.expander(f"📄 {uf.name}", expanded=True):
-                progress_bar = st.progress(0.0, text="Initialising…")
-                status_text = st.empty()
-                log_expander = st.expander("📋 Live log", expanded=False)
-                log_lines: list[str] = []
 
-                tmp_path: Path | None = None
-                try:
-                    results, tmp_path, original_stem = run_one_file(
-                        uf,
-                        progress_bar,
-                        status_text,
-                        log_lines,
-                        log_expander,
-                        config_obj,
-                    )
-                    completed_files += 1
-                    progress_bar.progress(1.0, text="✅ Complete!")
-                    status_text.success(
-                        f"Completed in **{results['elapsed_seconds']} s**"
-                    )
-                    sequential_results.append((uf, results, tmp_path, original_stem))
-                except Exception as exc:
-                    failed_files += 1
-                    failed_file_names.append(str(uf.name))
-                    render_processing_error(uf.name, exc, allow_retry=True)
-                    logger.exception("Pipeline error for %s", uf.name)
-                finally:
-                    if tmp_path is not None:
-                        tmp_path.unlink(missing_ok=True)
+def _render_finished_state(manager: RunManager, state: dict) -> None:
+    """Reuse the results-rendering helpers, fed from the manager's in-memory
+    registry with a disk-rehydration fallback for a restarted server."""
+    run_id = state["run_id"]
+    ui_options = state.get("ui_options", {})
+    show_low = ui_options.get("show_low", True)
+    formats_to_export = ui_options.get("formats_to_export", [])
 
-            render_run_status(
-                container=run_status_slot,
-                total_files=len(uploaded_files),
-                completed_files=completed_files,
-                failed_files=failed_files,
-                start_time=run_started_at,
-            )
-
-        # Show summary once processing is finished, then render detail sections.
-        total_duration = time.time() - run_started_at
-        render_batch_outcome_summary(
-            total_files=len(uploaded_files),
-            completed_files=completed_files,
-            failed_files=failed_files,
-            duration_seconds=total_duration,
-            failed_file_names=failed_file_names,
-            file_anchors=file_anchors,
+    if state.get("status") == "interrupted":
+        st.warning(
+            "The previous run was interrupted (the server restarted mid-run). "
+            "Partial outputs may be available below.",
+            icon="⚠️",
         )
+
+    files = state["files"]
+    total_files = len(files)
+    completed_files = sum(1 for f in files if f["status"] == "done")
+    failed_files = sum(1 for f in files if f["status"] == "error")
+    failed_file_names = [f["name"] for f in files if f["status"] == "error"]
+    duration = (state.get("finished_at") or time.time()) - (
+        state.get("started_at") or time.time()
+    )
+
+    st.markdown('<div id="results-section"></div>', unsafe_allow_html=True)
+    st.divider()
+    st.subheader("3 · Results")
+
+    file_names = [f["name"] for f in files]
+    file_anchors = build_file_anchors(file_names)
+    render_result_navigation(file_names, file_anchors)
+
+    render_batch_outcome_summary(
+        total_files=total_files,
+        completed_files=completed_files,
+        failed_files=failed_files,
+        duration_seconds=duration,
+        failed_file_names=failed_file_names,
+        file_anchors=file_anchors,
+    )
+
+    session_key = f"_chorus_recorded_run_{run_id}"
+    if not st.session_state.get(session_key):
         record_recent_run(
-            total=len(uploaded_files),
+            total=total_files,
             completed=completed_files,
             failed=failed_files,
-            duration=total_duration,
+            duration=duration,
         )
-        result_filter = render_result_filter(len(uploaded_files))
+        st.session_state[session_key] = True
 
-        for uf, results, tmp_path, original_stem in sequential_results:
-            if result_filter == "Failed":
+    result_filter = render_result_filter(total_files)
+    results_registry = manager.get_results(run_id)
+
+    for file_state in files:
+        name = file_state["name"]
+        stem = file_state["stem"]
+        if result_filter == "Failed" and file_state["status"] != "error":
+            continue
+        if result_filter == "Completed" and file_state["status"] != "done":
+            continue
+
+        section_anchor = file_anchors[name]
+        st.markdown(f'<div id="{section_anchor}"></div>', unsafe_allow_html=True)
+        with st.expander(f"📄 {name}", expanded=True):
+            if file_state["status"] == "error":
+                render_processing_error(
+                    name, RuntimeError(file_state.get("error") or "Unknown error")
+                )
                 continue
-            with st.expander(f"📄 {uf.name}", expanded=True):
-                st.success(f"Completed in **{results['elapsed_seconds']} s**")
-                render_file_results(
-                    uf.name,
-                    results,
-                    tmp_path,
-                    original_stem,
-                    show_low=show_low,
-                    formats_to_export=formats_to_export,
-                )
 
-    else:
-        file_names = [str(uf.name) for uf in uploaded_files]
-        file_anchors = build_file_anchors(file_names)
-        render_result_navigation(file_names, file_anchors)
+            results = results_registry.get(name)
+            if results is None:
+                results = _rehydrate_results_from_disk(stem, file_state)
+                if results is None:
+                    st.error(
+                        f"Results for {name} are no longer available "
+                        "(in-memory cache cleared and outputs incomplete)."
+                    )
+                    continue
 
-        # Process all files first, collect results
-        all_results: list[tuple[object, dict, Path, str]] = []
-        overall = st.progress(0.0, text="Starting…")
-
-        for idx, uf in enumerate(uploaded_files):
-            render_run_status(
-                container=run_status_slot,
-                total_files=len(uploaded_files),
-                completed_files=completed_files,
-                failed_files=failed_files,
-                start_time=run_started_at,
-                current_file=uf.name,
-            )
-            overall.progress(
-                idx / len(uploaded_files),
-                text=f"Processing {uf.name} ({idx + 1}/{len(uploaded_files)})…",
-            )
-            progress_bar = st.empty()
-            status_text = st.empty()
-            log_expander = st.expander(f"📋 Live log — {uf.name}", expanded=False)
-            log_lines = []
-
-            tmp_path: Path | None = None
-            try:
-                results, tmp_path, original_stem = run_one_file(
-                    uf,
-                    progress_bar,
-                    status_text,
-                    log_lines,
-                    log_expander,
-                    config_obj,
-                )
-                all_results.append((uf, results, tmp_path, original_stem))
-                completed_files += 1
-            except Exception as exc:
-                failed_files += 1
-                failed_file_names.append(str(uf.name))
-                render_processing_error(uf.name, exc)
-                logger.exception("Pipeline error for %s", uf.name)
-            finally:
-                if tmp_path is not None:
-                    tmp_path.unlink(missing_ok=True)
-
-            render_run_status(
-                container=run_status_slot,
-                total_files=len(uploaded_files),
-                completed_files=completed_files,
-                failed_files=failed_files,
-                start_time=run_started_at,
+            st.success(f"Completed in **{results.get('elapsed_seconds', 0)} s**")
+            render_file_results(
+                name,
+                results,
+                None,
+                stem,
+                show_low=show_low,
+                formats_to_export=formats_to_export,
             )
 
-        overall.progress(1.0, text=f"✅ All {len(uploaded_files)} files complete!")
+    if st.button("🧹 Clear results / start new run"):
+        manager.clear_finished()
+        st.rerun()
 
-        # Now render all results
-        total_duration = time.time() - run_started_at
-        render_batch_outcome_summary(
-            total_files=len(uploaded_files),
-            completed_files=completed_files,
-            failed_files=failed_files,
-            duration_seconds=total_duration,
-            failed_file_names=failed_file_names,
-            file_anchors=file_anchors,
-        )
-        record_recent_run(
-            total=len(uploaded_files),
-            completed=completed_files,
-            failed=failed_files,
-            duration=total_duration,
-        )
-        result_filter = render_result_filter(len(uploaded_files))
 
-        for uf, results, tmp_path, original_stem in all_results:
-            if result_filter == "Failed":
-                continue
-            section_anchor = file_anchors[str(uf.name)]
-            st.markdown(f'<div id="{section_anchor}"></div>', unsafe_allow_html=True)
-            with st.expander(f"📄 {uf.name}", expanded=True):
-                st.success(f"Completed in **{results['elapsed_seconds']} s**")
-                render_file_results(
-                    uf.name,
-                    results,
-                    tmp_path,
-                    original_stem,
-                    show_low=show_low,
-                    formats_to_export=formats_to_export,
-                )
+def _rehydrate_results_from_disk(stem: str, file_state: dict) -> dict | None:
+    """Reconstruct a ``results`` dict from disk when the in-memory registry
+    has been cleared (e.g. the server restarted after this run finished).
+
+    Returns ``None`` when the on-disk transcripts don't include the
+    ``"original"`` variant that ``export_zip`` requires (see
+    ``ui/results.py::render_file_results``), or the consensus file is
+    missing — the caller shows an error instead of guessing.
+    """
+    output_paths = file_state.get("output_paths", {})
+    consensus_path = output_paths.get("consensus_path")
+    if not consensus_path:
+        return None
+
+    transcripts = load_transcripts_from_disk(stem)
+    if not transcripts.get("original"):
+        return None
+
+    def _opt_path(key: str) -> Path | None:
+        value = output_paths.get(key)
+        return Path(value) if value else None
+
+    return {
+        "transcripts": transcripts,
+        "consensus_path": Path(consensus_path),
+        "ai_context_path": _opt_path("ai_context_path"),
+        "bundle_path": _opt_path("bundle_path"),
+        "best_guess_path": _opt_path("best_guess_path"),
+        "diarised_path": _opt_path("diarised_path"),
+        "speaker_labels": [],
+        "elapsed_seconds": file_state.get("elapsed", 0),
+    }

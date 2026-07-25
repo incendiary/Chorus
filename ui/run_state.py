@@ -50,6 +50,10 @@ class FileEntry:
     error: str | None = None
     output_paths: dict[str, str] = field(default_factory=dict)
 
+    # Set when the file transitions to "running" so the WP2 status panel can
+    # compute a live-ticking elapsed time at render time.
+    started_at: float | None = None
+
     # WP1a pipeline event fields
     stage: str | None = None
     stage_index: int | None = None
@@ -74,11 +78,20 @@ class FileEntry:
 
 @dataclass
 class RunJob:
-    """A run to execute: a config snapshot plus the files it covers."""
+    """A run to execute: a config snapshot plus the files it covers.
+
+    ``show_low``/``formats_to_export`` are UI-only render options (not
+    pipeline kwargs) captured at Start time so the Finished view can render
+    results identically after a refresh/tab-close, without a live widget to
+    read them back from. They travel separately from ``config`` because
+    ``config`` is forwarded verbatim as ``run_pipeline(**job.config)``.
+    """
 
     run_id: str
     config: dict[str, Any]
     files: list[FileEntry]
+    show_low: bool = True
+    formats_to_export: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return {
