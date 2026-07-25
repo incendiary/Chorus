@@ -2,14 +2,10 @@
 
 from __future__ import annotations
 
-import json
-import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
 from streamlit.testing.v1 import AppTest
-
-from ui.run_state import ACTIVE_RUN_FILE, FileEntry
 
 
 class TestRunIndicator:
@@ -107,7 +103,6 @@ class TestRunIndicator:
             at.run()
             assert not at.exception
             # No pill should render for a finished (non-interrupted) state
-            output = at.get_text()
             # Finished state should not show any active indicator
             # (Though we may see it in the main app UI, the indicator itself renders nothing)
             assert not at.exception

@@ -2,13 +2,10 @@
 
 from __future__ import annotations
 
-import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
 from streamlit.testing.v1 import AppTest
-
-from config import OUTPUTS_DIR
 
 
 class TestLogsPageDiskBacked:

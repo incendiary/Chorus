@@ -35,9 +35,7 @@ _LEVEL_COLOURS = {
 }
 
 # Parse a log line: "HH:MM:SS  LEVEL    logger — message"
-_LOG_LINE_PATTERN = re.compile(
-    r"^(\d{2}:\d{2}:\d{2})\s{2}(\w+)-?\s*(.+?)\s—\s(.*)$"
-)
+_LOG_LINE_PATTERN = re.compile(r"^(\d{2}:\d{2}:\d{2})\s{2}(\w+)-?\s*(.+?)\s—\s(.*)$")
 
 
 def _parse_log_line(line: str) -> dict | None:
@@ -66,9 +64,7 @@ def _find_run_logs() -> dict[str, Path]:
             if log_file.exists():
                 logs[run_dir.name] = log_file
 
-    return dict(
-        sorted(logs.items(), key=lambda x: x[1].stat().st_mtime, reverse=True)
-    )
+    return dict(sorted(logs.items(), key=lambda x: x[1].stat().st_mtime, reverse=True))
 
 
 def _load_and_parse_log(log_path: Path) -> list[dict]:
@@ -87,7 +83,7 @@ def _strip_timestamp(line: str) -> str:
     # Return just the "LEVEL logger — message" part
     match = re.match(r"^\d{2}:\d{2}:\d{2}\s{2}", line)
     if match:
-        return line[match.end():]
+        return line[match.end() :]
     return line
 
 
@@ -139,7 +135,7 @@ def _render_disk_logs() -> None:
     records = _load_and_parse_log(selected_log)
 
     # Apply tail window (newest N entries only).
-    records = records[-int(tail_n):]
+    records = records[-int(tail_n) :]
 
     # Deduplicate consecutive identical lines (timestamp-stripped comparison).
     # Keeps the most recent timestamp and accumulates a repeat count.
@@ -184,9 +180,7 @@ def _render_disk_logs() -> None:
 
     # Render inside a bounded scrollable container
     if not deduped:
-        st.info(
-            f"No log entries for run {selected_run_id}."
-        )
+        st.info(f"No log entries for run {selected_run_id}.")
     else:
         with st.container(height=400):
             for record, count in deduped:
@@ -233,7 +227,7 @@ def _render_session_logs() -> None:
     )
 
     # Apply tail window (most-recent N entries).
-    filtered = filtered[-int(tail_n):]
+    filtered = filtered[-int(tail_n) :]
 
     with col_download:
         if filtered:

@@ -8,8 +8,6 @@ clears the state file.
 
 from __future__ import annotations
 
-from typing import Any
-
 import streamlit as st
 
 from ui.run_manager import get_run_manager
@@ -44,9 +42,9 @@ def render_run_indicator(is_subpage: bool = False) -> None:
             # Count files and derive progress
             done = sum(1 for f in files if f.get("status") in ("done", "error"))
             total = len(files)
-            overall_progress = sum(
-                f.get("progress", 0.0) for f in files
-            ) / total if total > 0 else 0.0
+            overall_progress = (
+                sum(f.get("progress", 0.0) for f in files) / total if total > 0 else 0.0
+            )
 
             percentage = int(round(overall_progress * 100))
             pill_text = f"⏳ Transcribing {done}/{total} — {percentage}%"
