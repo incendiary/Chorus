@@ -187,6 +187,7 @@ def run_transcription_pass(
     transcripts_dir: Path | None = None,
     model_names: tuple[str, ...] | None = None,
     segment_callback: Any | None = None,
+    on_pass_start: Any | None = None,
 ) -> dict[str, dict[str, Any]]:
     """
     Transcribe every audio variant and return all results.
@@ -208,8 +209,17 @@ def run_transcription_pass(
         ``config.CONSENSUS_MODELS``.
     segment_callback : callable, optional
         If provided, called as
-        ``segment_callback(segment_index, total_segments, text)``
-        after each segment is decoded within a variant.
+        ``segment_callback(segment_index, total_segments, text, label)``
+        after each segment is decoded within a variant. Sequential branch
+        only: ``label`` identifies the pass currently transcribing (for
+        example ``"Whisper base · Original (unprocessed)"``). Concurrent
+        passes make a single segment counter incoherent, so this callback
+        is never invoked from the parallel branch.
+    on_pass_start : callable, optional
+        Sequential branch only. If provided, called as
+        ``on_pass_start(step, total, label)`` immediately before each pass
+        begins transcribing, so callers know the current-pass label before
+        the first segment tick arrives.
 
     Returns
     -------
@@ -231,6 +241,18 @@ def run_transcription_pass(
             start=1,
         ):
             logger.info("[%d/%d] Transcribing: %s", step, total, label)
+            if on_pass_start:
+                on_pass_start(step, total, label)
+
+            # Wrap the caller's segment_callback in a per-job closure so it
+            # also receives this pass's label — whisper_engine.transcribe
+            # still calls it with the original (index, total, text) signature.
+            job_segment_callback = None
+            if segment_callback is not None:
+
+                def job_segment_callback(seg_idx, seg_total, text, _label=label):
+                    segment_callback(seg_idx, seg_total, text, _label)
+
             result_key, label, result = _transcribe_one(
                 result_key=result_key,
                 variant_key=variant_key,
@@ -241,7 +263,7 @@ def run_transcription_pass(
                 model_name=model_name,
                 label=label,
                 transcripts_dir=transcripts_dir,
-                segment_callback=segment_callback,
+                segment_callback=job_segment_callback,
             )
             transcripts[result_key] = result
             if progress_callback:

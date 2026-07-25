@@ -38,12 +38,22 @@ from config import (
     CONSENSUS_DIR,
     CONSENSUS_THRESHOLD,
     NOISE_FLOOR_MODE,
+    SIMILARITY_THRESHOLD,
     VARIANT_LABELS,
     WHISPER_DEVICE,
     WHISPER_MODEL,
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _read_version() -> str:
+    """Read the Chorus version from the root VERSION file."""
+    try:
+        version_file = Path(__file__).resolve().parent.parent / "VERSION"
+        return version_file.read_text(encoding="utf-8").strip()
+    except OSError:
+        return "unknown"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -151,6 +161,8 @@ def generate_ai_context_pack(
     source_filename: str | None = None,
     output_dir: Path | None = None,
     consensus_threshold: float | None = None,
+    similarity_threshold: float | None = None,
+    schema_version: int = 1,
 ) -> Path:
     """
     Generate an AI-ready context pack for the given transcription.
@@ -178,6 +190,12 @@ def generate_ai_context_pack(
         Agreement fraction at or above which a word is tier HIGH, used to
         render an accurate methodology/statistics narrative.  Defaults to
         ``config.CONSENSUS_THRESHOLD`` when *None*.
+    similarity_threshold : float, optional
+        Fuzzy-match threshold for grouping near-identical word forms.
+        Defaults to ``config.SIMILARITY_THRESHOLD`` when *None*.
+    schema_version : int
+        Schema version of the output bundle (used for documentation).
+        Defaults to 1.
 
     Returns
     -------
@@ -186,9 +204,13 @@ def generate_ai_context_pack(
     """
     if consensus_threshold is None:
         consensus_threshold = CONSENSUS_THRESHOLD
+    if similarity_threshold is None:
+        similarity_threshold = SIMILARITY_THRESHOLD
     pct_str = _format_pct(consensus_threshold)
+    sim_pct_str = _format_pct(similarity_threshold)
     now = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
     strategy = alignment_strategy or ALIGNMENT_STRATEGY
+    chorus_version = _read_version()
 
     # Stats
     total = len(votes) or 1
@@ -211,6 +233,8 @@ def generate_ai_context_pack(
         "> consumed by an AI/LLM alongside questions about this transcription.",
         "> It provides full provenance, confidence data, and uncertainty annotations.",
         "",
+        "> **For the output-format specification and parsing guidance, load `HOW_TO_PARSE_CHORUS_OUTPUT.md`** (written alongside this file).",
+        "",
         f"**Generated:** {now}",
         f"**Processing time:** {elapsed_seconds:.1f} s",
     ]
@@ -232,9 +256,13 @@ def generate_ai_context_pack(
 | Detected language | `{language}` |
 | Compute device | `{WHISPER_DEVICE}` |
 | Alignment strategy | `{strategy}` |
+| Consensus threshold | {_format_pct(consensus_threshold)}% |
+| Similarity threshold | {sim_pct_str}% |
 | Noise floor mode | `{NOISE_FLOOR_MODE}` |
 | Transcription variants | {len(transcripts_meta)} |
 | Total consensus words | {len(votes)} |
+| Chorus version | `{chorus_version}` |
+| Bundle schema version | `{schema_version}` |
 """
     )
 
@@ -310,6 +338,16 @@ When using this transcript:
 5. **If quoting the transcript**, prefer HIGH-confidence passages.
 6. **For critical applications** (legal, medical), flag that this is an
    automated transcription and recommend human verification of uncertain sections.
+
+---
+
+## Machine-Readable Data
+
+The confidence table above lists only uncertain (non-HIGH) words. For a complete
+word-level dataset — including confidence scores, tier assignments, and variant
+alternatives for **every** word in the transcript — refer to the adjacent
+`{stem}_bundle.json` file. This JSON file contains the full structured data
+suitable for programmatic extraction and AI analysis.
 
 ---
 
