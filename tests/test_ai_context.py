@@ -467,3 +467,156 @@ class TestConsensusThresholdLegend:
         text = path.read_text(encoding="utf-8")
         assert "≥ 75% agreement" in text
         assert "≥ 75% variant agreement — very likely correct" in text
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Per-run configuration completeness (WP-OUT)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class TestPerRunConfigCompleteness:
+    def test_similarity_threshold_in_config(
+        self, tmp_consensus_dir, sample_votes, sample_transcripts_meta
+    ):
+        """Similarity threshold must appear in Processing Configuration."""
+        path = generate_ai_context_pack(
+            votes=sample_votes,
+            stem="test",
+            transcripts_meta=sample_transcripts_meta,
+            similarity_threshold=0.80,
+        )
+        text = path.read_text(encoding="utf-8")
+        assert "Similarity threshold" in text
+        assert "80%" in text
+
+    def test_chorus_version_in_config(
+        self, tmp_consensus_dir, sample_votes, sample_transcripts_meta
+    ):
+        """Chorus version must appear in Processing Configuration."""
+        path = generate_ai_context_pack(
+            votes=sample_votes,
+            stem="test",
+            transcripts_meta=sample_transcripts_meta,
+        )
+        text = path.read_text(encoding="utf-8")
+        assert "Chorus version" in text
+
+    def test_schema_version_in_config(
+        self, tmp_consensus_dir, sample_votes, sample_transcripts_meta
+    ):
+        """Bundle schema version must appear in Processing Configuration."""
+        path = generate_ai_context_pack(
+            votes=sample_votes,
+            stem="test",
+            transcripts_meta=sample_transcripts_meta,
+            schema_version=1,
+        )
+        text = path.read_text(encoding="utf-8")
+        assert "Bundle schema version" in text
+        assert "| `1` |" in text or "1" in text
+
+    def test_bundle_reference_in_machine_readable_section(
+        self, tmp_consensus_dir, sample_votes, sample_transcripts_meta
+    ):
+        """Must reference bundle.json for full word-level data."""
+        path = generate_ai_context_pack(
+            votes=sample_votes,
+            stem="test",
+            transcripts_meta=sample_transcripts_meta,
+        )
+        text = path.read_text(encoding="utf-8")
+        assert "## Machine-Readable Data" in text
+        assert "bundle.json" in text
+
+    def test_how_to_parse_reference_at_top(
+        self, tmp_consensus_dir, sample_votes, sample_transcripts_meta
+    ):
+        """Must reference HOW_TO_PARSE_CHORUS_OUTPUT.md in the header."""
+        path = generate_ai_context_pack(
+            votes=sample_votes,
+            stem="test",
+            transcripts_meta=sample_transcripts_meta,
+        )
+        text = path.read_text(encoding="utf-8")
+        assert "HOW_TO_PARSE_CHORUS_OUTPUT.md" in text
+        # Should be near the top, within first 1500 chars
+        lines_head = text[:1500]
+        assert "HOW_TO_PARSE_CHORUS_OUTPUT.md" in lines_head
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Output triad integration (WP-OUT)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class TestOutputTriad:
+    def test_all_thresholds_passed_through(
+        self, tmp_consensus_dir, sample_votes, sample_transcripts_meta
+    ):
+        """Both consensus and similarity thresholds must reach the output."""
+        path = generate_ai_context_pack(
+            votes=sample_votes,
+            stem="test",
+            transcripts_meta=sample_transcripts_meta,
+            consensus_threshold=0.9,
+            similarity_threshold=0.75,
+        )
+        text = path.read_text(encoding="utf-8")
+        assert "≥ 90%" in text  # methodology section
+        assert "Consensus threshold | 90%" in text  # config table
+        assert "Similarity threshold | 75%" in text
+
+
+class TestParsingGuideWrittenPerRun:
+    """HOW_TO_PARSE_CHORUS_OUTPUT.md is written wherever consensus outputs land."""
+
+    def test_written_to_output_dir_when_given(self, tmp_path):
+        from unittest.mock import patch
+
+        from tests.test_integration import (
+            _generate_sine_wav,
+            _mock_run_transcription_pass,
+        )
+
+        audio = _generate_sine_wav(tmp_path / "audio.wav")
+        with patch(
+            "pipeline_runner.run_transcription_pass",
+            side_effect=_mock_run_transcription_pass,
+        ):
+            from pipeline_runner import run_pipeline
+
+            run_pipeline(audio_path=audio, language="en", output_dir=tmp_path / "out")
+
+        guide = tmp_path / "out" / "consensus" / "HOW_TO_PARSE_CHORUS_OUTPUT.md"
+        assert guide.exists()
+        assert "Chorus" in guide.read_text(encoding="utf-8")
+
+    def test_written_to_global_consensus_dir_when_output_dir_omitted(
+        self, tmp_path, monkeypatch
+    ):
+        """The default path (no output_dir) must still yield the guide."""
+        from unittest.mock import patch
+
+        import config
+        import export_engine.exporter as exporter
+        from tests.test_integration import (
+            _generate_sine_wav,
+            _mock_run_transcription_pass,
+        )
+
+        redirected = tmp_path / "global_consensus"
+        monkeypatch.setattr(config, "CONSENSUS_DIR", redirected)
+        monkeypatch.setattr(exporter, "CONSENSUS_DIR", redirected)
+        # pipeline_runner imports CONSENSUS_DIR by name at module load
+        import pipeline_runner
+
+        monkeypatch.setattr(pipeline_runner, "CONSENSUS_DIR", redirected)
+
+        audio = _generate_sine_wav(tmp_path / "audio.wav")
+        with patch(
+            "pipeline_runner.run_transcription_pass",
+            side_effect=_mock_run_transcription_pass,
+        ):
+            pipeline_runner.run_pipeline(audio_path=audio, language="en")
+
+        assert (redirected / "HOW_TO_PARSE_CHORUS_OUTPUT.md").exists()
