@@ -11,11 +11,15 @@ _ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
+from ui.run_indicator import render_run_indicator  # noqa: E402
+
 st.set_page_config(
     page_title="Help — Chorus",
     page_icon="❓",
     layout="wide",
 )
+
+render_run_indicator(is_subpage=True)
 
 st.title("❓ Help & FAQ")
 
