@@ -79,6 +79,12 @@ def execute_run(job: RunJob, manager: RunManager) -> None:
 
     state = new_state(job.run_id, manager.boot_id, job.config, job.files, time.time())
     state["log_path"] = str(log_path)
+    # UI-only render options (not pipeline kwargs) — kept separate from
+    # "config" because that dict is forwarded verbatim to run_pipeline().
+    state["ui_options"] = {
+        "show_low": job.show_low,
+        "formats_to_export": list(job.formats_to_export),
+    }
     write_state_atomic(state)
     manager._results[job.run_id] = {}
 
@@ -102,9 +108,10 @@ def execute_run(job: RunJob, manager: RunManager) -> None:
         for file_state in state["files"]:
             spool_path = Path(file_state["spool_path"])
             file_state["status"] = "running"
+            t0 = time.time()
+            file_state["started_at"] = t0
             throttled_write(force=True)
             logger.info("Processing %s", file_state["name"])
-            t0 = time.time()
 
             def _progress_cb(
                 label: str, frac: float, _fs: dict[str, Any] = file_state
