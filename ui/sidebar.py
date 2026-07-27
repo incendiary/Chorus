@@ -24,6 +24,31 @@ from ui.hardware_survey import (  # type: ignore[import]
 )
 from ui.theme import THEME_PRESETS
 
+# Languages Whisper actually supports, sourced from the model's own tokenizer
+# so the list can never drift from what the engine accepts. Common languages
+# are surfaced first; the remainder follow alphabetically by name.
+_COMMON_LANGUAGES = ("en", "fr", "de", "es", "it", "nl", "pt", "pl", "zh", "ja")
+
+
+def _build_language_options() -> tuple[dict[str, str], tuple[str, ...]]:
+    """Return (code → display name, ordered codes) for the language selector."""
+    try:
+        from whisper import tokenizer as whisper_tokenizer
+
+        supported = whisper_tokenizer.LANGUAGES
+    except ImportError:  # pragma: no cover - whisper is a hard dependency
+        supported = {"en": "english"}
+
+    names = {code: name.title() for code, name in supported.items()}
+    common = tuple(code for code in _COMMON_LANGUAGES if code in names)
+    rest = tuple(
+        code for code in sorted(names, key=lambda c: names[c]) if code not in common
+    )
+    return names, common + rest
+
+
+_LANGUAGE_NAMES, _LANGUAGE_CODES = _build_language_options()
+
 
 @dataclass
 class SidebarConfig:
@@ -235,13 +260,23 @@ def render_sidebar() -> SidebarConfig:
 
         # ── Language ──────────────────────────────────────────────────────────
         st.subheader("Language")
-        lang_input = st.text_input(
-            "Language code (optional)",
-            value="",
-            placeholder="e.g. en, fr, de — leave blank for auto-detect",
-            help="BCP-47 language code. Leave empty for automatic detection.",
+        language = st.selectbox(
+            "Language",
+            options=[None, *_LANGUAGE_CODES],
+            index=0,
+            format_func=lambda code: (
+                "Auto-detect" if code is None else f"{_LANGUAGE_NAMES[code]} ({code})"
+            ),
+            help=(
+                "Restrict Whisper to a known language. Auto-detect is reliable "
+                "for clear speech; setting the language explicitly helps on "
+                "noisy or short recordings. Type to search the list."
+            ),
         )
-        language = lang_input.strip() or None
+        if language is None:
+            st.caption("🔎 Auto-detecting language from the audio.")
+        else:
+            st.caption(f"🗣 Transcribing as **{_LANGUAGE_NAMES[language]}**.")
 
         # ── Processing Strategy ───────────────────────────────────────────────
         st.subheader("Processing Strategy")
