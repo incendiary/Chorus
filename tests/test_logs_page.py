@@ -1,4 +1,12 @@
-"""tests/test_logs_page.py — Tests for the Logs page disk-backed log viewer."""
+"""tests/test_logs_page.py — Tests for the disk-backed Logs page viewer.
+
+The page reads run logs from ``outputs/runs/<run_id>/run.log`` rather than the
+session-state buffer, so an overnight run is still inspectable the next
+morning. ``RUNS_DIR`` is patched at its source (``ui.run_state``) *before* the
+page module is loaded by ``AppTest``, because the page does
+``from ui.run_state import RUNS_DIR`` — patching the page's own namespace is
+impossible by name, as ``2_Logs`` is not a valid Python identifier.
+"""
 
 from __future__ import annotations
 
@@ -7,108 +15,101 @@ from unittest.mock import patch
 
 from streamlit.testing.v1 import AppTest
 
+LOGS_PAGE = "ui/pages/2_Logs.py"
+
+
+def _write_log(runs_dir: Path, run_id: str, lines: list[str]) -> Path:
+    """Create ``runs_dir/run_id/run.log`` containing *lines*."""
+    run_dir = runs_dir / run_id
+    run_dir.mkdir(parents=True, exist_ok=True)
+    log_file = run_dir / "run.log"
+    log_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return log_file
+
+
+def _run_page(runs_dir: Path) -> AppTest:
+    """Run the Logs page with ``RUNS_DIR`` pointed at *runs_dir*."""
+    with patch("ui.run_state.RUNS_DIR", runs_dir):
+        at = AppTest.from_file(LOGS_PAGE, default_timeout=30)
+        at.run()
+    return at
+
+
+def _rendered_text(at: AppTest) -> str:
+    """All text the page rendered, joined for substring assertions."""
+    parts: list[str] = [el.value for el in at.markdown]
+    parts += [el.value for el in at.info]
+    parts += [el.value for el in at.code]
+    return "\n".join(str(p) for p in parts)
+
 
 class TestLogsPageDiskBacked:
-    """Tests for the Logs page reading from disk."""
-
     def test_empty_state_no_logs(self, tmp_path: Path) -> None:
-        """When no run logs exist, show a clear empty-state message."""
-        # Mock RUNS_DIR to point to a non-existent directory
-        mock_runs_dir = tmp_path / "nonexistent_runs"
-        with patch("ui.pages.2_Logs.RUNS_DIR", mock_runs_dir):
-            at = AppTest.from_file("ui/pages/2_Logs.py", default_timeout=30)
-            at.run()
-            assert not at.exception
-            output = at.get_text()
-            assert "No run logs found yet" in output
+        """With no run logs on disk, a clear empty-state message is shown."""
+        at = _run_page(tmp_path / "nonexistent_runs")
+
+        assert not at.exception
+        assert "No run logs found" in _rendered_text(at)
 
     def test_crafted_log_renders_newest_first(self, tmp_path: Path) -> None:
-        """A crafted run.log file renders with newest entries first."""
-        # Create a mock runs directory with one log file
-        mock_runs_dir = tmp_path / "runs"
-        run_dir = mock_runs_dir / "test_run_001"
-        run_dir.mkdir(parents=True)
+        """Entries render newest-first, not in file order."""
+        runs_dir = tmp_path / "runs"
+        _write_log(
+            runs_dir,
+            "test_run_001",
+            [
+                "10:00:00  INFO     whisper_engine — Starting transcription",
+                "10:00:01  INFO     consensus_merger — Merging variants",
+                "10:00:02  INFO     export_engine — Exporting to PDF",
+            ],
+        )
 
-        log_file = run_dir / "run.log"
-        log_content = """10:00:00  INFO     whisper_engine — Starting transcription
-10:00:01  INFO     consensus_merger — Merging variants
-10:00:02  INFO     export_engine — Exporting to PDF
-"""
-        log_file.write_text(log_content)
+        at = _run_page(runs_dir)
+        assert not at.exception
+        text = _rendered_text(at)
 
-        with patch("ui.pages.2_Logs.RUNS_DIR", mock_runs_dir):
-            at = AppTest.from_file("ui/pages/2_Logs.py", default_timeout=30)
-            at.run()
-            assert not at.exception
-            output = at.get_text()
-            # Should show the logs
-            assert "Exporting to PDF" in output or "export_engine" in output
-            # Verify newest-first order by checking that PDF export appears before
-            # the transcription start in the output
-            lines = output.split("\n")
-            export_idx = -1
-            start_idx = -1
-            for i, line in enumerate(lines):
-                if "Exporting" in line or "export_engine" in line:
-                    export_idx = i
-                if "Starting transcription" in line or "whisper_engine" in line:
-                    start_idx = i
-            # Newest-first means export should appear before start
-            if export_idx >= 0 and start_idx >= 0:
-                assert export_idx < start_idx
+        assert "Exporting to PDF" in text
+        assert "Starting transcription" in text
+        # Newest-first: the last log line must appear above the first one.
+        assert text.index("Exporting to PDF") < text.index("Starting transcription")
 
     def test_timestamp_stripped_dedup_collapses_repeats(self, tmp_path: Path) -> None:
-        """Consecutive lines with same content (timestamp-stripped) collapse with ×N badge."""
-        mock_runs_dir = tmp_path / "runs"
-        run_dir = mock_runs_dir / "test_run_002"
-        run_dir.mkdir(parents=True)
+        """Consecutive identical lines (ignoring timestamps) collapse to one row."""
+        runs_dir = tmp_path / "runs"
+        _write_log(
+            runs_dir,
+            "test_run_002",
+            [
+                "10:00:00  INFO     whisper_engine — Processing segment 1",
+                "10:00:01  INFO     whisper_engine — Processing segment 1",
+                "10:00:02  INFO     whisper_engine — Processing segment 1",
+                "10:00:03  INFO     export_engine — Exporting to PDF",
+            ],
+        )
 
-        log_file = run_dir / "run.log"
-        # These lines have the same logger/message but different timestamps
-        log_content = """10:00:00  INFO     whisper_engine — Processing segment 1
-10:00:01  INFO     whisper_engine — Processing segment 1
-10:00:02  INFO     whisper_engine — Processing segment 1
-10:00:03  INFO     export_engine — Exporting to PDF
-"""
-        log_file.write_text(log_content)
+        at = _run_page(runs_dir)
+        assert not at.exception
+        text = _rendered_text(at)
 
-        with patch("ui.pages.2_Logs.RUNS_DIR", mock_runs_dir):
-            at = AppTest.from_file("ui/pages/2_Logs.py", default_timeout=30)
-            at.run()
-            assert not at.exception
-            output = at.get_text()
-            # Should show the repeat badge for the 3 identical lines
-            assert "×" in output or "Processing segment 1" in output
-            # Check that the ×3 badge is shown (3 repeated identical timestamp-stripped lines)
-            # The exact formatting depends on implementation, but we should see a multiplier
-            if "Processing segment 1" in output:
-                # Count occurrences of the message in output
-                count = output.count("Processing segment 1")
-                # Should be deduplicated, so fewer instances than in the original log
-                assert count <= 3
+        # Three messages differing only by timestamp collapse to a single row
+        # carrying a repeat badge.
+        assert text.count("Processing segment 1") == 1
+        assert "3" in text
 
     def test_tail_n_respected(self, tmp_path: Path) -> None:
-        """The tail N control limits displayed entries."""
-        mock_runs_dir = tmp_path / "runs"
-        run_dir = mock_runs_dir / "test_run_003"
-        run_dir.mkdir(parents=True)
+        """Only the newest N entries render, per the tail-N control."""
+        runs_dir = tmp_path / "runs"
+        _write_log(
+            runs_dir,
+            "test_run_003",
+            [f"10:00:{i % 60:02d}  INFO     test — Line {i}" for i in range(100)],
+        )
 
-        log_file = run_dir / "run.log"
-        # Create 100 unique lines
-        log_lines = [
-            f"{10+i//60:02d}:{i%60:02d}:00  INFO     test — Line {i}"
-            for i in range(100)
-        ]
-        log_file.write_text("\n".join(log_lines))
+        at = _run_page(runs_dir)
+        assert not at.exception
+        text = _rendered_text(at)
 
-        with patch("ui.pages.2_Logs.RUNS_DIR", mock_runs_dir):
-            at = AppTest.from_file("ui/pages/2_Logs.py", default_timeout=30)
-            at.run()
-            assert not at.exception
-            # Change tail_n to 10
-            number_inputs = [ni for ni in at.number_input if "Last N" in ni.label]
-            if number_inputs:
-                # Default is 50, we can verify the rendering respects that
-                output = at.get_text()
-                # Should not have all 100 lines, only the tail
-                assert "Line 99" in output or "Line 90" in output  # Newest lines
+        # Default tail is 50: the newest entry is present, the oldest is not.
+        assert "Line 99" in text
+        assert "Line 5\n" not in text
+        assert "Line 5 " not in text

@@ -2,107 +2,77 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from unittest.mock import patch
 
 from streamlit.testing.v1 import AppTest
 
 
-class TestRunIndicator:
-    """Tests for render_run_indicator() behaviour."""
+def _state(status: str, files: list[dict] | None = None) -> dict:
+    """A minimal active-run state document in the given *status*."""
+    return {
+        "schema_version": 1,
+        "run_id": f"test_run_{status}",
+        "status": status,
+        "boot_id": "boot_123",
+        "started_at": 1234567890,
+        "finished_at": None if status == "running" else 1234567900,
+        "log_path": None,
+        "config": {},
+        "files": files or [],
+    }
 
-    def test_no_state_renders_nothing(self, tmp_path: Path) -> None:
-        """When no active run state exists, the indicator renders nothing."""
-        # Patch ACTIVE_RUN_FILE to point to non-existent path
+
+def _all_markdown(at: AppTest) -> str:
+    """Every markdown value rendered by the app, joined for substring checks."""
+    return "\n".join(el.value for el in at.markdown)
+
+
+class TestRunIndicator:
+    """render_run_indicator() renders only for active/interrupted runs."""
+
+    def test_no_state_renders_nothing(self) -> None:
+        """With no active-run state, no pill is rendered."""
         with patch("ui.run_indicator.load_state", return_value=None):
             at = AppTest.from_file("ui/app.py", default_timeout=30)
             at.run()
-            assert not at.exception
-            # Check that no run pill markdown is in the output
-            output = at.get_text()
-            assert "Transcribing" not in output or "⏳" not in output
 
-    def test_running_state_renders_pill(self, tmp_path: Path) -> None:
-        """When a run is active (running), the indicator shows a compact pill."""
-        # Create a mock state file
-        state = {
-            "schema_version": 1,
-            "run_id": "test_run_123",
-            "status": "running",
-            "boot_id": "boot_123",
-            "started_at": 1234567890,
-            "finished_at": None,
-            "log_path": None,
-            "config": {},
-            "files": [
-                {
-                    "name": "file1.wav",
-                    "stem": "file1",
-                    "spool_path": "/tmp/file1.wav",
-                    "status": "done",
-                    "progress": 1.0,
-                },
-                {
-                    "name": "file2.wav",
-                    "stem": "file2",
-                    "spool_path": "/tmp/file2.wav",
-                    "status": "running",
-                    "progress": 0.5,
-                },
-            ],
-        }
+        assert not at.exception
+        assert "Transcribing" not in _all_markdown(at)
 
-        # Mock load_state to return this state
-        with patch("ui.run_indicator.load_state", return_value=state):
+    def test_running_state_renders_pill(self) -> None:
+        """A running state renders the pill with file counts and percentage."""
+        files = [
+            {"name": "file1.wav", "status": "done", "progress": 1.0},
+            {"name": "file2.wav", "status": "running", "progress": 0.5},
+        ]
+        with patch(
+            "ui.run_indicator.load_state", return_value=_state("running", files)
+        ):
             at = AppTest.from_file("ui/app.py", default_timeout=30)
             at.run()
-            assert not at.exception
-            # The pill should show progress: 1 done, 2 total, ~75% progress
-            output = at.get_text()
-            # Note: the fragment runs, so we check for the text content
-            assert "⏳" in output or "Transcribing" in output or "75%" in output
 
-    def test_interrupted_state_shows_warning(self, tmp_path: Path) -> None:
-        """When a run is interrupted, the indicator shows a warning with dismiss button."""
-        state = {
-            "schema_version": 1,
-            "run_id": "test_run_interrupted",
-            "status": "interrupted",
-            "boot_id": "boot_old",
-            "started_at": 1234567890,
-            "finished_at": 1234567900,
-            "log_path": None,
-            "config": {},
-            "files": [],
-        }
+        assert not at.exception
+        markdown = _all_markdown(at)
+        # 1 of 2 files complete; mean progress (1.0 + 0.5) / 2 = 75%.
+        assert "Transcribing 1/2" in markdown
+        assert "75%" in markdown
 
-        with patch("ui.run_indicator.load_state", return_value=state):
+    def test_interrupted_state_shows_warning(self) -> None:
+        """An interrupted state surfaces a warning rather than a progress pill."""
+        with patch("ui.run_indicator.load_state", return_value=_state("interrupted")):
             at = AppTest.from_file("ui/app.py", default_timeout=30)
             at.run()
-            assert not at.exception
-            # The warning should be present
-            output = at.get_text()
-            assert "interrupted" in output.lower() or "previous run" in output.lower()
+
+        assert not at.exception
+        surfaced = "\n".join(el.value for el in at.warning) + _all_markdown(at)
+        assert "interrupt" in surfaced.lower()
+        assert "Transcribing" not in surfaced
 
     def test_finished_state_renders_nothing(self) -> None:
-        """When a run is finished (and acknowledged), the indicator renders nothing."""
-        state = {
-            "schema_version": 1,
-            "run_id": "test_run_finished",
-            "status": "finished",
-            "boot_id": "boot_123",
-            "started_at": 1234567890,
-            "finished_at": 1234567900,
-            "log_path": None,
-            "config": {},
-            "files": [],
-        }
-
-        with patch("ui.run_indicator.load_state", return_value=state):
+        """A finished run is not an active run — the indicator stays silent."""
+        with patch("ui.run_indicator.load_state", return_value=_state("finished")):
             at = AppTest.from_file("ui/app.py", default_timeout=30)
             at.run()
-            assert not at.exception
-            # No pill should render for a finished (non-interrupted) state
-            # Finished state should not show any active indicator
-            # (Though we may see it in the main app UI, the indicator itself renders nothing)
-            assert not at.exception
+
+        assert not at.exception
+        assert "Transcribing" not in _all_markdown(at)

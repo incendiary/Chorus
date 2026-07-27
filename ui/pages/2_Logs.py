@@ -12,7 +12,6 @@ _ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from config import OUTPUTS_DIR  # noqa: E402
 from ui.run_indicator import render_run_indicator  # noqa: E402
 from ui.run_state import RUNS_DIR, load_state  # noqa: E402
 
@@ -129,6 +128,9 @@ def _render_disk_logs() -> None:
             step=10,
             label_visibility="collapsed",
             help="Show only the last N log entries.",
+            # Distinct key: the session-log view below renders an identical
+            # control, and Streamlit derives element IDs from the parameters.
+            key="disk_logs_tail_n",
         )
 
     selected_log = run_logs[selected_run_id]
@@ -215,6 +217,7 @@ def _render_session_logs() -> None:
             step=10,
             label_visibility="collapsed",
             help="Show only the last N log entries.",
+            key="session_logs_tail_n",
         )
 
     with col_clear:
