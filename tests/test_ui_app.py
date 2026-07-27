@@ -156,3 +156,42 @@ class TestSpacyUnavailable:
         assert not at.exception
         assert at.session_state["show_spacy_dialog"] is True
         assert at.session_state["spacy_fail_reason"] == "Model en_core_web_md not found"
+
+
+class TestLanguageSelector:
+    """The language control offers valid Whisper codes and confirms the choice."""
+
+    def test_defaults_to_auto_detect_with_feedback(self):
+        from streamlit.testing.v1 import AppTest
+
+        at = AppTest.from_file("ui/app.py", default_timeout=60)
+        at.run()
+
+        selector = [s for s in at.selectbox if s.label == "Language"][0]
+        assert selector.value is None
+        captions = [c.value for c in at.caption]
+        assert any("Auto-detect" in c for c in captions)
+
+    def test_selecting_a_language_is_confirmed_on_screen(self):
+        """Choosing a language must give visible feedback — the old free-text
+        box silently accepted input, so it looked like nothing happened."""
+        from streamlit.testing.v1 import AppTest
+
+        at = AppTest.from_file("ui/app.py", default_timeout=60)
+        at.run()
+        [s for s in at.selectbox if s.label == "Language"][0].set_value("fr")
+        at.run()
+
+        assert not at.exception
+        selector = [s for s in at.selectbox if s.label == "Language"][0]
+        assert selector.value == "fr"
+        assert any("French" in c.value for c in at.caption)
+
+    def test_only_whisper_supported_codes_are_offered(self):
+        """Every offered code must be one Whisper actually accepts."""
+        from whisper.tokenizer import LANGUAGES
+
+        from ui.sidebar import _LANGUAGE_CODES
+
+        assert set(_LANGUAGE_CODES) <= set(LANGUAGES)
+        assert _LANGUAGE_CODES[0] == "en"  # most common first
