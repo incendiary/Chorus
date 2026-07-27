@@ -93,6 +93,9 @@ ignore = [
 # hardware_survey.py uses subprocess with known-safe literal args (sysctl, nvidia-smi)
 # and bare except-pass for graceful hardware detection fallbacks.
 "ui/hardware_survey.py" = ["S603", "S607", "S110"]
+# build_info.py shells out to git with fixed, literal read-only arguments to
+# report which build is running.
+"ui/build_info.py" = ["S603", "S607"]
 
 # ── isort ─────────────────────────────────────────────────────────────────────
 [tool.isort]
