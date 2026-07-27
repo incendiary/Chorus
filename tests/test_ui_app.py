@@ -195,3 +195,37 @@ class TestLanguageSelector:
 
         assert set(_LANGUAGE_CODES) <= set(LANGUAGES)
         assert _LANGUAGE_CODES[0] == "en"  # most common first
+
+
+class TestBuildLabel:
+    """The header states which build is running.
+
+    Python imports at process start, so a running app keeps serving the code
+    it launched with even after a pull — the label makes that visible instead
+    of leaving it to be inferred from process timestamps.
+    """
+
+    def test_label_reports_version_branch_and_commit(self):
+        from ui.build_info import BUILD_LABEL
+
+        assert BUILD_LABEL.startswith("v")
+        # In a git checkout the label carries branch and short commit too.
+        assert "@" in BUILD_LABEL
+
+    def test_label_is_rendered_in_the_header(self):
+        from streamlit.testing.v1 import AppTest
+
+        from ui.build_info import BUILD_LABEL
+
+        at = AppTest.from_file("ui/app.py", default_timeout=60)
+        at.run()
+
+        assert not at.exception
+        assert any(BUILD_LABEL in m.value for m in at.markdown)
+
+    def test_falls_back_to_version_when_git_unavailable(self, monkeypatch):
+        """Docker images ship VERSION but no git metadata."""
+        from ui import build_info
+
+        monkeypatch.setattr(build_info, "_git", lambda *args: None)
+        assert build_info._describe_build() == f"v{build_info._read_version()}"

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import streamlit as st
 
+from ui.build_info import BUILD_LABEL
 from ui.run_indicator import render_run_indicator
 
 THEME_PRESETS: dict[str, dict[str, str]] = {
@@ -122,6 +123,13 @@ def apply_page_chrome() -> None:
         border-radius: 12px;
         margin-bottom: 1.5rem;
         color: white;
+    }
+    .chorus-header .chorus-build {
+        margin-top: 0.6rem;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 0.72rem;
+        opacity: 0.62;
+        letter-spacing: 0.02em;
     }
     .chorus-header h1 { margin: 0; font-size: 2.4rem; letter-spacing: -0.5px; }
     .chorus-header p  { margin: 0.4rem 0 0; opacity: 0.75; font-size: 1rem; }
@@ -314,7 +322,7 @@ def apply_page_chrome() -> None:
     render_run_indicator()
 
     st.markdown(
-        """
+        f"""
 <div class="chorus-skip-links">
     <a href="#upload-section">Skip to upload</a>
     <a href="#run-section" style="margin-left: 11rem;">Skip to run controls</a>
@@ -324,6 +332,7 @@ def apply_page_chrome() -> None:
 <div class="chorus-header">
     <h1>🎙️ Chorus</h1>
     <p>Multi-pass consensus audio transcription engine — powered by OpenAI Whisper</p>
+    <p class="chorus-build">{BUILD_LABEL}</p>
 </div>
 """,
         unsafe_allow_html=True,
