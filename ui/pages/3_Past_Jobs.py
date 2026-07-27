@@ -16,12 +16,15 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 from config import CONSENSUS_DIR  # noqa: E402
+from ui.run_indicator import render_run_indicator  # noqa: E402
 
 st.set_page_config(
     page_title="Past Jobs — Chorus",
     page_icon="🗂",
     layout="wide",
 )
+
+render_run_indicator(is_subpage=True)
 
 st.title("🗂 Past Jobs")
 st.caption("Browse completed transcription runs and re-download their outputs.")
@@ -162,6 +165,13 @@ if not anchors:
 run_count = len(anchors)
 st.markdown(f"**{run_count} completed run{'s' if run_count != 1 else ''} found.**")
 st.divider()
+
+# Show in-progress banner if a run is active
+from ui.run_state import load_state  # noqa: E402
+
+_state = load_state()
+if _state and _state.get("status") == "running":
+    st.info("🔄 1 run in progress — updates appear below as it completes.", icon="🔄")
 
 # ── Group anchors by date ─────────────────────────────────────────────────────
 by_date: dict[str, list[Path]] = defaultdict(list)

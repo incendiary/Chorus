@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import streamlit as st
 
+from ui.run_indicator import render_run_indicator
+
 THEME_PRESETS: dict[str, dict[str, str]] = {
     "Ocean Professional": {
         "primary": "#0f3460",
@@ -130,6 +132,8 @@ def apply_page_chrome() -> None:
                          border-radius:4px; font-size:0.8rem; font-weight:600; }
     .tier-badge-low    { background:var(--chorus-low-bg); color:var(--chorus-low-fg); padding:2px 8px;
                          border-radius:4px; font-size:0.8rem; font-weight:600; }
+    .chorus-run-pill   { display:inline-block; background:var(--chorus-med-bg); color:var(--chorus-med-fg); padding:4px 10px;
+                         border-radius:999px; font-size:0.85rem; font-weight:600; margin-bottom:0.5rem; }
 
     .stProgress > div > div > div { background-color: var(--chorus-primary); }
     .metric-card { background:var(--chorus-surface); border-radius:8px; padding:1rem;
@@ -306,6 +310,8 @@ def apply_page_chrome() -> None:
         .replace("__CHORUS_LOW_FG__", theme["low_fg"]),
         unsafe_allow_html=True,
     )
+
+    render_run_indicator()
 
     st.markdown(
         """
