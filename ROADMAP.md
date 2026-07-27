@@ -237,4 +237,19 @@ in `REVIEW.md`; per-task execution plans (written for delegated agents) in
 
 ---
 
-*Last updated: 16 July 2026*
+## Planned — from the 28 July 2026 holistic review
+
+Third review, run at v4.1.0 with the background-run feature live. Full findings in
+`REVIEW.md`. The two headline items were both found by *running* the software, not
+reading it.
+
+- [ ] **RC-1: Reclaim intermediate variant WAVs** — `outputs/variants/` holds 14 GB across 156 files and never shrinks; the four WAVs per file are Whisper inputs only and are dead weight once the transcript JSONs exist. Delete per-file after transcription, opt-out via config. (Effort: S)
+- [ ] **RC-2: Make device and parallelism settings take effect at run time** — `orchestrator.py` binds `WHISPER_DEVICE`/`TRANSCRIPTION_PARALLELISM` at import, so the sidebar controls are inert; on Apple Silicon this silently pins parallelism to 1 (4× slower). Read via `config.` at call time, as done for the HF token in WP0a. (Effort: S)
+- [ ] **RC-3: Silence Streamlit ScriptRunContext warnings in background runs** — ~10 noise lines per real log line make live console monitoring impractical; `run.log` is unaffected. (Effort: XS)
+- [ ] **RC-4: Correct the stale confidence-threshold caption** — the sidebar still says "Configurable in `config.py`" although #185 made them sliders. (Effort: XS)
+- [ ] **RC-5: Tighten the two remaining weak assertions** — a near-tautological `or "1" in text` and a redundant case-insensitive `or`. (Effort: XS)
+- [ ] **RC-6 (optional): Split `export_engine/exporter.py`** — 827 lines across six export formats. Low priority; well-tested and stable. (Effort: M)
+
+---
+
+*Last updated: 28 July 2026*
