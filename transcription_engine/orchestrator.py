@@ -18,13 +18,12 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
 
+import config
 from config import (
     CONSENSUS_MODEL_LABELS,
     CONSENSUS_MODELS,
-    TRANSCRIPTION_PARALLELISM,
     TRANSCRIPTS_DIR,
     VARIANT_LABELS,
-    WHISPER_DEVICE,
     WHISPER_MODEL,
 )
 from transcription_engine.whisper_engine import transcribe
@@ -42,47 +41,84 @@ def _get_cuda_device_count() -> int:
         return 0
 
 
+def _max_safe_parallelism() -> int:
+    """Return the highest worker count that cannot corrupt a Whisper model.
+
+    Whisper is **not thread-safe**. Decoding stores key/value tensors in a dict
+    keyed by the model's own ``Linear`` modules (``whisper/model.py``:
+    ``k = kv_cache[self.key]``), so two threads sharing one model instance
+    overwrite each other's cache entries and the decode dies with
+    ``KeyError: Linear(in_features=..., ...)``.
+
+    Models are cached per ``(model name, device)``, so workers only get
+    separate instances when they target *different* devices. That makes
+    multi-GPU CUDA the sole configuration where concurrency is safe; on CPU or
+    MPS every worker would share one instance, so the ceiling is 1.
+    """
+    device = config.WHISPER_DEVICE
+    if device.startswith("cuda"):
+        return max(1, _get_cuda_device_count())
+    return 1
+
+
 def _resolve_parallelism(total_variants: int) -> int:
-    """Resolve effective parallel worker count from config and environment."""
+    """Resolve effective parallel worker count from config and environment.
+
+    Config is read through the ``config`` module at call time rather than bound
+    at import, so device and parallelism chosen in the UI take effect.
+    """
     if total_variants <= 1:
         return 1
 
-    raw = str(TRANSCRIPTION_PARALLELISM).strip().lower()
+    safe_ceiling = _max_safe_parallelism()
+
+    def _clamp(requested: int, source: str) -> int:
+        allowed = max(1, min(total_variants, requested, safe_ceiling))
+        if requested > safe_ceiling:
+            logger.warning(
+                "Reducing transcription parallelism from %d to %d (%s): Whisper "
+                "models are not thread-safe and workers on '%s' would share one "
+                "cached instance.",
+                requested,
+                allowed,
+                source,
+                config.WHISPER_DEVICE,
+            )
+        return allowed
+
+    raw = str(config.TRANSCRIPTION_PARALLELISM).strip().lower()
     if raw and raw != "auto":
         try:
             configured = int(raw)
         except ValueError:
             logger.warning(
                 "Invalid TRANSCRIPTION_PARALLELISM='%s'; falling back to auto.",
-                TRANSCRIPTION_PARALLELISM,
+                config.TRANSCRIPTION_PARALLELISM,
             )
         else:
-            return max(1, min(total_variants, configured))
+            return _clamp(configured, "TRANSCRIPTION_PARALLELISM")
 
-    if WHISPER_DEVICE == "mps":
-        return 1
-
-    if WHISPER_DEVICE.startswith("cuda"):
+    if config.WHISPER_DEVICE.startswith("cuda"):
         gpu_count = _get_cuda_device_count()
         if gpu_count > 1:
             return min(total_variants, gpu_count)
         return 1
 
     cpu_count = os.cpu_count() or 1
-    return max(1, min(total_variants, min(4, cpu_count)))
+    return _clamp(min(4, cpu_count), "auto")
 
 
 def _build_device_pool(parallelism: int) -> list[str]:
     """Return device assignments used by workers."""
     if parallelism <= 1:
-        return [WHISPER_DEVICE]
+        return [config.WHISPER_DEVICE]
 
-    if WHISPER_DEVICE.startswith("cuda"):
+    if config.WHISPER_DEVICE.startswith("cuda"):
         gpu_count = _get_cuda_device_count()
         if gpu_count > 1:
             return [f"cuda:{idx}" for idx in range(min(parallelism, gpu_count))]
 
-    return [WHISPER_DEVICE]
+    return [config.WHISPER_DEVICE]
 
 
 def _write_txt_companion(
