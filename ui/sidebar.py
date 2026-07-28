@@ -502,7 +502,10 @@ def render_sidebar() -> SidebarConfig:
 
         st.divider()
         st.markdown("**Confidence Thresholds**")
-        st.caption("Configurable in `config.py`")
+        st.caption(
+            "Defaults shown. Adjust per run with the sliders under "
+            "**Processing Strategy** above; `config.py` sets the defaults."
+        )
         st.markdown(
             """
 | Tier | Threshold |

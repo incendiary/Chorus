@@ -139,7 +139,9 @@ class TestVTTExport:
     def test_vtt_contains_transcript_text(self):
         result = export_vtt(_mock_whisper_result(), stem="test_vtt_text")
         content = result.read_text(encoding="utf-8")
-        assert "Hello world" in content or "hello world" in content.lower()
+        # Case is preserved through export, so assert it exactly: the previous
+        # `or ... .lower()` clause was implied by the first and never added cover.
+        assert "Hello world" in content
 
 
 # ─────────────────────────────────────────────────────────────────────────────
