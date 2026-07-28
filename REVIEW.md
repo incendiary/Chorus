@@ -1,35 +1,41 @@
-# Chorus Engine — Holistic Review (15 July 2026)
+# Chorus Engine — Holistic Review (28 July 2026)
 
-> Second full review, at v4.0.1. Supersedes the 12 July 2026 review (see git history),
-> whose nine action items (RA-1–RA-9) all shipped in v4.0.1. This review was run
-> against a defined spec agreed with the maintainer: Chorus is a **personal working
-> tool** and a **learning vehicle**; the bar for "done" is **prove the core idea
-> works, then wind down to maintenance** after **one focused wrap-up push**.
+> Third full review, at v4.1.0 with the background-run feature merged (WP0–WP3,
+> WP-OUT). Supersedes the 15 July review, whose six action items (RB-1–RB-6) all
+> shipped. Run **read-only** while a nine-file production batch was executing, so no
+> test suite was run and no CPU-heavy analysis performed; findings come from source
+> reading, live process inspection, and the running job's own artefacts.
+>
+> Spec unchanged from 15 July: Chorus is a **personal working tool** and a **learning
+> vehicle**; "done" means **prove the core idea works, then wind down to maintenance**.
 
 ---
 
 ## Executive summary
 
-The engineering fundamentals are in excellent shape: 326 tests, 88 % line coverage,
-clean dependency audit, layered CI with secret scanning, CodeQL, and blocking
-`pip-audit`. The single most important gap is that **the project's founding claim has
-never been measured**: nothing demonstrates that four-variant consensus transcription
-is more accurate than a single Whisper pass, nor that the HIGH/MEDIUM/LOW confidence
-tiers actually predict correctness. RB-2 (a WER + calibration benchmark) is the
-centrepiece of the wrap-up push and answers "does this project meet its goals" with a
-number. The most urgent operational bug is that **patch releases silently skip GitHub
-Release creation** (a `needs:` skip-cascade in `release.yml` — v4.0.1's release had to
-be backfilled by hand on 15 July). Output usability is largely a solved problem: clean
-transcripts and machine-readable confidence data are always produced, and
-`docs/CHORUS_FOR_LLMS.md` is an accurate, high-quality consumption contract — it just
-has nothing keeping it honest as the schema evolves.
+The engineering position is strong — 412 tests, all CI gates green, dependencies fully
+pinned, and the background-run feature working correctly in live production use (four
+parallel workers, disk-backed logs, refresh-survivable state). The two most valuable
+findings this round both came from *running the software*, not from reading it:
+**14 GB of intermediate WAV files have accumulated with no cleanup path** (RC-1), and
+**the sidebar's device and parallelism controls are silently inert** because the
+orchestrator captures those settings at import time (RC-2) — the user had to set them
+in `.env` to get a correct configuration. A third, cosmetic but corrosive, issue is
+that Streamlit floods the console with `ScriptRunContext` warnings from the background
+thread, roughly ten lines of noise per real log line (RC-3).
 
-**Verdict against the maintainer's own bar:** as a learning vehicle, the project has
-unambiguously succeeded. As a personal working tool it is functionally complete but
-empirically unvalidated. Complete RB-1–RB-5 and the project has earned maintenance
-mode regardless of what the benchmark shows — a negative result (consensus no better
-than single-pass) would itself be a valid, honest conclusion, because the calibrated
-uncertainty tiers are a deliverable single-pass Whisper cannot provide.
+An important correction to the previous review's framing: the test-quality problem is
+**not** systemic. A targeted audit found the vacuous assertions were confined to the
+two agent-authored files caught during the WP3 salvage (already rewritten); the wider
+suite's assertions are substantive. The suite's real weakness is what it *cannot*
+reach — thread behaviour, disk growth, and live UI wiring — which is precisely where
+every finding below originated.
+
+**Verdict against the agreed bar:** the core idea has been proven (v4.1.0 benchmark:
+accuracy on par with single-pass Whisper, but strongly calibrated confidence tiers),
+and the tool is now genuinely usable unattended. RC-1 and RC-2 are worth fixing before
+wind-down because both actively mislead or degrade real use; the rest is optional
+polish.
 
 ---
 
@@ -37,20 +43,20 @@ uncertainty tiers are a deliverable single-pass Whisper cannot provide.
 
 | Module / Path | Responsibility | Concerns |
 |---|---|---|
-| `audio_processor/` | Three cleaning filters (high-pass, normalise, denoise) + ingest validation | None — 92-93 % covered, property-based tests |
-| `transcription_engine/` | Whisper wrapper + model×variant orchestrator, device-aware parallelism | MPS float64 CPU fallback emits a noisy `UserWarning` (RB-6) |
-| `consensus_merger/` | Word-level alignment (Needleman-Wunsch or positional), voting, tier assignment, Markdown rendering | `alignment.py` (positional strategy) at 81 % — acceptable; non-default legacy path |
-| `reconstruction/` | LOW-token reconstruction, `"nlp"` (spaCy) or `"llm"` (Ollama) strategy | Sound; 92-97 % covered since RA-8 |
-| `diarisation/` | pyannote speaker separation fused with Whisper timestamps | 67 % coverage; degradation paths tested, happy path not — acceptable for wind-down |
-| `export_engine/` | Consensus → PDF/DOCX/SRT/VTT/plain/bundle/AI-context | **PDF LOW-tier styling silently broken** (RB-3); bundle lacks a version field (RB-4) |
-| `batch_processor/` | Unattended multi-file CLI | Sound, 83 % |
-| `ui/` | Streamlit dashboard, decomposed in v4.0.1 (RA-9) | **`pipeline_invocation.py` 13 %, `results.py` 12 %** — the daily-use path is the least-tested code in the repo (RB-5) |
-| `.github/workflows/` | CI, security, release automation | **Release skip-cascade breaks patch releases** (RB-1) |
+| `audio_processor/` | Three cleaning filters + ingest; ffmpeg fallback for MP4/AAC | Writes variant WAVs to a **global** dir even for isolated runs (RC-1) |
+| `transcription_engine/` | Whisper wrapper, model cache, model×variant orchestration | **Captures `WHISPER_DEVICE`/`TRANSCRIPTION_PARALLELISM` at import** (RC-2) |
+| `consensus_merger/` | Alignment (Needleman-Wunsch or positional), voting, tier assignment, rendering | Sound; thresholds correctly parameterised since RB/#185 |
+| `reconstruction/` | LOW-token reconstruction via spaCy or Ollama | Sound. Correctly refuses out-of-candidate suggestions and demotes LOW→MEDIUM rather than laundering uncertainty |
+| `diarisation/` | pyannote speaker separation | Token now read lazily (WP0a); 67 % covered |
+| `export_engine/` | Consensus → PDF/DOCX/SRT/VTT/bundle/AI-context/parsing guide | `exporter.py` at 827 lines is the largest module; candidate for splitting |
+| `batch_processor/` | Unattended CLI | Untouched by the background-run work, as intended |
+| `ui/` | Streamlit app: run manager, worker, state file, status panel, indicator, pages | New `run_*` modules are clean and single-purpose. `results.py` (562) and `sidebar.py` (533) are large but cohesive |
+| `.github/workflows/` | ci, security, release, ollama-tag-check | No gaps found |
 
-Data flow: audio file → sanitised stem → 4 cleaned variants → N Whisper passes →
-aligned word votes → (optional reconstruction, diarisation) → renderer/exporters →
-`outputs/<stem>/` (or per-run `output_dir`). Input validation at entry, no network
-exposure (local-first), no secrets in the tree.
+**Data flow:** upload → spooled to `outputs/runs/<run_id>/` → background thread →
+variants to **global** `outputs/variants/` → per-variant transcript JSON → aligned
+votes → optional reconstruction/diarisation → renderers/exporters → `outputs/consensus/`
+→ state file + `run.log` polled by the UI.
 
 ---
 
@@ -58,122 +64,215 @@ exposure (local-first), no secrets in the tree.
 
 | # | Category | Finding | Score | Location |
 |---|---|---|---|---|
-| 1 | Reliability | `github-release` and `post-release-consistency` jobs `needs: docker-publish`, which is skipped for non-`.0.0` tags — every patch release silently produces no GitHub Release and skips the strict consistency check. v4.0.1 was affected (backfilled 15 Jul). | 4 | `.github/workflows/release.yml:117,139` |
-| 2 | Correctness (mission) | Core consensus claim unmeasured: no evidence multi-pass beats single-pass, no evidence confidence tiers are calibrated. All downstream guidance in `CHORUS_FOR_LLMS.md` §3 ("treat HIGH as reliable") is asserted, not demonstrated. | 4 | project-wide |
-| 3 | Correctness (output) | PDF export: LOW-tier `~~word~~` markup is never converted to `<del>` (no strikethrough extension configured in `_md_to_html`), so the red-strikethrough CSS rule never fires. LOW words render unmarked in PDFs — a silent loss of the product's key signal in one of its formats. | 3 | `export_engine/exporter.py` (`_md_to_html`) |
-| 4 | Maintainability | `ui/pipeline_invocation.py` (13 %) and `ui/results.py` (12 %) — run loop, retry/error rendering, download panels. Newly module-level (hence newly testable) after RA-9, but currently protected only by a render smoke test. | 3 | `ui/pipeline_invocation.py`, `ui/results.py` |
-| 5 | Maintainability | `bundle.json` has no schema/producer version field (the docstring even promises "chorus version" in `meta` but the code never writes it), and no test ties `docs/CHORUS_FOR_LLMS.md` §5 to the real schema — the consumption contract can drift silently. | 2 | `export_engine/exporter.py:731,765` |
-| 6 | Reliability | MPS float64 fallback emits a `UserWarning` on every affected pass on Apple Silicon — noise that trains the user to ignore warnings. Last unchecked legacy roadmap item. | 1 | `transcription_engine/whisper_engine.py` |
+| 1 | Scalability | Intermediate variant WAVs are never deleted. **14 GB / 156 files** already present; ~360 MB per file processed, so tonight's nine-file batch adds ~3 GB. Unbounded. | 4 | `audio_processor/pipeline.py`, `config.VARIANTS_DIR` |
+| 2 | Reliability | `orchestrator.py` imports `WHISPER_DEVICE` and `TRANSCRIPTION_PARALLELISM` by value at import, so the sidebar's Compute-device and parallelism controls **cannot** affect them. Verified empirically: setting `config.WHISPER_DEVICE = "cpu"` leaves the orchestrator on `mps` and parallelism at 1. | 4 | `transcription_engine/orchestrator.py:21-28,62-85` |
+| 3 | Maintainability | Streamlit emits `missing ScriptRunContext!` for every log record from the background thread — ~10 noise lines per real line, making live console monitoring impractical. (Confirmed *not* to affect `run.log`, which stays clean.) | 3 | `ui/run_worker.py` thread + Streamlit logging |
+| 4 | Maintainability | Sidebar still captions the confidence thresholds "Configurable in `config.py`" although they became sliders in #185 — actively misdirects. | 2 | `ui/sidebar.py:504-505` |
+| 5 | Maintainability | `export_engine/exporter.py` at 827 lines mixes PDF, DOCX, SRT/VTT, ZIP, bundle, and plain-text export. | 2 | `export_engine/exporter.py` |
+| 6 | Maintainability | Two weak assertions survive: an `or "1" in text` clause that is near-tautological, and a redundant case-insensitive `or`. | 1 | `tests/test_ai_context.py:516`, `tests/test_exporter.py:142` |
+
+Null findings worth recording: **Security** — no secrets in tree, GitLeaks/detect-secrets/
+TruffleHog/CodeQL/bandit all wired and green, HF token correctly gitignored via `.env`.
+**Dependency** — all 16 runtime deps exactly pinned and mirrored between
+`requirements.txt` and `pyproject.toml` (enforced by the RA-1 drift check). **CI/CD** —
+tests, lint, secrets, SAST, dependency audit, scheduled drift checks, and release
+automation all present; no gaps.
 
 ---
 
 ## Predicted failure scenarios (score ≥ 3)
 
-### PF-1: Next patch release ships without a GitHub Release (Reliability, 4)
+### PF-1: Disk exhaustion from intermediate WAVs (Scalability, 4)
 
-**What happens:** Tagging `v4.0.2` runs tests, then skips Docker (by design), then
-skips `github-release` and `post-release-consistency` (by accident — skipped
-dependencies cascade in GitHub Actions). `version_consistency_test.sh --ci` check 8
-would have failed loudly, but it lives in the job that gets skipped. The tag exists,
-the release page doesn't, and `ci.yml`'s Version-Tag Sync files a confusing issue on
-the next push.
+**What happens:** `outputs/variants/` grows without limit. Every processed file leaves
+four 16 kHz WAVs — ~360 MB per hour-ish recording — that are read only during
+transcription and never again. At 14 GB after casual testing, sustained batch use fills
+the disk; the pipeline then fails mid-run at the variant-write step with an `OSError`,
+and because that happens *after* the audio is decoded, the failure wastes the most
+expensive work done so far.
 
-**Trigger condition:** any tag not ending `.0.0`. **Timeline:** the very next patch
-release. **Fix:** RB-1.
+**Trigger condition:** routine repeated use. Already 14 GB; 188 GB free, so ~500 more
+files before exhaustion — but nothing signals the growth or reclaims it.
 
-### PF-2: The core value proposition quietly fails to exist (Mission, 4)
+**Timeline:** months at current use, immediate if the disk is otherwise near full.
 
-**What happens:** The maintainer (or anyone adopting the repo) spends 4× single-pass
-compute per transcription on the assumption that consensus improves accuracy. If
-consensus WER is not better than single-pass — plausible on clean audio, where
-aggressive denoising can *introduce* errors — the extra cost buys nothing, and nobody
-knows. Worse, if HIGH-tier words are not measurably more correct than average, the
-guidance baked into `CHORUS_FOR_LLMS.md` misleads every downstream LLM.
+**Minimum fix:** delete a file's variant WAVs in the worker's per-file `finally` block
+once its transcripts are on disk (transcripts, not variants, are what
+`load_transcripts_from_disk` rehydrates).
 
-**Trigger condition:** already latent; surfaces the first time anyone measures.
-**Timeline:** unknown until RB-2 runs — which is exactly why it must.
-**Fix:** RB-2. Note both possible outcomes are acceptable ends: "consensus wins on
-noisy audio" validates the design; "consensus ties but tiers are calibrated"
-repositions the product as *uncertainty-aware transcription*, and the docs get updated
-to say so honestly.
+**Full fix:** a retention policy — keep variants only for the newest N runs, plus a
+"Reclaim space" control on the Past Jobs page reporting reclaimable bytes.
 
-### PF-3: PDF consumers act on unmarked low-confidence words (Correctness, 3)
+### PF-2: Sidebar device/parallelism settings silently ignored (Reliability, 4)
 
-**What happens:** A PDF is shared as the "formatted" transcript; a LOW word (often a
-single-variant hallucination) renders as ordinary text. The reader quotes it.
+**What happens:** a user selects "CPU" and a worker count in the sidebar; the
+orchestrator ignores both and uses whatever was resolved at import. On Apple Silicon
+that means auto-detected `mps` → parallelism pinned to **1**, while every pass then
+falls back to CPU anyway because MPS cannot do float64 word-timestamp alignment. Net
+effect: the slowest possible configuration, chosen silently, with the UI showing the
+opposite. Measured impact: 4× fewer workers.
 
-**Trigger condition:** any PDF export containing LOW-tier words — i.e. most real
-transcripts. **Timeline:** happening now. **Fix:** RB-3 (markdown extension + the
-already-designed spy test asserting `<del>` reaches WeasyPrint).
+**Trigger condition:** any use of the sidebar device/parallelism controls. Present
+today; only avoided by setting `.env` before launch, which is how the current
+production batch was configured.
 
-### PF-4: UI regression in the run loop ships unnoticed (Maintainability, 3)
+**Timeline:** now, on every run.
 
-**What happens:** A future change (even a dependency bump — Streamlit minor versions
-regularly change widget behaviour) breaks per-file progress, retry rendering, or a
-download button. The 9 AppTest smoke tests exercise the sidebar and dialogs, not the
-run/results path, so CI stays green.
+**Minimum fix:** in `orchestrator.py`, `import config` and read `config.WHISPER_DEVICE`
+/ `config.TRANSCRIPTION_PARALLELISM` at call time instead of binding the values at
+import — the same lazy-read pattern already applied to the HF token in WP0a.
 
-**Trigger condition:** next Streamlit bump or UI edit. **Timeline:** months.
-**Fix:** RB-5.
+**Full fix:** thread device and parallelism through `run_pipeline(...)` as explicit
+parameters, as was done for the consensus thresholds in #185, so the values travel with
+the run rather than through module state; then have the sidebar reflect the effective
+value back to the user.
 
----
+### PF-3: Console log unusable for live monitoring (Maintainability, 3)
 
-## Output usability assessment (maintainer's key question)
+**What happens:** every log record from the background thread is followed by ~10
+`missing ScriptRunContext!` warnings, so a real run's console output is ~90 % noise.
+Diagnosing a live problem by watching the terminal is impractical.
 
-**Is Chorus producing usable output?** Yes, on both axes asked:
+**Trigger condition:** every background run — i.e. all runs since WP2.
 
-1. **Human transcript** — `{stem}_best_guess.txt` (clean, no markup) is always
-   generated, alongside `most_likely` variants and the annotated consensus Markdown.
-2. **AI-consumable ratings** — `{stem}_bundle.json` (full word-vote array with
-   tier/confidence/alternatives per word) and `{stem}_ai_context.md` (prompt-ready
-   methodology + statistics + uncertainty table) are always generated.
+**Timeline:** now.
 
-**Is the AI-consumption contract described and current?** `docs/CHORUS_FOR_LLMS.md`
-is a genuinely strong contract document — schema reference, tier semantics, extraction
-recipes, worked prompts. Verified line-by-line against the implementation in this
-review: **accurate today**. Two things keep it from staying that way: the bundle
-carries no version identifier (a consumer cannot tell which contract revision produced
-it), and no test links the documented schema to the real one. RB-4 closes both.
+**Minimum fix:** attach a `logging.Filter` in `run_worker.execute_run` that drops
+records from `streamlit.runtime.scriptrunner_utils.script_run_context`, or set that
+logger to `ERROR` for the run's duration.
+
+**Full fix:** as above, plus a console formatter matching `run.log`'s clean layout so
+terminal and file agree.
 
 ---
 
-## Test coverage
+## Test coverage gaps
 
-88 % overall, 326 tests, all passing. Gaps ranked by value:
+The suite (412 tests) is healthy and its assertions are substantive — the vacuous
+patterns found during the WP3 salvage were confined to two agent-authored files and
+have been rewritten. The meaningful gaps are things unit tests structurally cannot
+reach:
 
-| Path | Coverage | Why critical | Test needed |
-|---|---|---|---|
-| `ui/pipeline_invocation.py` / `ui/results.py` | 13 % / 12 % | The daily-use execution path; only smoke-tested | AppTest with mocked `run_pipeline`: sequential + all-at-once modes, per-file failure rendering, download panel presence (RB-5) |
-| Bundle ↔ doc contract | n/a | Contract drift is silent | Structural test: doc §5 example keys match real bundle keys (RB-4) |
-| `diarisation/diariser.py` | 67 % | Optional feature, degradation paths already tested | Accept as-is for wind-down |
+| Path | Why critical | Test type needed |
+|---|---|---|
+| Disk-space growth across runs | RC-1 is invisible to every existing test because each uses `tmp_path` | Integration: assert the worker removes a file's variants once its transcripts exist |
+| `orchestrator._resolve_parallelism` / `_build_device_pool` under runtime config change | RC-2 shipped precisely because no test changes config *after* import | Unit: set `config.WHISPER_DEVICE` post-import, assert the resolved device and worker count follow |
+| Whisper inference from a non-main thread | The whole background feature depends on it; verified only by a manual probe during this review | Integration (slow-marked): run `transcribe` on the `tiny` model from a thread |
+| `export_engine/exporter.py` PDF/DOCX branches | 827-line module, 90 % covered but the largest single risk surface | Already reasonable; no action |
 
----
-
-## Dependency & CI audit
-
-- All runtime pins exact and mirrored between `requirements.txt` and `pyproject.toml`,
-  enforced by the RA-1 drift check. `pip-audit` (both scoped and whole-environment)
-  green as of this review; setuptools CVE remediated 14 July.
-- CI: tests, Black/Ruff/isort, GitLeaks, detect-secrets, bandit, CodeQL (default
-  setup), Dependabot, weekly security and Ollama-tag cron runs. No gaps found beyond
-  RB-1. Action versions pinned by major tag (acceptable).
+**Three highest-value additions:** (1) variant-cleanup integration test, (2) runtime
+config-change unit test for the orchestrator, (3) threaded-transcription smoke test.
 
 ---
 
-## Action roadmap — the wrap-up push (target: v4.1.0)
+## Dependency audit
 
-Detailed, self-contained execution plans for each item live in `docs/tasks/RB-*.md`,
-written for delegation to less-capable agents. Model assignments follow the
-model-selection framework (verifiability × blast radius).
+All 16 runtime dependencies are exactly pinned (`==`) and mirrored between
+`requirements.txt` and `pyproject.toml`, with drift enforced in CI. `pip-audit` runs
+both scoped and whole-environment (RA-2) and was last green on 14 July after the
+setuptools CVE remediation. No abandoned packages; no single-purpose dependency worth
+inlining. **Not re-run in this review** to avoid competing with the live batch for CPU —
+CI's scheduled weekly audit covers it.
 
-| ID | Title | Effort | Model | Why this tier |
-|---|---|---|---|---|
-| RB-1 | Fix release.yml skip-cascade for patch releases | XS | Haiku | Exact YAML given; verified by workflow re-run |
-| RB-2 | WER + confidence-calibration benchmark | L | Sonnet | Judgment in data handling; "wrong but green" risk mitigated by designed sanity gates |
-| RB-3 | Fix LOW-tier strikethrough in PDF export | S | Haiku | Known one-line fix + prescribed test |
-| RB-4 | Version the bundle schema + contract test | S | Haiku | Exact spec, strong deterministic gate |
-| RB-5 | Test the UI run loop and results rendering | M | Sonnet | Mocking judgment; hollow-test risk needs mid-tier |
-| RB-6 | Silence redundant MPS float64 warning (optional) | XS | Haiku | Mechanical, gated by warning absence |
+## CI/CD gaps
 
-After RB-1–RB-5 merge: release v4.1.0, write the benchmark result into the README
-(whatever it shows), and move the project to maintenance.
+None. Tests, Black/Ruff/isort, GitLeaks + detect-secrets + TruffleHog, bandit, CodeQL
+(default setup), `pip-audit`, dependency-drift check, version/tag consistency,
+Dependabot, weekly security and Ollama-tag cron runs, and release automation with the
+patch-release skip-cascade fixed (RB-1). Action versions pinned by major tag.
+
+---
+
+## Action roadmap
+
+### RC-1: Reclaim intermediate variant WAVs
+
+**Context:** `outputs/variants/` holds 14 GB across 156 files and never shrinks. The
+four WAVs per processed file are inputs to Whisper only; once
+`outputs/transcripts/<stem>_<variant>.json` exists they are dead weight
+(`load_transcripts_from_disk` reads the JSON, not the WAVs).
+
+**Success criteria:**
+- After a run completes, that run's variant WAVs are gone while its transcripts and
+  consensus outputs remain.
+- An integration test processes a file (mocked transcription) and asserts the variant
+  files are absent afterwards but `_bundle.json` and the transcript JSONs are present.
+- Deletion failures are logged and never abort the run.
+- Behaviour is opt-out via a config flag for anyone wanting to re-run consensus without
+  re-processing audio.
+
+**Files to change:** `ui/run_worker.py` (or `pipeline_runner.py` end-of-run),
+`config.py` (retention flag), `tests/test_run_manager.py`.
+
+**Estimated effort:** S
+
+### RC-2: Make device and parallelism settings take effect at run time
+
+**Context:** `transcription_engine/orchestrator.py:21-28` binds `WHISPER_DEVICE` and
+`TRANSCRIPTION_PARALLELISM` by value at import, so the sidebar controls that set
+`config.WHISPER_DEVICE` are inert. Verified: after setting `config.WHISPER_DEVICE =
+"cpu"`, the orchestrator still reports `mps` and resolves 1 worker instead of 4.
+
+**Success criteria:**
+- Changing `config.WHISPER_DEVICE` after import changes what `_resolve_parallelism`
+  and `_build_device_pool` return — asserted by a unit test that mutates config
+  post-import (this test must fail against current code).
+- Selecting CPU in the sidebar produces "Running transcription in parallel with 4
+  workers on cpu" in the log without any `.env` change.
+- Existing orchestrator tests pass unmodified.
+
+**Files to change:** `transcription_engine/orchestrator.py`,
+`tests/test_orchestrator.py`.
+
+**Estimated effort:** S
+
+### RC-3: Silence Streamlit's ScriptRunContext warnings in background runs
+
+**Context:** Streamlit logs `missing ScriptRunContext!` for every log record emitted
+from the worker thread, roughly ten lines per real line. `run.log` is unaffected; the
+console is the casualty.
+
+**Success criteria:**
+- A background run's console output contains no `ScriptRunContext` lines.
+- Genuine warnings from other loggers still appear.
+- `run.log` content is unchanged.
+
+**Files to change:** `ui/run_worker.py`, `tests/test_run_manager.py`.
+
+**Estimated effort:** XS
+
+### RC-4: Correct the stale confidence-threshold caption
+
+**Context:** `ui/sidebar.py:504-505` still reads "Confidence Thresholds — Configurable
+in `config.py`" although #185 made them sliders in that same sidebar.
+
+**Success criteria:** the caption points at the sliders and names `config.py` only as
+the source of defaults; a test asserts the phrase "Configurable in `config.py`" is
+absent.
+
+**Files to change:** `ui/sidebar.py`, `tests/test_ui_app.py`.
+
+**Estimated effort:** XS
+
+### RC-5: Tighten the two remaining weak assertions
+
+**Context:** `tests/test_ai_context.py:516` accepts `or "1" in text`, which nearly any
+document satisfies; `tests/test_exporter.py:142`'s second clause subsumes its first.
+
+**Success criteria:** both assert one specific, meaningful condition; both still pass.
+
+**Files to change:** `tests/test_ai_context.py`, `tests/test_exporter.py`.
+
+**Estimated effort:** XS
+
+### RC-6 (optional): Split `export_engine/exporter.py`
+
+**Context:** 827 lines spanning PDF, DOCX, subtitles, ZIP, bundle, and plain text.
+Lowest priority; the module is well-tested (90 %) and stable.
+
+**Success criteria:** each format in its own module behind the existing public
+functions; all export tests pass unmodified.
+
+**Files to change:** `export_engine/`.
+
+**Estimated effort:** M
