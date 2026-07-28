@@ -77,6 +77,17 @@ def execute_run(job: RunJob, manager: RunManager) -> None:
     if root_logger.getEffectiveLevel() > logging.INFO:
         root_logger.setLevel(logging.INFO)
 
+    # Streamlit logs "missing ScriptRunContext!" for every record emitted off
+    # the main thread. The worker deliberately runs without a script context,
+    # so each real log line arrived with roughly ten lines of noise behind it,
+    # making the console useless for watching a run. Silence just that logger
+    # for the run's duration; restored in finally.
+    ctx_logger = logging.getLogger(
+        "streamlit.runtime.scriptrunner_utils.script_run_context"
+    )
+    previous_ctx_level = ctx_logger.level
+    ctx_logger.setLevel(logging.ERROR)
+
     state = new_state(job.run_id, manager.boot_id, job.config, job.files, time.time())
     state["log_path"] = str(log_path)
     # UI-only render options (not pipeline kwargs) — kept separate from
@@ -175,4 +186,5 @@ def execute_run(job: RunJob, manager: RunManager) -> None:
         logger.info("Background run %s finished", job.run_id)
         root_logger.removeHandler(handler)
         root_logger.setLevel(previous_root_level)
+        ctx_logger.setLevel(previous_ctx_level)
         handler.close()

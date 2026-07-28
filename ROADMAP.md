@@ -246,9 +246,9 @@ reading it.
 - [ ] **RC-1: Reclaim intermediate variant WAVs** — `outputs/variants/` holds 14 GB across 156 files and never shrinks; the four WAVs per file are Whisper inputs only and are dead weight once the transcript JSONs exist. Delete per-file after transcription, opt-out via config. (Effort: S)
 - [x] **RC-2: Make device and parallelism settings take effect at run time** (fixed) — `orchestrator.py` now reads `config.WHISPER_DEVICE`/`config.TRANSCRIPTION_PARALLELISM` at call time, so the sidebar controls take effect. The three pre-existing tests that patched the module-local copy (and so asserted the bug) now patch `config`.
 - [x] **RC-7: Cap parallelism where Whisper workers would share a model** (fixed) — Whisper is not thread-safe (KV cache keyed by the model's own `Linear` modules), so CPU/MPS workers sharing one cached instance corrupt each other. Destroyed six files in the 28 July batch. Concurrency now capped to 1 unless multiple CUDA devices are present; multi-GPU unaffected.
-- [ ] **RC-3: Silence Streamlit ScriptRunContext warnings in background runs** — ~10 noise lines per real log line make live console monitoring impractical; `run.log` is unaffected. (Effort: XS)
-- [ ] **RC-4: Correct the stale confidence-threshold caption** — the sidebar still says "Configurable in `config.py`" although #185 made them sliders. (Effort: XS)
-- [ ] **RC-5: Tighten the two remaining weak assertions** — a near-tautological `or "1" in text` and a redundant case-insensitive `or`. (Effort: XS)
+- [x] **RC-3: Silence Streamlit ScriptRunContext warnings in background runs** (fixed) — the worker quietens that logger for the run's duration and restores it afterwards; `run.log` was already unaffected.
+- [x] **RC-4: Correct the stale confidence-threshold caption** (fixed) — the caption now points at the Processing Strategy sliders and names `config.py` only as the source of defaults.
+- [x] **RC-5: Tighten the two remaining weak assertions** (fixed) — the near-tautological `or "1" in text` and the redundant case-insensitive `or` now assert one specific condition each.
 - [ ] **RC-6 (optional): Split `export_engine/exporter.py`** — 827 lines across six export formats. Low priority; well-tested and stable. (Effort: M)
 
 ---

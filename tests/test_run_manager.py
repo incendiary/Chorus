@@ -352,3 +352,37 @@ def test_load_state_returns_none_on_corrupt_file(tmp_path, isolated_paths):
     active_run_file.parent.mkdir(parents=True, exist_ok=True)
     active_run_file.write_text("{not valid json", encoding="utf-8")
     assert load_state() is None
+
+
+class TestScriptRunContextNoiseSuppression:
+    """Streamlit logs 'missing ScriptRunContext!' for every record emitted off
+    the main thread. The worker runs without a script context by design, so
+    each real log line arrived with ~10 lines of noise behind it, making the
+    console unusable for watching a run (RC-3, 28 July production batch).
+    """
+
+    _CTX_LOGGER = "streamlit.runtime.scriptrunner_utils.script_run_context"
+
+    def test_context_logger_is_quietened_during_a_run(
+        self, tmp_path, monkeypatch, _sync_mode
+    ):
+        import logging
+
+        ctx_logger = logging.getLogger(self._CTX_LOGGER)
+        monkeypatch.setattr(ctx_logger, "level", logging.WARNING)
+
+        observed: dict[str, int] = {}
+
+        def _fake_pipeline(**kwargs):
+            observed["level"] = ctx_logger.level
+            return {"elapsed_seconds": 0.1}
+
+        monkeypatch.setattr("ui.pipeline_invocation.run_pipeline", _fake_pipeline)
+
+        manager = RunManager()
+        manager.start(_make_job(tmp_path, names=("a.wav",)))
+
+        # Suppressed while the run executes…
+        assert observed["level"] == logging.ERROR
+        # …and restored afterwards.
+        assert ctx_logger.level == logging.WARNING

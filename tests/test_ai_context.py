@@ -513,7 +513,9 @@ class TestPerRunConfigCompleteness:
         )
         text = path.read_text(encoding="utf-8")
         assert "Bundle schema version" in text
-        assert "| `1` |" in text or "1" in text
+        # The value must appear as its own table cell — a bare "1" would match
+        # almost any document, so the original `or` clause could not fail.
+        assert "| `1` |" in text
 
     def test_bundle_reference_in_machine_readable_section(
         self, tmp_consensus_dir, sample_votes, sample_transcripts_meta
