@@ -29,6 +29,7 @@ Set the token via the environment variable:
 
 from __future__ import annotations
 
+import inspect
 import json
 import logging
 import os
@@ -114,9 +115,20 @@ def _load_pipeline():
             return None
 
         logger.info("Loading pyannote speaker-diarization-3.1 pipeline…")
+        # pyannote.audio 4.x renamed the credential argument from
+        # ``use_auth_token`` to ``token``. Passing the old name raised
+        # TypeError, and because diarisation degrades gracefully the failure
+        # was invisible: every run reported success while silently producing
+        # no speaker labels. Detect the accepted name rather than pinning to
+        # one, so neither an upgrade nor a downgrade of pyannote breaks it.
+        token_kwarg = (
+            "token"
+            if "token" in inspect.signature(Pipeline.from_pretrained).parameters
+            else "use_auth_token"
+        )
         pipeline = Pipeline.from_pretrained(
             "pyannote/speaker-diarization-3.1",
-            use_auth_token=hf_token,
+            **{token_kwarg: hf_token},
         )
 
         # Use GPU if available

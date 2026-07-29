@@ -245,3 +245,55 @@ class TestSpeakerNamesOutputDirIsolation:
         result = load_speaker_names("test_audio", output_dir=isolated_dir)
 
         assert result == {"SPEAKER_00": "Alice"}
+
+
+class TestPyannoteTokenArgument:
+    """pyannote.audio 4.x renamed ``use_auth_token`` to ``token``.
+
+    Passing the old name raised TypeError, and because diarisation degrades
+    gracefully the failure was silent: the 29 July batch reported all nine
+    files "completed successfully" while producing no speaker labels at all.
+    """
+
+    def _load_with(self, monkeypatch, accepted_kwarg: str) -> dict:
+        """Load the pipeline against a stub accepting only *accepted_kwarg*."""
+        import sys
+        import types
+
+        captured: dict = {}
+
+        if accepted_kwarg == "token":
+
+            def from_pretrained(checkpoint, *, token=None, cache_dir=None):
+                captured["kwarg"] = "token"
+                captured["value"] = token
+                return object()
+
+        else:
+
+            def from_pretrained(checkpoint, *, use_auth_token=None):
+                captured["kwarg"] = "use_auth_token"
+                captured["value"] = use_auth_token
+                return object()
+
+        pipeline_cls = type("Pipeline", (), {"from_pretrained": from_pretrained})
+        fake_pyannote = types.ModuleType("pyannote.audio")
+        fake_pyannote.Pipeline = pipeline_cls
+        monkeypatch.setitem(sys.modules, "pyannote.audio", fake_pyannote)
+        monkeypatch.setenv("HUGGINGFACE_TOKEN", "hf_test_token")
+
+        from diarisation import diariser
+
+        assert diariser._load_pipeline() is not None
+        return captured
+
+    def test_uses_token_on_modern_pyannote(self, monkeypatch):
+        captured = self._load_with(monkeypatch, "token")
+        assert captured["kwarg"] == "token"
+        assert captured["value"] == "hf_test_token"
+
+    def test_falls_back_to_use_auth_token_on_older_pyannote(self, monkeypatch):
+        """A downgrade must keep working too — hence detection, not pinning."""
+        captured = self._load_with(monkeypatch, "use_auth_token")
+        assert captured["kwarg"] == "use_auth_token"
+        assert captured["value"] == "hf_test_token"
