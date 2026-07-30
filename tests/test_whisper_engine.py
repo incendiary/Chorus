@@ -105,7 +105,9 @@ def test_transcribe_respects_explicit_model_name(tmp_path, monkeypatch):
     assert model.calls
     _, kwargs = model.calls[0]
     assert kwargs["language"] == "en"
-    assert kwargs["word_timestamps"] is True
+    # Word timestamps are no longer forced on: they collapsed long-form
+    # transcription into repetition loops. See the opt-in tests below.
+    assert "word_timestamps" not in kwargs
 
 
 def test_transcribe_segment_callback_fires(tmp_path, monkeypatch):
@@ -280,3 +282,90 @@ def test_transcribe_non_mps_type_error_is_reraised(tmp_path, monkeypatch):
             stem="sample",
             transcripts_dir=tmp_path,
         )
+
+
+def test_word_timestamps_are_off_by_default(tmp_path, monkeypatch):
+    """Forcing word timestamps on every pass collapsed real long-form audio
+    into repetition loops (137 words vs 1,643 for the same 28.8-minute file).
+    They must now be opt-in.
+    """
+    audio_path = tmp_path / "sample.wav"
+    audio_path.write_bytes(b"fake")
+    model = _DummyModel(text="hello world")
+    monkeypatch.setattr(
+        whisper_engine, "_get_model", lambda **kw: (model, "cpu", "base")
+    )
+    monkeypatch.setattr(whisper_engine, "WORD_TIMESTAMPS", False)
+
+    whisper_engine.transcribe(
+        audio_path=audio_path,
+        variant_key="original",
+        stem="sample",
+        transcripts_dir=tmp_path,
+    )
+
+    _, kwargs = model.calls[0]
+    assert "word_timestamps" not in kwargs
+
+
+def test_word_timestamps_can_be_requested_explicitly(tmp_path, monkeypatch):
+    audio_path = tmp_path / "sample.wav"
+    audio_path.write_bytes(b"fake")
+    model = _DummyModel(text="hello world")
+    monkeypatch.setattr(
+        whisper_engine, "_get_model", lambda **kw: (model, "cpu", "base")
+    )
+
+    whisper_engine.transcribe(
+        audio_path=audio_path,
+        variant_key="original",
+        stem="sample",
+        transcripts_dir=tmp_path,
+        word_timestamps=True,
+    )
+
+    _, kwargs = model.calls[0]
+    assert kwargs["word_timestamps"] is True
+
+
+def test_degenerate_transcription_is_reported(tmp_path, monkeypatch, caplog):
+    """A repetition loop must be surfaced, not silently returned as success."""
+    import logging
+
+    audio_path = tmp_path / "sample.wav"
+    audio_path.write_bytes(b"fake")
+    looped = _DummyModel(text="Thank you. " * 60)
+    monkeypatch.setattr(
+        whisper_engine, "_get_model", lambda **kw: (looped, "cpu", "base")
+    )
+
+    with caplog.at_level(logging.WARNING, logger="transcription_engine.whisper_engine"):
+        whisper_engine.transcribe(
+            audio_path=audio_path,
+            variant_key="original",
+            stem="sample",
+            transcripts_dir=tmp_path,
+        )
+
+    assert any("Degenerate transcription" in r.getMessage() for r in caplog.records)
+
+
+def test_healthy_transcription_is_not_flagged(tmp_path, monkeypatch, caplog):
+    import logging
+
+    audio_path = tmp_path / "sample.wav"
+    audio_path.write_bytes(b"fake")
+    healthy = _DummyModel(text=" ".join(f"word{i}" for i in range(100)))
+    monkeypatch.setattr(
+        whisper_engine, "_get_model", lambda **kw: (healthy, "cpu", "base")
+    )
+
+    with caplog.at_level(logging.WARNING, logger="transcription_engine.whisper_engine"):
+        whisper_engine.transcribe(
+            audio_path=audio_path,
+            variant_key="original",
+            stem="sample",
+            transcripts_dir=tmp_path,
+        )
+
+    assert not any("Degenerate" in r.getMessage() for r in caplog.records)
