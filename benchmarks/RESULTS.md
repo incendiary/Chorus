@@ -1,6 +1,6 @@
 # RB-2: WER + confidence-calibration benchmark results
 
-- **Date**: 2026-07-16
+- **Date**: 2026-07-30
 - **Whisper model**: base
 - **Files**: 15
 - **Total audio duration**: 204.8 s
@@ -11,7 +11,7 @@
 | Condition | Single-pass WER | Chorus WER | Relative delta |
 |---|---|---|---|
 | clean | 0.0314 | 0.0288 | -8.2% |
-| noisy | 0.1024 | 0.1107 | +8.2% |
+| noisy | 0.1024 | 0.1095 | +7.0% |
 
 ## Per-file WER
 
@@ -22,7 +22,7 @@
 | 1089-134686-0006 | clean | 0.1250 | 0.1250 |
 | 1089-134686-0006 | noisy | 0.1667 | 0.1667 |
 | 1089-134686-0009 | clean | 0.0370 | 0.0370 |
-| 1089-134686-0009 | noisy | 0.2593 | 0.3333 |
+| 1089-134686-0009 | noisy | 0.2593 | 0.2963 |
 | 1089-134686-0011 | clean | 0.0000 | 0.0000 |
 | 1089-134686-0011 | noisy | 0.0513 | 0.0513 |
 | 1089-134686-0012 | clean | 0.0000 | 0.0000 |
@@ -46,7 +46,7 @@
 | 1089-134691-0009 | clean | 0.0408 | 0.0408 |
 | 1089-134691-0009 | noisy | 0.0612 | 0.0612 |
 | 1089-134691-0011 | clean | 0.0385 | 0.0000 |
-| 1089-134691-0011 | noisy | 0.0577 | 0.0577 |
+| 1089-134691-0011 | noisy | 0.0577 | 0.0769 |
 
 ## Confidence-tier calibration (chorus arm)
 
@@ -62,10 +62,10 @@
 
 | Tier | Count | Precision |
 |---|---|---|
-| HIGH | 545 | 0.9266 |
-| MEDIUM | 7 | 0.0000 |
+| HIGH | 546 | 0.9249 |
+| MEDIUM | 6 | 0.0000 |
 | LOW | 3 | 0.0000 |
 
 ## Interpretation
 
-On noisy audio (SNR 5.0 dB), single-pass WER was 0.1024 versus chorus consensus WER of 0.1107, so consensus did not beat single-pass Whisper on the condition the architecture is meant to help most. On clean audio, single-pass WER was 0.0314 versus chorus WER of 0.0288. Tier precision on noisy audio was HIGH=0.9266, MEDIUM=0.0000, LOW=0.0000, which is not monotonically calibrated (HIGH > MEDIUM > LOW).
+On noisy audio (SNR 5.0 dB), single-pass WER was 0.1024 versus chorus consensus WER of 0.1095, so consensus did not beat single-pass Whisper on the condition the architecture is meant to help most. On clean audio, single-pass WER was 0.0314 versus chorus WER of 0.0288. Tier precision on noisy audio was HIGH=0.9249, MEDIUM=0.0000, LOW=0.0000, which is not monotonically calibrated (HIGH > MEDIUM > LOW).
