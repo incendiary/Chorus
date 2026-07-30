@@ -15,6 +15,7 @@ import time
 
 from consensus_merger.alignment import align_transcripts
 from consensus_merger.sequence_alignment import (
+    _build_multi_alignment,
     _needleman_wunsch,
     align_transcripts_sequence,
 )
@@ -196,3 +197,136 @@ class TestSequencePerformance:
         inserted_votes = [v for v in result if v.word == "inserted"]
         assert inserted_votes
         assert inserted_votes[0].tier == "LOW"
+
+
+def _numbered(n: int) -> list[str]:
+    return [f"w{i}" for i in range(n)]
+
+
+class TestMultiAlignmentColumnIntegrity:
+    """Regression tests for the column-merge corruption fixed in RC-11.
+
+    The original merge inserted gap columns into a flat list while walking each
+    variant in turn. Every insertion shifted the columns to its right, but the
+    next variant's counter still tracked raw reference positions, so each
+    variant merged after an inserting one landed progressively further out of
+    place. Agreeing words were scattered across separate single-voter columns,
+    which on real four-variant output held the HIGH-confidence rate at 4.6 %
+    where the same data supports roughly 40 %.
+
+    The reference is the *longest* sequence, so these fixtures keep the
+    inserting variant shorter than the reference; otherwise it would be chosen
+    as the reference itself and the defect would not arise.
+    """
+
+    def test_later_variants_are_not_displaced_by_earlier_insertions(self):
+        reference = _numbered(24)
+        # Merged first: three insertions relative to the reference, plus enough
+        # deletions to stay shorter than it.
+        inserting = [
+            "w0",
+            "w1",
+            "ins1",
+            "w2",
+            "w3",
+            "ins2",
+            "w4",
+            "w5",
+            "ins3",
+        ] + _numbered(20)[6:]
+        token_lists = {
+            "inserting": inserting,
+            "identical": list(reference),
+            "reference": reference,
+        }
+
+        columns = _build_multi_alignment(token_lists)
+
+        displaced = [
+            c
+            for c in columns
+            if c.get("reference")
+            and c.get("identical")
+            and c["identical"] != c["reference"]
+        ]
+        assert not displaced, (
+            f"{len(displaced)} columns displaced a variant identical to the "
+            f"reference, e.g. {displaced[:3]}"
+        )
+
+    def test_shared_insertions_occupy_one_column(self):
+        """Two variants inserting the same word at the same point must share a
+        column, so their agreement is counted rather than split in two."""
+        reference = _numbered(12)
+        shared = _numbered(6) + ["um"] + _numbered(12)[6:]
+        token_lists = {
+            "reference": reference,
+            "b": list(shared),
+            "c": list(shared),
+        }
+
+        columns = _build_multi_alignment(token_lists)
+
+        um_columns = [c for c in columns if "um" in c.values()]
+        assert len(um_columns) == 1, f"insertion split across columns: {um_columns}"
+        assert um_columns[0]["b"] == "um"
+        assert um_columns[0]["c"] == "um"
+
+    def test_every_token_is_preserved_in_order(self):
+        """Merging must neither drop nor reorder any variant's words."""
+        reference = _numbered(24)
+        token_lists = {
+            "reference": reference,
+            "b": ["w0", "w1", "extra", "w2"] + _numbered(20)[3:],
+            "c": _numbered(18),
+            "d": ["lead"] + _numbered(22)[1:],
+        }
+
+        columns = _build_multi_alignment(token_lists)
+
+        for key, tokens in token_lists.items():
+            recovered = [c[key] for c in columns if c.get(key)]
+            assert recovered == tokens, f"{key} corrupted: {recovered} != {tokens}"
+
+    def test_three_of_four_agreement_reaches_high(self):
+        """Three variants agreeing against one dissenter must clear the HIGH
+        threshold (3/4 = 0.75), even when the dissenter is the longest sequence
+        and therefore anchors the alignment.
+
+        The dissenter still shares most of its words with the others, as real
+        variants of the same audio do; a reference sharing nothing with the
+        other transcripts gives the pairwise alignments no anchor at all, which
+        is a limitation of reference-based alignment rather than of the merge.
+        """
+        agreeing = _numbered(24)
+        inserting = [
+            "w0",
+            "w1",
+            "ins1",
+            "w2",
+            "w3",
+            "ins2",
+            "w4",
+            "w5",
+            "ins3",
+        ] + _numbered(20)[6:]
+        # Longest, so it becomes the reference: every third word differs.
+        dissenter = [f"z{i}" if i % 3 == 0 else w for i, w in enumerate(_numbered(26))]
+
+        result = align_transcripts_sequence(
+            {
+                "original": " ".join(agreeing),
+                "highpass": " ".join(inserting),
+                "denoised": " ".join(agreeing),
+                "normalised": " ".join(dissenter),
+            }
+        )
+
+        tiers = {v.word: v.tier for v in result}
+        # Words the three non-reference variants agree on, past the insertions.
+        agreed = [w for w in _numbered(20)[6:] if w in tiers]
+        high = [w for w in agreed if tiers[w] == "HIGH"]
+        assert len(high) >= len(agreed) * 0.8, (
+            f"only {len(high)}/{len(agreed)} agreed words reached HIGH: "
+            f"{ {w: tiers[w] for w in agreed} }"
+        )

@@ -178,50 +178,53 @@ def _build_multi_alignment(
             ref_tokens, tokens, similarity_threshold
         )
 
-    # Build multi-alignment columns from pairwise results
-    # The reference alignment defines the column structure
-    n_cols = len(ref_tokens)
-    if pairwise_alignments:
-        # Use the longest pairwise alignment to determine column count
-        # (may be longer than ref due to insertions in other sequences)
-        max_align_len = max(len(a) for a in pairwise_alignments.values())
-        n_cols = max(n_cols, max_align_len)
-
-    # Map each variant's alignment into a column-indexed structure
-    columns: list[dict[str, str]] = []
-
-    # Build columns from the first pairwise alignment as the scaffold
     if not pairwise_alignments:
-        # Only one transcript — each word is its own column
-        for token in ref_tokens:
-            columns.append({ref_key: token})
-        return columns
+        # Only one transcript — each word is its own column.
+        return [{ref_key: token} for token in ref_tokens]
 
-    # Use the reference sequence to anchor columns
-    # For each pairwise alignment, track where reference tokens land
-    _needleman_wunsch(ref_tokens, ref_tokens)  # identity
+    # Columns are keyed by reference position rather than by list index, so
+    # merging one variant can never shift the positions another variant has
+    # already been written to.
+    #
+    # An earlier implementation inserted gap columns directly into a flat list
+    # while walking each variant in turn. Every insertion shifted the columns
+    # to its right, but the next variant's counter still tracked raw reference
+    # positions, so each successive variant was written progressively further
+    # out of place. On real four-variant output that scattered agreeing words
+    # across separate columns and drove the HIGH-confidence rate down to 4.6 %
+    # where the same data supports roughly 40 %.
+    ref_columns: list[dict[str, str]] = [{ref_key: token} for token in ref_tokens]
 
-    # Simpler approach: iterate through each pairwise alignment
-    # and merge into a unified column structure
-    # Start with ref as the base
-    for token in ref_tokens:
-        columns.append({ref_key: token})
+    # gap_columns[r] holds the columns sitting immediately *before* reference
+    # position r, one per insertion depth. Two variants that both insert a word
+    # at the same point share depth 0, so their agreement is counted rather
+    # than split across two single-voter columns.
+    gap_columns: dict[int, list[dict[str, str]]] = {}
 
-    # For each other variant, align to ref and fill columns
     for key, alignment in pairwise_alignments.items():
         ref_idx = 0
+        depth = 0
         for ref_tok, other_tok in alignment:
             if ref_tok:
-                # This aligns with a reference position
-                if ref_idx < len(columns):
-                    columns[ref_idx][key] = other_tok
+                if ref_idx < len(ref_columns):
+                    ref_columns[ref_idx][key] = other_tok
                 ref_idx += 1
+                depth = 0
+                continue
+            # Insertion in this variant with no reference counterpart.
+            slots = gap_columns.setdefault(ref_idx, [])
+            if depth < len(slots):
+                slots[depth][key] = other_tok
             else:
-                # Insertion in the other sequence (no ref counterpart)
-                # Insert a new column before the current ref position
-                new_col = {ref_key: "", key: other_tok}
-                columns.insert(ref_idx, new_col)
-                ref_idx += 1
+                slots.append({ref_key: "", key: other_tok})
+            depth += 1
+
+    columns: list[dict[str, str]] = []
+    for ref_idx, column in enumerate(ref_columns):
+        columns.extend(gap_columns.get(ref_idx, ()))
+        columns.append(column)
+    # Insertions running past the final reference token.
+    columns.extend(gap_columns.get(len(ref_columns), ()))
 
     return columns
 
