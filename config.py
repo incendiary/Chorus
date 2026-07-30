@@ -115,6 +115,18 @@ def _detect_device() -> str:
 _env_device = os.environ.get("WHISPER_DEVICE", "").strip().lower()
 WHISPER_DEVICE: str = _env_device if _env_device else _detect_device()
 
+# Word-level timestamps: OFF by default.
+# Whisper's word-timestamp alignment can collapse long-form transcription into
+# a repetition loop — measured on a 28.8-minute recording, the same model gave
+# 1,643 words with this off and 137 words with it on (47 % of them a single
+# repeated phrase). They are only needed for word-level SRT/VTT subtitles, so
+# they are enabled per run when that granularity is requested.
+WORD_TIMESTAMPS = os.environ.get("WORD_TIMESTAMPS", "").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+}
+
 # Language hint (None = auto-detect)
 WHISPER_LANGUAGE = os.environ.get("WHISPER_LANGUAGE", None)
 

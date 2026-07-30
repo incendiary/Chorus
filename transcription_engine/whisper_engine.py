@@ -28,12 +28,19 @@ from __future__ import annotations
 import json
 import logging
 import threading
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
 import whisper
 
-from config import TRANSCRIPTS_DIR, WHISPER_DEVICE, WHISPER_LANGUAGE, WHISPER_MODEL
+from config import (
+    TRANSCRIPTS_DIR,
+    WHISPER_DEVICE,
+    WHISPER_LANGUAGE,
+    WHISPER_MODEL,
+    WORD_TIMESTAMPS,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -90,6 +97,22 @@ def _get_model(
             raise
 
 
+def _repetition_ratio(text: str) -> float:
+    """Fraction of 3-grams taken by the single most frequent 3-gram.
+
+    A healthy transcript sits near zero; a Whisper repetition loop drives this
+    towards 1.0. Used to surface degenerate output rather than let it pass as
+    a successful transcription.
+    """
+    words = text.split()
+    if len(words) < 30:
+        return 0.0
+    trigrams = [" ".join(words[i : i + 3]) for i in range(len(words) - 2)]
+    if not trigrams:
+        return 0.0
+    return max(Counter(trigrams).values()) / len(trigrams)
+
+
 def transcribe(
     audio_path: str | Path,
     variant_key: str,
@@ -99,6 +122,7 @@ def transcribe(
     model_name: str | None = None,
     transcripts_dir: Path | None = None,
     segment_callback: Any | None = None,
+    word_timestamps: bool | None = None,
 ) -> dict[str, Any]:
     """
     Transcribe a single audio file and persist the result as JSON.
@@ -174,8 +198,18 @@ def transcribe(
     if lang:
         decode_options["language"] = lang
 
-    # Always enable word-level timestamps for richer export options
-    decode_options["word_timestamps"] = True
+    # Word-level timestamps are opt-in because they can wreck the transcript.
+    # Whisper's word-timestamp path made this model collapse into a repetition
+    # loop on real long-form audio: on a 28.8-minute recording the same model
+    # produced 1,643 words with the flag off and 137 words with it on, 47 % of
+    # which was a single repeated phrase. Chorus previously forced it on for
+    # every pass, which silently degraded every transcription and destroyed
+    # inter-variant agreement (the visible symptom was a ~3 % HIGH-confidence
+    # rate). They buy only word-level subtitle granularity, so they are now
+    # enabled solely when that granularity is actually wanted.
+    want_word_ts = WORD_TIMESTAMPS if word_timestamps is None else bool(word_timestamps)
+    if want_word_ts:
+        decode_options["word_timestamps"] = True
 
     # Whisper's default fp16=True triggers a "FP16 is not supported on CPU"
     # UserWarning; silence it at source whenever the effective device is CPU.
@@ -206,6 +240,22 @@ def transcribe(
         decode_options["fp16"] = False
         result = cpu_model.transcribe(str(audio_path), **decode_options)
         active_device = "cpu"
+
+    # Guard against silent degeneration. Whisper can collapse into a repetition
+    # loop and still return "successfully"; that is how a whole nine-file batch
+    # reported success while producing 137-word transcripts of 29-minute
+    # recordings. Surface it loudly rather than let consensus quietly report
+    # the resulting disagreement as low confidence.
+    repetition = _repetition_ratio(result.get("text", ""))
+    if repetition > 0.2:
+        logger.warning(
+            "Degenerate transcription for variant '%s' (%s): %.0f%% of the text "
+            "is one repeated phrase. The transcript is unreliable — try a "
+            "different model size, or disable word timestamps.",
+            variant_key,
+            audio_path.name,
+            repetition * 100,
+        )
 
     # Augment result with metadata
     result["variant"] = variant_key
