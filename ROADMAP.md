@@ -243,14 +243,33 @@ Third review, run at v4.1.0 with the background-run feature live. Full findings 
 `REVIEW.md`. The two headline items were both found by *running* the software, not
 reading it.
 
-- [ ] **RC-1: Reclaim intermediate variant WAVs** — `outputs/variants/` holds 14 GB across 156 files and never shrinks; the four WAVs per file are Whisper inputs only and are dead weight once the transcript JSONs exist. Delete per-file after transcription, opt-out via config. (Effort: S)
+- [x] **RC-1: Reclaim intermediate variant WAVs** (fixed) — `outputs/variants/` had reached 21 GB across 232 files. The four WAVs per recording are Whisper inputs only and are deleted once every stage that reads them has finished, which must stay after diarisation because it re-opens the original variant. Opt out with `KEEP_VARIANT_WAVS=1`.
 - [x] **RC-2: Make device and parallelism settings take effect at run time** (fixed) — `orchestrator.py` now reads `config.WHISPER_DEVICE`/`config.TRANSCRIPTION_PARALLELISM` at call time, so the sidebar controls take effect. The three pre-existing tests that patched the module-local copy (and so asserted the bug) now patch `config`.
 - [x] **RC-7: Cap parallelism where Whisper workers would share a model** (fixed) — Whisper is not thread-safe (KV cache keyed by the model's own `Linear` modules), so CPU/MPS workers sharing one cached instance corrupt each other. Destroyed six files in the 28 July batch. Concurrency now capped to 1 unless multiple CUDA devices are present; multi-GPU unaffected.
 - [x] **RC-3: Silence Streamlit ScriptRunContext warnings in background runs** (fixed) — the worker quietens that logger for the run's duration and restores it afterwards; `run.log` was already unaffected.
 - [x] **RC-4: Correct the stale confidence-threshold caption** (fixed) — the caption now points at the Processing Strategy sliders and names `config.py` only as the source of defaults.
 - [x] **RC-5: Tighten the two remaining weak assertions** (fixed) — the near-tautological `or "1" in text` and the redundant case-insensitive `or` now assert one specific condition each.
 - [ ] **RC-6 (optional): Split `export_engine/exporter.py`** — 827 lines across six export formats. Low priority; well-tested and stable. (Effort: M)
+- [x] **RC-8: MPS device recommendation** (closed as obsolete) — the concern was that MPS could not do float64 word-timestamp alignment and so wasted a pass per variant. RC-10 turned word timestamps off by default, so the fallback no longer fires and MPS is correctly recommended. The documented "3-5x faster than CPU for base and small" was wrong in both magnitude and direction, and is replaced with measured figures: 1.05x for `base`, 1.7x for `small`, 2.7x for `medium`.
+- [x] **RC-9: Pass the credential pyannote 4.x accepts** (fixed) — `use_auth_token` was renamed to `token`, so diarisation failed silently on every file in the 28 July batch. The kwarg is now chosen by inspecting the installed signature.
+- [x] **RC-10: Stop forcing word timestamps** (fixed) — `word_timestamps=True` was hardcoded on every pass. On long-form audio that collapses Whisper into a repetition loop: 1,643 words with it off versus 137 with it on, same file and model. Now opt-in, with a degeneracy guard so a repetition loop can never again be reported as success.
+- [x] **RC-11: Stop the multi-alignment merge displacing later variants** (fixed) — `columns.insert()` shifted every column to its right while the next variant's counter still tracked raw reference positions, so each successive variant landed further out of place. On a real recording it held HIGH confidence at 4.6 % where the same data supports 43.6 %. Columns are now keyed by reference position, and insertions at the same gap are shared rather than split.
+
+### What the two headline bugs mean together
+
+RC-10 and RC-11 were both live in every run since they were written, and between them
+they account for the poor real-world output that prompted this review. Neither was
+visible in the benchmark: LibriSpeech test-clean variants diverge by 0.044 mean pairwise
+WER against 0.474 on real phone audio, so alignment saw almost no insertions and
+consensus had nothing to arbitrate. RC-11 moved a real recording from 4.6 % to 43.6 %
+HIGH while moving the benchmark's HIGH count by one word. See `benchmarks/README.md`.
+
+**Still unproven:** that four-variant consensus reduces WER. Re-measured on corrected
+code, consensus still does not beat single-pass Whisper on the benchmark (noisy 0.1095
+versus 0.1024), and there is no long-form ground truth to test the case Chorus is
+actually built for. The defensible claim remains calibrated uncertainty, not superior
+accuracy.
 
 ---
 
-*Last updated: 28 July 2026*
+*Last updated: 31 July 2026*
