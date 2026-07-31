@@ -20,6 +20,7 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
+import config
 from audio_processor.pipeline import process_audio
 from config import CONSENSUS_DIR, ensure_output_dirs
 from transcription_engine.orchestrator import run_transcription_pass
@@ -63,6 +64,42 @@ def active_stages(
     return stages
 
 
+def _discard_variant_wavs(
+    variant_paths: dict[str, Path],
+    variants_dir: Path,
+) -> None:
+    """Delete the intermediate cleaned WAVs produced for this run.
+
+    Only files inside *variants_dir* are removed, so a caller that points a
+    variant at audio living elsewhere can never have that audio deleted.
+    Failures are logged and swallowed: reclaiming scratch space must never
+    fail a run whose real outputs are already written.
+    """
+    reclaimed = 0
+    for key, path in variant_paths.items():
+        path = Path(path)
+        try:
+            if not path.is_file():
+                continue
+            if path.parent.resolve() != variants_dir.resolve():
+                logger.debug(
+                    "Leaving variant '%s' in place (outside %s).", key, variants_dir
+                )
+                continue
+            size = path.stat().st_size
+            path.unlink()
+            reclaimed += size
+        except OSError as exc:
+            logger.warning("Could not remove variant WAV %s: %s", path, exc)
+
+    if reclaimed:
+        logger.info(
+            "Reclaimed %.1f MB of intermediate variant WAVs "
+            "(set KEEP_VARIANT_WAVS=1 to retain them).",
+            reclaimed / 1_000_000,
+        )
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Public API
 # ─────────────────────────────────────────────────────────────────────────────
@@ -82,6 +119,7 @@ def run_pipeline(
     progress_callback: Callable[[str, float], None] | None = None,
     event_callback: Callable[[dict], None] | None = None,
     output_dir: Path | None = None,
+    keep_variant_wavs: bool | None = None,
 ) -> dict[str, Path]:
     """
     Execute the full Chorus pipeline on a single audio file.
@@ -118,12 +156,18 @@ def run_pipeline(
         Root directory for all pipeline outputs.  When provided, sub-dirs
         ``variants/``, ``transcripts/``, and ``consensus/`` are created
         inside it.  Defaults to the global ``config.OUTPUTS_DIR`` layout.
+    keep_variant_wavs : bool, optional
+        Retain the intermediate cleaned WAVs instead of deleting them once
+        every stage that reads them has finished.  If None,
+        ``config.KEEP_VARIANT_WAVS`` applies (default: delete).
 
     Returns
     -------
     dict
         Keys:
-          ``"variant_paths"``  — dict of variant key → WAV path
+          ``"variant_paths"``  — dict of variant key → WAV path.  The files
+            themselves are deleted unless *keep_variant_wavs* is set, so treat
+            these as a record of what was produced, not as readable paths.
           ``"transcripts"``    — dict of variant key → Whisper result dict
           ``"consensus_path"`` — Path to the final consensus ``.md`` file
           ``"best_guess_path"``— Path to the clean, markup-free best-guess ``.txt`` file
@@ -425,6 +469,15 @@ def run_pipeline(
             )
         except Exception as exc:
             logger.warning("Diarisation failed: %s", exc)
+
+    # Reclaim the intermediate WAVs. This must stay after diarisation, which is
+    # the last stage to read them (it re-opens variant_paths["original"]).
+    if keep_variant_wavs is None:
+        keep_variant_wavs = config.KEEP_VARIANT_WAVS
+    if not keep_variant_wavs:
+        # variants_dir is None when the caller took the config.OUTPUTS_DIR
+        # layout, which is what process_audio wrote to in that case.
+        _discard_variant_wavs(variant_paths, variants_dir or config.VARIANTS_DIR)
 
     _progress("Pipeline complete.", 1.00, stage="done")
 

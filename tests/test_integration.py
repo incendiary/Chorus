@@ -255,15 +255,47 @@ class TestFullPipeline:
 
     @pytest.mark.usefixtures("_patch_transcription", "patch_consensus_dir")
     def test_variant_paths_returned(self, synthetic_audio, patch_consensus_dir):
-        """Should return the audio variant paths."""
+        """Should return the audio variant paths, retaining the files on request."""
         from pipeline_runner import run_pipeline
 
-        results = run_pipeline(audio_path=synthetic_audio, language="en")
+        results = run_pipeline(
+            audio_path=synthetic_audio, language="en", keep_variant_wavs=True
+        )
         variant_paths = results["variant_paths"]
         assert isinstance(variant_paths, dict)
         assert len(variant_paths) > 0
         for _key, path in variant_paths.items():
             assert Path(path).exists()
+
+    @pytest.mark.usefixtures("_patch_transcription", "patch_consensus_dir")
+    def test_variant_wavs_are_reclaimed_by_default(
+        self, synthetic_audio, patch_consensus_dir
+    ):
+        """The intermediate WAVs are scratch space and must not accumulate.
+
+        They were never cleaned up, reaching 21 GB across 232 files before this
+        was fixed. The paths are still reported so the run record stays
+        complete; only the files go.
+        """
+        from pipeline_runner import run_pipeline
+
+        results = run_pipeline(audio_path=synthetic_audio, language="en")
+        variant_paths = results["variant_paths"]
+        assert variant_paths, "variant paths should still be reported"
+        for key, path in variant_paths.items():
+            assert not Path(path).exists(), f"variant {key} was not reclaimed: {path}"
+
+    @pytest.mark.usefixtures("_patch_transcription", "patch_consensus_dir")
+    def test_reclaim_leaves_real_outputs_intact(
+        self, synthetic_audio, patch_consensus_dir
+    ):
+        """Cleanup must touch only the scratch WAVs, never the deliverables."""
+        from pipeline_runner import run_pipeline
+
+        results = run_pipeline(audio_path=synthetic_audio, language="en")
+        assert Path(results["consensus_path"]).exists()
+        assert Path(results["best_guess_path"]).exists()
+        assert Path(results["bundle_path"]).exists()
 
 
 class TestOptionalPipelineFeatures:
