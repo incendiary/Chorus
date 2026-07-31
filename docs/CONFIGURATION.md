@@ -167,9 +167,27 @@ Chorus probes hardware in this order and selects the first available option:
 1. **CUDA** — NVIDIA GPU. Fastest option; requires the NVIDIA Container Toolkit on Linux
    or Docker Desktop + WSL2 on Windows.
 2. **MPS** — Apple Silicon GPU (Metal Performance Shaders). Available on M-series Macs
-   running Chorus natively (not in Docker). Gives roughly 3–5× the speed of CPU for
-   `base` and `small` models.
+   running Chorus natively (not in Docker). The gain over CPU **grows with model size**;
+   see the measurements below.
 3. **CPU** — Always available. Slowest, but works everywhere.
+
+### What MPS actually buys you
+
+Measured on 44 seconds of real speech, warm model, times excluding model load:
+
+| Model | CPU | MPS | Speed-up |
+|---|---|---|---|
+| `base` | 12.8× realtime | 13.5× realtime | **1.05×** |
+| `small` | 5.3× realtime | 8.9× realtime | **1.7×** |
+| `medium` | 1.6× realtime | 4.3× realtime | **2.7×** |
+
+On `base` the two are effectively identical, so there is no reason to fight for MPS if
+CPU is more convenient. The larger the model, the more MPS is worth having — which is
+also where the wait actually hurts.
+
+*(These figures come from one M-series machine and are indicative, not a specification.
+An earlier revision of this document claimed 3–5× for `base` and `small`, which
+overstated the gain and attributed it to the wrong end of the model range.)*
 
 ### Apple Silicon (MPS) caveat
 
