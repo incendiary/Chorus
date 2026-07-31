@@ -198,7 +198,7 @@ WHISPER_DEVICE=cpu   # force CPU
 
 ### Apple Silicon (macOS) — MPS
 
-**Native only — MPS is fully supported and auto-detected**, no `.env` change needed. PyTorch's Metal backend gives roughly 3–5× the speed of CPU inference for the `base` and `small` models. If MPS fails to load (e.g. memory pressure), Chorus automatically falls back to CPU and logs a warning — transcription still completes.
+**Native only — MPS is fully supported and auto-detected**, no `.env` change needed. The gain over CPU grows with model size: measured on real speech, roughly **1.05× for `base`, 1.7× for `small`, and 2.7× for `medium`**. On `base` there is effectively nothing in it. See [docs/CONFIGURATION.md](docs/CONFIGURATION.md) for the full measurements. If MPS fails to load (e.g. memory pressure), Chorus automatically falls back to CPU and logs a warning — transcription still completes.
 
 **Not available in Docker at all** — Docker Desktop on macOS runs containers inside a Linux VM with no access to the Metal GPU. This is an architectural limitation with no workaround; use native installation for MPS.
 
