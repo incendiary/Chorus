@@ -174,6 +174,19 @@ SUPPORTED_AUDIO_EXTENSIONS = frozenset(
     }
 )
 
+# Retain the intermediate cleaned WAVs after a run.
+# The four variant WAVs per input exist only as Whisper inputs, and are dead
+# weight once the transcript JSONs are written — they are roughly 100 MB per
+# recording and accumulate indefinitely (21 GB across 232 files on the
+# maintainer's machine before this was reclaimed). They are deleted by default
+# once every stage that reads them has finished. Set KEEP_VARIANT_WAVS=1 to
+# retain them for debugging the cleaning filters.
+KEEP_VARIANT_WAVS = os.environ.get("KEEP_VARIANT_WAVS", "").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+}
+
 # Sample rate used throughout the pipeline (Hz)
 TARGET_SAMPLE_RATE = 16_000
 

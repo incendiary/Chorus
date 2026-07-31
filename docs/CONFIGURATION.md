@@ -174,9 +174,11 @@ Chorus probes hardware in this order and selects the first available option:
 ### Apple Silicon (MPS) caveat
 
 Whisper's word-level timestamp alignment requires 64-bit floating point operations,
-which MPS does not support. Chorus handles this automatically: it catches the error,
-reloads the affected model pass on CPU, and continues. All other passes remain on MPS.
-A warning is logged when this fallback occurs — it is expected behaviour, not a failure.
+which MPS does not support. This only arises when `WORD_TIMESTAMPS` is enabled, which
+it is not by default, so most runs are unaffected. When it does arise, Chorus handles
+it automatically: it catches the error, reloads the affected pass on CPU, and routes
+the remaining passes straight to CPU rather than repeating a doomed attempt. A warning
+is logged once per run — it is expected behaviour, not a failure.
 
 > **Memory note:** The `large` model (~3 GB) may exhaust unified memory on 8 GB
 > M-series configurations. Use `small` or `medium` on those machines.
@@ -252,6 +254,57 @@ works well for common languages with a clear speaker.
 - **Forced English output** — set `WHISPER_LANGUAGE=en` to force transcription in English
   even if the audio is in another language (translation mode; transcription quality will
   vary).
+
+---
+
+## Word-Level Timestamps
+
+**`WORD_TIMESTAMPS`** **(env)** — `1` / `true` / `yes` to enable; blank to disable (default)
+
+Whisper can emit a timestamp per word rather than per segment. Chorus needs this only
+for word-level SRT/VTT subtitle cues; subtitle export falls back to segment-level cues
+without it, and every other output is unaffected.
+
+### Leave this off unless you need word-level subtitles
+
+Whisper's word-timestamp alignment can collapse long-form transcription into a
+repetition loop. Measured on a 28.8-minute recording, one model produced 1,643 words
+with the flag off and 137 words with it on, 47 % of which was a single repeated phrase.
+Because Chorus transcribes four variants and compares them, a degraded pass does not
+merely lose words — it destroys the cross-variant agreement the confidence tiers are
+derived from.
+
+Chorus flags this if it happens: any transcript where a single three-word phrase
+exceeds 20 % of the text is logged as a degenerate pass.
+
+### When to enable it
+
+Only when producing subtitles that need per-word timing, and preferably on short audio.
+Check the run log for degeneracy warnings afterwards.
+
+---
+
+## Storage
+
+**`KEEP_VARIANT_WAVS`** **(env)** — `1` / `true` / `yes` to keep; blank to delete (default)
+
+Each run writes four cleaned WAVs to `outputs/variants/`. They exist purely as Whisper
+inputs and carry no information once the transcript JSONs are written — roughly 100 MB
+per recording, retained indefinitely if not cleaned up.
+
+Chorus deletes them by default once every stage that reads them has finished, including
+diarisation. Only files inside the run's own variants directory are removed, and a
+failure to delete never fails the run.
+
+Enable retention when debugging the cleaning filters and you need to listen to what each
+filter actually produced:
+
+```bash
+KEEP_VARIANT_WAVS=1
+```
+
+The transcripts, consensus document, best-guess text, AI context pack, and bundle JSON
+are all unaffected — cleanup touches only the scratch WAVs.
 
 ---
 
