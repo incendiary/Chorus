@@ -49,12 +49,25 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          EXISTING=$(gh issue list --search "Ollama model tag(s) no longer exist" --state open --json number --jq '.[0].number' || true)
+          # Match on a parenthesis-free phrase. GitHub's search parser treats
+          # "(s)" as syntax, so searching the full title "Ollama model tag(s)
+          # no longer exist" silently returns nothing, the guard below never
+          # fires, and this job opens a fresh duplicate every week — it had
+          # filed nine identical issues before this was caught.
+          EXISTING=$(gh issue list \
+            --search '"Ollama model tag" in:title' \
+            --state open --json number --jq '.[0].number' || true)
+
+          BODY="$(printf 'The weekly Ollama model tag check found one or more recommended model tags that no longer resolve in the Ollama registry:\n\n%s\nUpdate devops-practices/survey-ollama-env.sh to remove or replace them. Failed run: %s/%s/actions/runs/%s' "$FAILED_TAGS" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID")"
+
           if [ -z "$EXISTING" ]; then
             gh issue create \
               --title "Ollama model tag(s) no longer exist in survey-ollama-env.sh" \
-              --body "$(printf 'The weekly Ollama model tag check found one or more recommended model tags that no longer resolve in the Ollama registry:\n\n%s\nUpdate devops-practices/survey-ollama-env.sh to remove or replace them. Failed run: %s/%s/actions/runs/%s' "$FAILED_TAGS" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID")" \
+              --body "$BODY" \
               --label "bug"
           else
-            echo "Issue #${EXISTING} already open — skipping."
+            # Comment rather than skip, so the still-failing tags and the run
+            # link are recorded without spawning another issue.
+            echo "Issue #${EXISTING} already open — adding a comment."
+            gh issue comment "$EXISTING" --body "$BODY"
           fi
