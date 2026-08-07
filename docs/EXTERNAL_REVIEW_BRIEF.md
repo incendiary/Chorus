@@ -143,8 +143,10 @@ branch; `git merge main` to catch up. Group related PRs into one version bump.
 fix the test. Flaky test = production bug. **Every production bug gets a regression test
 in the same PR that fixes it.** Coverage direction must be up.
 
-**Reference pinning** — no `@main`/`@master` in docs or Actions; pin to `@vX.Y.Z` or a
-SHA. Install commands versioned (`pip install pkg==X.Y.Z`).
+**Reference pinning** — no floating branch references in docs or Actions (an `@` followed
+by a branch name such as the default branch); pin to `@vX.Y.Z` or a commit SHA. Install
+commands versioned (`pip install pkg==X.Y.Z`). Note that `devops-practices/check-clone-refs.sh`
+enforces this with a plain grep, so writing the literal form even as an example fails CI.
 
 **Roadmap** — `ROADMAP.md` at root is the source of truth, checkbox format (`- [ ]` /
 `- [x]`), README links to it rather than duplicating. Sync on merge. No stale items.
