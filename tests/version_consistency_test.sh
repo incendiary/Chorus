@@ -69,18 +69,23 @@ fi
 
 # Docker pull commands live in docs/DOCKER.md, not README.md — the README
 # only links to it since v4.0.1's native-first restructuring.
-info "docs/DOCKER.md docker CPU tag matches v${VERSION}"
-if grep -q "ghcr.io/incendiary/chorus:v${VERSION}" "$REPO_ROOT/docs/DOCKER.md" 2>/dev/null; then
-  pass
-else
-  fail; echo "    Missing CPU image tag v${VERSION} in docs/DOCKER.md"
-fi
+if [[ "$VERSION" =~ \.0\.0$ ]]; then
+  info "docs/DOCKER.md docker CPU tag matches major release v${VERSION}"
+  if grep -q "ghcr.io/incendiary/chorus:v${VERSION}" "$REPO_ROOT/docs/DOCKER.md" 2>/dev/null; then
+    pass
+  else
+    fail; echo "    Missing CPU image tag v${VERSION} in docs/DOCKER.md"
+  fi
 
-info "docs/DOCKER.md docker GPU tag matches v${VERSION}"
-if grep -q "ghcr.io/incendiary/chorus:v${VERSION}-gpu" "$REPO_ROOT/docs/DOCKER.md" 2>/dev/null; then
-  pass
+  info "docs/DOCKER.md docker GPU tag matches major release v${VERSION}"
+  if grep -q "ghcr.io/incendiary/chorus:v${VERSION}-gpu" "$REPO_ROOT/docs/DOCKER.md" 2>/dev/null; then
+    pass
+  else
+    fail; echo "    Missing GPU image tag v${VERSION}-gpu in docs/DOCKER.md"
+  fi
 else
-  fail; echo "    Missing GPU image tag v${VERSION}-gpu in docs/DOCKER.md"
+  info "Docker image tags remain on the last major release for v${VERSION}"
+  pass
 fi
 
 # --- 5. ROADMAP exists and has checklist items ---

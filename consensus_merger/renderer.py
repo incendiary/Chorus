@@ -147,7 +147,7 @@ def render_consensus(
         "|------|------:|-----------:|---------|",
         f"| HIGH   | {stats['high']}   | {stats['high']/total*100:.1f}% | Present in ≥ {pct_str} % of transcripts — kept as-is |",  # noqa: E501
         f"| MEDIUM | {stats['medium']} | {stats['medium']/total*100:.1f}% | Present in 2 transcripts — highlighted for review |",  # noqa: E501
-        f"| LOW    | {stats['low']}    | {stats['low']/total*100:.1f}% | Present in only 1 transcript — flagged for removal |",  # noqa: E501
+        f"| LOW    | {stats['low']}    | {stats['low']/total*100:.1f}% | Present in only 1 transcript — flagged for review |",  # noqa: E501
         "",
     ]
 

@@ -466,7 +466,7 @@ class TestConsensusThresholdLegend:
         )
         text = path.read_text(encoding="utf-8")
         assert "≥ 75% agreement" in text
-        assert "≥ 75% variant agreement — very likely correct" in text
+        assert "≥ 75% variant agreement — strongest agreement signal" in text
 
 
 # ─────────────────────────────────────────────────────────────────────────────

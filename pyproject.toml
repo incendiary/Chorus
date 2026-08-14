@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "chorus-engine"
-version = "4.1.0"
+version = "4.1.1"
 description = "Chorus — A containerised, multi-pass consensus audio transcription engine."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -19,7 +19,6 @@ dependencies = [
   "pydub==0.25.1",
   "scipy==1.17.1",
   "numpy==2.4.6",
-  "nltk==3.10.0",
   "streamlit==1.59.2",
   "watchdog==6.0.0",
   "psutil==7.2.2",
@@ -47,7 +46,7 @@ include = [
 
 [project.optional-dependencies]
 dev = [
-  "black",
+  "black>=26.3.1",
   "ruff",
   "isort",
   "pre-commit",

@@ -24,9 +24,13 @@ from ui.run_worker import execute_run
 class RunManager:
     """Owns the single background run thread and its in-memory results."""
 
+    _process_boot_id = uuid.uuid4().hex
+    _process_lock = threading.Lock()
+    _active_thread: threading.Thread | None = None
+
     def __init__(self) -> None:
-        self.boot_id = uuid.uuid4().hex
-        self._lock = threading.Lock()
+        self.boot_id = self._process_boot_id
+        self._lock = self._process_lock
         self._thread: threading.Thread | None = None
         self._results: dict[str, dict[str, dict]] = {}
         self.mark_interrupted_if_stale()
@@ -39,7 +43,8 @@ class RunManager:
         it is gone (server restart) — that is exactly the "stale" case
         ``mark_interrupted_if_stale`` handles separately.
         """
-        return self._thread is not None and self._thread.is_alive()
+        thread = self._active_thread
+        return thread is not None and thread.is_alive()
 
     def start(self, job: RunJob) -> bool:
         """Start executing *job*. Returns False if a run is already active."""
@@ -57,6 +62,7 @@ class RunManager:
                     name=f"chorus-run-{job.run_id}",
                 )
                 self._thread = thread
+                type(self)._active_thread = thread
                 thread.start()
             return True
 

@@ -50,7 +50,7 @@ CONSENSUS_MD = """\
 |------|------:|-----------:|---------|
 | HIGH   | 5   | 62.5% | Present in ≥ 75 % of transcripts — kept as-is |
 | MEDIUM | 2 | 25.0% | Present in 2 transcripts — highlighted for review |
-| LOW    | 1    | 12.5% | Present in only 1 transcript — flagged for removal |
+| LOW    | 1    | 12.5% | Present in only 1 transcript — flagged for review |
 
 ## Consensus Transcript
 
