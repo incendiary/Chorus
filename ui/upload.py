@@ -27,13 +27,11 @@ def render_upload() -> list:
 
     with col_info:
         st.subheader("Pipeline Stages")
-        st.markdown(
-            """
+        st.markdown("""
 1. 🎛️ **Audio Processing** — 3 cleaning filters applied
 2. 🤖 **Transcription** — Whisper runs on each variant
 3. 🗳️ **Consensus Merge** — Word-level voting & confidence scoring
 4. 📄 **Output** — Annotated Markdown + plain-text transcript
-"""
-        )
+""")
 
     return uploaded_files

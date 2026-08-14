@@ -3,7 +3,7 @@ tests/test_version_sync.py — Version and release consistency tests.
 
 Ensures the version string in pyproject.toml stays in sync with:
     - README.md clone instructions (git clone -b vX.Y.Z)
-    - README.md Docker pull/run commands (ghcr.io/incendiary/chorus:vX.Y.Z)
+    - Docker pull/run commands for major releases, when images are published
     - Git tags (latest tag should match pyproject.toml version)
     - ROADMAP.md completion metadata
 
@@ -160,12 +160,14 @@ class TestVersionSync:
         )
 
     def test_docker_md_cpu_pull_matches(self):
-        """docker pull ghcr.io/.../chorus:vX.Y.Z should match pyproject version.
+        """Major releases should document their matching CPU image tag.
 
-        This content lives in docs/DOCKER.md, not README.md — the README only
-        links to it since v4.0.1's native-first restructuring.
+        Patch and minor tags intentionally skip Docker publication, so their native
+        package version must not force documentation to claim an image exists.
         """
         version = _get_pyproject_version()
+        if not version.endswith(".0.0"):
+            pytest.skip("Docker images are published only for major releases")
         docker_md = _get_docker_md_text()
         expected = f"ghcr.io/incendiary/chorus:v{version}"
         assert expected in docker_md, (
@@ -174,12 +176,14 @@ class TestVersionSync:
         )
 
     def test_docker_md_gpu_pull_matches(self):
-        """docker pull ghcr.io/.../chorus:vX.Y.Z-gpu should match pyproject version.
+        """Major releases should document their matching GPU image tag.
 
-        This content lives in docs/DOCKER.md, not README.md — the README only
-        links to it since v4.0.1's native-first restructuring.
+        Patch and minor tags intentionally skip Docker publication, so their native
+        package version must not force documentation to claim an image exists.
         """
         version = _get_pyproject_version()
+        if not version.endswith(".0.0"):
+            pytest.skip("Docker images are published only for major releases")
         docker_md = _get_docker_md_text()
         expected = f"ghcr.io/incendiary/chorus:v{version}-gpu"
         assert expected in docker_md, (
@@ -203,25 +207,20 @@ class TestVersionSync:
 
     def test_no_stale_version_references(self):
         """
-        All vX.Y.Z references in clone/docker commands should be the current version.
+        Native clone commands should reference the current version.
 
         This catches the case where someone bumps pyproject.toml but forgets to
-        update one of the README commands.
+        update the native README command. Docker docs remain on the latest major
+        image because patch and minor releases do not publish Docker images.
         """
         version = _get_pyproject_version()
-        readme = _get_readme_text()
+        readme = _get_readme_text().split("\n## Docker\n", maxsplit=1)[0]
 
-        # Find all version-tagged refs in clone and docker commands
-        # Pattern: commands that reference a specific release version
+        # Find version-tagged refs in native clone commands.
         clone_refs = re.findall(r"git clone -b (v[\d.]+)", readme)
-        docker_pull_refs = re.findall(
-            r"ghcr\.io/incendiary/chorus:(v[\d.]+-?g?p?u?)", readme
-        )
-
-        all_refs = clone_refs + docker_pull_refs
         expected_tag = f"v{version}"
 
-        stale = [ref for ref in all_refs if not ref.startswith(expected_tag)]
+        stale = [ref for ref in clone_refs if ref != expected_tag]
         assert not stale, (
             f"README.md contains stale version references: {stale}. "
             f"All should reference v{version} (from pyproject.toml)."

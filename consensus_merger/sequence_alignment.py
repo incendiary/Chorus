@@ -11,7 +11,7 @@ Algorithm
 ─────────
 1. Choose the longest transcript as the reference sequence.
 2. Align each other transcript to the reference using Needleman-Wunsch
-   with a custom scoring function (NLTK edit-distance-based similarity).
+   with a custom scoring function (Levenshtein-based similarity).
 3. Build a multi-alignment matrix from the pairwise alignments.
 4. At each aligned position, vote on the canonical word using the same
    fuzzy-grouping and confidence-tier logic as the positional approach.
@@ -30,7 +30,12 @@ import logging
 import numpy as np
 
 from config import CONSENSUS_THRESHOLD, SIMILARITY_THRESHOLD
-from consensus_merger.alignment import WordVote, _normalised_similarity, _tokenise
+from consensus_merger.alignment import (
+    WordVote,
+    _normalised_similarity,
+    _tokenise,
+    _vote_for_tokens,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -162,8 +167,10 @@ def _build_multi_alignment(
     if not token_lists:
         return []
 
-    # Choose reference: longest transcript
-    ref_key = max(token_lists.keys(), key=lambda k: len(token_lists[k]))
+    # Choose the longest transcript with a stable key tie-breaker. A completion-
+    # order-dependent reference can otherwise change the alignment on multi-GPU
+    # runs where result insertion order is nondeterministic.
+    ref_key = min(token_lists, key=lambda key: (-len(token_lists[key]), key))
     ref_tokens = token_lists[ref_key]
 
     if not ref_tokens:
@@ -195,29 +202,27 @@ def _build_multi_alignment(
     # where the same data supports roughly 40 %.
     ref_columns: list[dict[str, str]] = [{ref_key: token} for token in ref_tokens]
 
-    # gap_columns[r] holds the columns sitting immediately *before* reference
-    # position r, one per insertion depth. Two variants that both insert a word
-    # at the same point share depth 0, so their agreement is counted rather
-    # than split across two single-voter columns.
-    gap_columns: dict[int, list[dict[str, str]]] = {}
+    # Collect each complete insertion run by reference anchor. Zipping runs by
+    # depth is incorrect when variants insert unequal prefixes, for example
+    # ["um", "hello"] versus ["hello"]. Aligning each run separately keeps the
+    # shared suffix in one voting column.
+    insertion_runs: dict[int, dict[str, list[str]]] = {}
 
     for key, alignment in pairwise_alignments.items():
         ref_idx = 0
-        depth = 0
         for ref_tok, other_tok in alignment:
             if ref_tok:
                 if ref_idx < len(ref_columns):
                     ref_columns[ref_idx][key] = other_tok
                 ref_idx += 1
-                depth = 0
                 continue
             # Insertion in this variant with no reference counterpart.
-            slots = gap_columns.setdefault(ref_idx, [])
-            if depth < len(slots):
-                slots[depth][key] = other_tok
-            else:
-                slots.append({ref_key: "", key: other_tok})
-            depth += 1
+            insertion_runs.setdefault(ref_idx, {}).setdefault(key, []).append(other_tok)
+
+    gap_columns = {
+        anchor: _build_multi_alignment(runs, similarity_threshold)
+        for anchor, runs in insertion_runs.items()
+    }
 
     columns: list[dict[str, str]] = []
     for ref_idx, column in enumerate(ref_columns):
@@ -290,40 +295,12 @@ def align_transcripts_sequence(
         if not position_tokens:
             continue
 
-        # Group tokens by fuzzy similarity (same logic as positional)
-        groups: dict[str, list[str]] = {}
-        for token in position_tokens:
-            placed = False
-            for canonical in list(groups.keys()):
-                score = _normalised_similarity(token, canonical)
-                if score >= similarity_threshold:
-                    groups[canonical].append(token)
-                    placed = True
-                    break
-            if not placed:
-                groups[token] = [token]
-
-        # Find the largest group (most agreed-upon token)
-        canonical, members = max(groups.items(), key=lambda kv: len(kv[1]))
-        count = len(members)
-        confidence = count / n_transcripts
-
-        # Assign confidence tier
-        if confidence >= consensus_threshold:
-            tier = "HIGH"
-        elif count >= 2:
-            tier = "MEDIUM"
-        else:
-            tier = "LOW"
-
         votes.append(
-            WordVote(
-                word=canonical,
-                count=count,
-                total=n_transcripts,
-                confidence=round(confidence, 3),
-                tier=tier,
-                variants=list(set(members)),
+            _vote_for_tokens(
+                position_tokens,
+                n_transcripts=n_transcripts,
+                consensus_threshold=consensus_threshold,
+                similarity_threshold=similarity_threshold,
             )
         )
 

@@ -26,6 +26,7 @@ _ROOT = Path(__file__).resolve().parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
+from security.exposure import current_exposure_state, exposure_warning  # noqa: E402
 from ui.pipeline_invocation import render_run_section  # noqa: E402
 from ui.sidebar import render_sidebar  # noqa: E402
 from ui.theme import apply_page_chrome  # noqa: E402
@@ -66,6 +67,9 @@ logging.getLogger().addHandler(_session_handler)
 # ─────────────────────────────────────────────────────────────────────────────
 
 apply_page_chrome()
+_exposure_state = current_exposure_state(str(st.get_option("server.address") or ""))
+if _security_warning := exposure_warning(_exposure_state):
+    st.warning(_security_warning, icon="⚠️")
 sidebar_config = render_sidebar()
 uploaded_files = render_upload()
 render_run_section(uploaded_files, sidebar_config)
@@ -77,6 +81,6 @@ render_run_section(uploaded_files, sidebar_config)
 st.divider()
 st.caption(
     "Chorus Engine · Powered by [OpenAI Whisper](https://github.com/openai/whisper), "
-    "librosa, NLTK, and Streamlit · "
+    "librosa, and Streamlit · "
     "All processing is performed locally — no audio data leaves your machine."
 )

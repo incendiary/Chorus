@@ -67,13 +67,14 @@ default is four variants: original, high-pass, normalised, denoised):
 
 | Tier | Agreement | Meaning | Rendering in `.md` files |
 |------|-----------|---------|---------------------------|
-| **HIGH** | ≥ 75 % (configurable via `CONSENSUS_THRESHOLD` in `config.py`, or per-run via the UI sidebar sliders) | The word was heard consistently across variants. Treat as reliable. | Plain text, no decoration. |
+| **HIGH** | ≥ 75 % (configurable via `CONSENSUS_THRESHOLD` in `config.py`, or per-run via the UI sidebar sliders) | The word was heard consistently across variants. This is high agreement, not a correctness guarantee. | Plain text, no decoration. |
 | **MEDIUM** | Exactly 2 of 4 variants (a 50 % split) | Real disagreement between variants — worth a second look but usually not noise. | `==word==` (Markdown highlight syntax). |
-| **LOW** | Present in only 1 variant | Likely a mishearing, filler artefact, or hallucination introduced by a single audio-cleaning pass. | `**~~word~~**[^NN%: variant / variant]` — bold, struck through, with a footnote naming the observed forms and the percentage. |
+| **LOW** | Present in only 1 variant | The variants disagree at this position; review is needed, but the lone form is not necessarily wrong. | `**~~word~~**[^NN%: variant / variant]` — bold, struck through, with a footnote naming the observed forms and the percentage. |
 
 **Guidance for an LLM reading a consensus document:**
 
-- Quote HIGH-confidence passages with normal confidence.
+- Preserve HIGH-tier passages without an uncertainty marker, but do not infer
+  correctness from agreement alone.
 - Treat MEDIUM-confidence words as plausible but flag them if the surrounding
   sentence would materially change in meaning depending on the word.
 - Treat LOW-confidence words with real scepticism — check whether the

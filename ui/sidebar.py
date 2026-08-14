@@ -506,15 +506,13 @@ def render_sidebar() -> SidebarConfig:
             "Defaults shown. Adjust per run with the sliders under "
             "**Processing Strategy** above; `config.py` sets the defaults."
         )
-        st.markdown(
-            """
+        st.markdown("""
 | Tier | Threshold |
 |------|-----------|
 | 🟢 HIGH   | ≥ 75 % agreement |
 | 🟡 MEDIUM | 50 % agreement   |
 | 🔴 LOW    | 25 % agreement   |
-"""
-        )
+""")
 
     return SidebarConfig(
         model_choice=model_choice,

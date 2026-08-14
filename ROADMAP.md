@@ -229,7 +229,7 @@ in `REVIEW.md`; per-task execution plans (written for delegated agents) in
 `docs/tasks/RB-*.md`.
 
 - [x] **RB-1: Fix release.yml skip-cascade for patch releases** (v4.1.0) — `github-release` now needs `[test, docker-publish]` with an `if:` that accepts a skipped `docker-publish`, `post-release-consistency` follows the same pattern, and the release-creation step is idempotent (skips creation when the release already exists). (Effort: XS, Haiku)
-- [x] **RB-2: WER + confidence-calibration benchmark** (v4.1.0) — `benchmarks/run_benchmark.py` + sanity-gate tests; 15 LibriSpeech utterances, clean and SNR 5 dB conditions, single-pass vs consensus with Whisper `base`. Result (`benchmarks/RESULTS.md`): consensus did **not** beat single-pass on noisy audio (WER 0.1107 vs 0.1024) and edged it on clean (0.0288 vs 0.0314); HIGH-tier precision was strong (0.93–0.98) while every MEDIUM/LOW word in the noisy run was wrong — the tiers carry real signal, so the validated value is calibrated uncertainty flagging rather than raw accuracy gain. (Effort: L, Sonnet)
+- [x] **RB-2: WER + agreement-tier benchmark** (v4.1.0) — `benchmarks/run_benchmark.py` + sanity-gate tests; 15 LibriSpeech utterances, clean and SNR 5 dB conditions, single-pass vs consensus with Whisper `base`. Result (`benchmarks/RESULTS.md`): consensus did **not** beat single-pass on noisy audio (WER 0.1095 vs 0.1024) and edged it on clean (0.0288 vs 0.0314); HIGH-tier precision was 0.92–0.98, while all nine MEDIUM/LOW noisy words were wrong. The small, homogeneous sample supports agreement tiers as review signals, but does not establish general calibration or error-detection reliability. (Effort: L, Sonnet)
 - [x] **RB-3: Fix LOW-tier strikethrough in PDF export** (v4.1.0) — pre-processed strikethrough syntax via regex (`~~text~~` → `<del>text</del>`) before markdown conversion, allowing the CSS `del strong, strong del` rule to apply. Added unit and integration tests covering strikethrough conversion and regression-guarding MEDIUM highlights.
 - [x] **RB-4: Version the bundle schema and add a contract test** (v4.1.0) — `bundle.json`'s `meta` now carries `chorus_version` (read from the root `VERSION` file) and `schema_version` (integer, currently 1, bumped only on renames/removals); `docs/CHORUS_FOR_LLMS.md` §5 updated to match, and a two-way contract test asserts every real bundle key appears in the documented example and vice versa, so contract drift now fails CI. (Effort: S, Haiku)
 - [x] **RB-5: Test the UI run loop and results rendering** (v4.1.0) — added `tests/test_ui_run_loop.py` (11 tests: `run_one_file` config forwarding and error propagation, sequential and all-at-once run loops with per-file panels and partial-failure rendering via AppTest, and `render_file_results` download/statistics/degradation checks with a mocked pipeline); coverage rose from 13% to 94% on `ui/pipeline_invocation.py` and from 12% to 84% on `ui/results.py`. (Effort: M, Sonnet)
@@ -267,9 +267,28 @@ HIGH while moving the benchmark's HIGH count by one word. See `benchmarks/README
 **Still unproven:** that four-variant consensus reduces WER. Re-measured on corrected
 code, consensus still does not beat single-pass Whisper on the benchmark (noisy 0.1095
 versus 0.1024), and there is no long-form ground truth to test the case Chorus is
-actually built for. The defensible claim remains calibrated uncertainty, not superior
-accuracy.
+actually built for. The defensible claim is that Chorus surfaces inter-variant
+agreement for review, not that it provides calibrated uncertainty or superior accuracy.
 
 ---
 
-*Last updated: 31 July 2026*
+## Completed — v4.1.1 Determinism and release hardening
+
+- [x] **Deterministic consensus alignment** (v4.1.1) — stable reference tie-breaking,
+  anchor-local insertion alignment, order-independent fuzzy groups, and complete
+  observed-variant provenance, with focused regressions.
+- [x] **Process-wide run exclusion** (v4.1.1) — independent `RunManager` instances can
+  no longer overlap or mark a live in-process run as interrupted.
+- [x] **Honest agreement guidance** (v4.1.1) — generated output and documentation now
+  describe agreement as a review signal rather than calibrated correctness.
+- [x] **Dependency and release hygiene** (v4.1.1) — removed NLTK and import-time
+  downloads, raised the Black CI floor, and aligned release installation with declared
+  dependencies.
+- [x] **Native localhost default** (v4.1.1) — Streamlit binds to loopback by default;
+  deliberate exposure is detected and displays a persistent upstream-security warning.
+
+Follow-up evidence and dependency work is tracked in issues #219 and #220.
+
+---
+
+*Last updated: 14 August 2026*
