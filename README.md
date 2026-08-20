@@ -152,7 +152,11 @@ Also generated per-run: `{stem}_bundle.json`, a structured JSON file with every 
 
 ---
 
-Download individual formats from the results panel, or **Download All** for a ZIP bundle. Every completed run is also browsable later from the **Past Jobs** page in the sidebar — no need to keep the browser tab open.
+Download individual formats from the results panel, or **Download All** for a ZIP
+bundle. The full archive includes the AI context pack, structured JSON bundle, and
+`HOW_TO_PARSE_CHORUS_OUTPUT.md` guide so it can be handed to an AI agent as one
+self-describing package. Every completed run is also browsable later from the
+**Past Jobs** page in the sidebar — no need to keep the browser tab open.
 
 ---
 
