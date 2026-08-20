@@ -22,9 +22,13 @@ import wave
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from batch_processor.batch_runner import (
     BatchResult,
     _build_parser,
+    _display_settings,
+    _resolve_cli_settings,
     _write_batch_report,
     discover_audio_files,
     run_batch,
@@ -371,6 +375,32 @@ class TestRunBatch:
 
         assert captured == ["fr"]
 
+    def test_new_per_run_settings_forwarded_to_pipeline(self, tmp_path: Path) -> None:
+        """Threshold, storage, and timestamp overrides must reach the pipeline."""
+        _make_wav(tmp_path / "x.wav")
+        captured: dict = {}
+
+        def _mock_pipeline(audio_path: Path, **kwargs) -> dict:
+            captured.update(kwargs)
+            return _fake_pipeline_result(audio_path)
+
+        with (
+            patch("pipeline_runner.run_pipeline", side_effect=_mock_pipeline),
+            patch("batch_processor.batch_runner._write_batch_report"),
+        ):
+            run_batch(
+                inputs=[tmp_path],
+                consensus_threshold=0.7,
+                similarity_threshold=0.9,
+                keep_variant_wavs=True,
+                word_timestamps=True,
+            )
+
+        assert captured["consensus_threshold"] == 0.7
+        assert captured["similarity_threshold"] == 0.9
+        assert captured["keep_variant_wavs"] is True
+        assert captured["word_timestamps"] is True
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # _write_batch_report
@@ -459,3 +489,75 @@ class TestBuildParser:
         parser = _build_parser()
         args = parser.parse_args(["a.mp3", "-l", "de"])
         assert args.language == "de"
+
+    def test_runtime_override_options(self) -> None:
+        parser = _build_parser()
+        args = parser.parse_args(
+            [
+                "a.mp3",
+                "--whisper-model",
+                "small",
+                "--device",
+                "cpu",
+                "--parallelism",
+                "2",
+                "--noise-floor-mode",
+                "fixed",
+                "--no-keep-variant-wavs",
+                "--ollama-timeout",
+                "7.5",
+            ]
+        )
+        settings = _resolve_cli_settings(args)
+
+        assert settings["models"] == (("small",), "CLI (--whisper-model)")
+        assert settings["device"] == ("cpu", "CLI (--device)")
+        assert settings["parallelism"] == ("2", "CLI (--parallelism)")
+        assert settings["noise floor"] == ("fixed", "CLI (--noise-floor-mode)")
+        assert settings["keep variant WAVs"] == (
+            False,
+            "CLI (--keep-variant-wavs)",
+        )
+        assert settings["Ollama timeout"] == (7.5, "CLI (--ollama-timeout)")
+
+    def test_language_auto_clears_configured_hint(self) -> None:
+        parser = _build_parser()
+        settings = _resolve_cli_settings(
+            parser.parse_args(["a.mp3", "--language", "auto"])
+        )
+        assert settings["language"] == (None, "CLI (--language)")
+
+    def test_hardware_preset_is_run_local_and_cli_wins(self) -> None:
+        parser = _build_parser()
+        args = parser.parse_args(
+            ["a.mp3", "--hardware-preset", "max", "--device", "cpu"]
+        )
+        recommendation = {
+            "whisper_model": "medium",
+            "device": "mps",
+            "parallelism": "auto",
+        }
+        with (
+            patch("ui.hardware_survey.detect_hardware", return_value={}),
+            patch(
+                "ui.hardware_survey.recommend_settings",
+                return_value=recommendation,
+            ),
+        ):
+            settings = _resolve_cli_settings(args)
+
+        assert settings["models"] == (("medium",), "hardware preset (max)")
+        assert settings["parallelism"] == ("auto", "hardware preset (max)")
+        assert settings["device"] == ("cpu", "CLI (--device)")
+
+    def test_invalid_parallelism_is_rejected(self) -> None:
+        parser = _build_parser()
+        with pytest.raises(SystemExit):
+            parser.parse_args(["a.mp3", "--parallelism", "0"])
+
+    def test_settings_display_hides_endpoint_value(self, capsys) -> None:
+        endpoint = "http://localhost:11434"
+        _display_settings({"Ollama URL": (endpoint, "CLI")})
+        output = capsys.readouterr().out
+        assert endpoint not in output
+        assert "configured endpoint (value hidden)" in output

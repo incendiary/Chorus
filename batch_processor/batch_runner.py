@@ -39,6 +39,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
+import config
 from config import CONSENSUS_DIR, SUPPORTED_AUDIO_EXTENSIONS, ensure_output_dirs
 
 logger = logging.getLogger(__name__)
@@ -46,6 +47,208 @@ logger = logging.getLogger(__name__)
 # Supported audio extensions — single source of truth in config, shared with
 # the UI uploader. Kept under its historical name for backwards compatibility.
 AUDIO_EXTENSIONS = SUPPORTED_AUDIO_EXTENSIONS
+
+
+def _unit_interval(value: str) -> float:
+    parsed = float(value)
+    if not 0.0 <= parsed <= 1.0:
+        raise argparse.ArgumentTypeError("must be between 0.0 and 1.0")
+    return parsed
+
+
+def _positive_float(value: str) -> float:
+    parsed = float(value)
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("must be greater than zero")
+    return parsed
+
+
+def _parallelism(value: str) -> str:
+    normalised = value.strip().lower()
+    if normalised == "auto":
+        return normalised
+    try:
+        workers = int(normalised)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(
+            "must be 'auto' or a positive integer"
+        ) from exc
+    if workers < 1:
+        raise argparse.ArgumentTypeError("must be 'auto' or a positive integer")
+    return str(workers)
+
+
+def _configured_models_source() -> str:
+    if (
+        "CONSENSUS_MODELS" in config.DOTENV_LOADED_KEYS
+        or config.config_value_source("CONSENSUS_MODELS") == "process environment"
+    ):
+        return config.config_value_source("CONSENSUS_MODELS")
+    return config.config_value_source("WHISPER_MODEL")
+
+
+def _resolve_cli_settings(args: argparse.Namespace) -> dict[str, tuple[object, str]]:
+    """Resolve effective batch settings and retain their provenance."""
+    preset: dict[str, str] | None = None
+    if args.hardware_preset:
+        from ui.hardware_survey import (
+            detect_hardware,
+            recommend_settings,
+            recommend_settings_background,
+        )
+
+        hardware = detect_hardware()
+        preset = (
+            recommend_settings(hardware)
+            if args.hardware_preset == "max"
+            else recommend_settings_background(hardware)
+        )
+
+    preset_source = f"hardware preset ({args.hardware_preset})"
+    if args.consensus_models:
+        models = tuple(dict.fromkeys(args.consensus_models))
+        models_source = "CLI (--consensus-models)"
+    elif args.whisper_model:
+        models = (args.whisper_model,)
+        models_source = "CLI (--whisper-model)"
+    elif preset:
+        models = (preset["whisper_model"],)
+        models_source = preset_source
+    else:
+        models = config.CONSENSUS_MODELS
+        models_source = _configured_models_source()
+
+    if args.device:
+        device = config._detect_device() if args.device == "auto" else args.device
+        device_source = (
+            "CLI (--device auto; auto-detected)"
+            if args.device == "auto"
+            else "CLI (--device)"
+        )
+    elif preset:
+        device = preset["device"]
+        device_source = preset_source
+    else:
+        device = config.WHISPER_DEVICE
+        device_source = config.config_value_source("WHISPER_DEVICE")
+        if device_source == "default":
+            device_source = "auto-detected default"
+
+    if args.parallelism:
+        parallelism = args.parallelism
+        parallelism_source = "CLI (--parallelism)"
+    elif preset:
+        parallelism = preset["parallelism"]
+        parallelism_source = preset_source
+    else:
+        parallelism = config.TRANSCRIPTION_PARALLELISM
+        parallelism_source = config.config_value_source("TRANSCRIPTION_PARALLELISM")
+
+    def resolved(arg_name: str, config_name: str, env_name: str) -> tuple[object, str]:
+        cli_value = getattr(args, arg_name)
+        if cli_value is not None:
+            return cli_value, f"CLI (--{arg_name.replace('_', '-')})"
+        return getattr(config, config_name), config.config_value_source(env_name)
+
+    language = (
+        (None if args.language == "auto" else args.language, "CLI (--language)")
+        if args.language is not None
+        else (config.WHISPER_LANGUAGE, config.config_value_source("WHISPER_LANGUAGE"))
+    )
+    output_dir = (
+        (Path(args.output_dir), "CLI (--output-dir)")
+        if args.output_dir
+        else (None, "default (project outputs)")
+    )
+    return {
+        "models": (models, models_source),
+        "device": (device, device_source),
+        "parallelism": (parallelism, parallelism_source),
+        "language": language,
+        "alignment": resolved(
+            "alignment_strategy", "ALIGNMENT_STRATEGY", "ALIGNMENT_STRATEGY"
+        ),
+        "consensus threshold": (
+            (
+                args.consensus_threshold
+                if args.consensus_threshold is not None
+                else config.CONSENSUS_THRESHOLD
+            ),
+            (
+                "CLI (--consensus-threshold)"
+                if args.consensus_threshold is not None
+                else "default"
+            ),
+        ),
+        "similarity threshold": (
+            (
+                args.similarity_threshold
+                if args.similarity_threshold is not None
+                else config.SIMILARITY_THRESHOLD
+            ),
+            (
+                "CLI (--similarity-threshold)"
+                if args.similarity_threshold is not None
+                else "default"
+            ),
+        ),
+        "noise floor": resolved(
+            "noise_floor_mode", "NOISE_FLOOR_MODE", "NOISE_FLOOR_MODE"
+        ),
+        "word timestamps": resolved(
+            "word_timestamps", "WORD_TIMESTAMPS", "WORD_TIMESTAMPS"
+        ),
+        "keep variant WAVs": resolved(
+            "keep_variant_wavs", "KEEP_VARIANT_WAVS", "KEEP_VARIANT_WAVS"
+        ),
+        "Ollama model": resolved("ollama_model", "OLLAMA_MODEL", "OLLAMA_MODEL"),
+        "Ollama URL": resolved("ollama_base_url", "OLLAMA_BASE_URL", "OLLAMA_BASE_URL"),
+        "Ollama timeout": resolved(
+            "ollama_timeout", "OLLAMA_TIMEOUT_SECONDS", "OLLAMA_TIMEOUT_SECONDS"
+        ),
+        "NLP reconstruction": (args.nlp, "CLI flag"),
+        "LLM reconstruction": (args.llm, "CLI flag"),
+        "speaker diarisation": (args.diarise, "CLI flag"),
+        "exports": (
+            tuple(args.export or ()),
+            "CLI (--export)" if args.export else "default",
+        ),
+        "recursive discovery": (args.recursive, "CLI flag"),
+        "output directory": output_dir,
+    }
+
+
+def _apply_runtime_settings(settings: dict[str, tuple[object, str]]) -> None:
+    """Apply settings consumed dynamically by downstream modules."""
+    config.WHISPER_DEVICE = str(settings["device"][0])
+    config.TRANSCRIPTION_PARALLELISM = str(settings["parallelism"][0])
+    config.NOISE_FLOOR_MODE = str(settings["noise floor"][0])
+    config.OLLAMA_BASE_URL = str(settings["Ollama URL"][0])
+    config.OLLAMA_TIMEOUT_SECONDS = float(settings["Ollama timeout"][0])
+
+
+def _display_settings(settings: dict[str, tuple[object, str]]) -> None:
+    """Print effective non-secret settings before the first batch item runs."""
+    print("\nChorus batch — effective settings")
+    for name, (value, source) in settings.items():
+        if name == "Ollama URL":
+            display_value = "configured endpoint (value hidden)"
+        elif isinstance(value, tuple):
+            display_value = ", ".join(str(item) for item in value)
+        elif value is None or (name == "language" and value == ""):
+            display_value = "auto" if name == "language" else "project default"
+        elif name == "Ollama timeout":
+            display_value = f"{value} s"
+        else:
+            display_value = str(value)
+        print(f"  {name:<22} {display_value:<24} [{source}]")
+    print(
+        "  precedence             CLI > hardware preset > process environment > .env > default"
+    )
+    print(
+        "  hardware guidance      --hardware-preset max|background (this run only); "
+        "devops-practices/survey-ollama-env.sh can update .env after confirmation"
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -149,6 +352,10 @@ def run_batch(
     enable_llm: bool = False,
     ollama_model: str | None = None,
     output_dir: Path | None = None,
+    consensus_threshold: float | None = None,
+    similarity_threshold: float | None = None,
+    keep_variant_wavs: bool | None = None,
+    word_timestamps: bool | None = None,
     progress_callback: Callable[[int, int, str], None] | None = None,
 ) -> list[BatchResult]:
     """
@@ -180,6 +387,12 @@ def run_batch(
         Root directory for all batch outputs.  When supplied, each file's
         outputs are written to an isolated ``<output_dir>/<stem>/``
         subdirectory to prevent cross-job collisions.
+    consensus_threshold, similarity_threshold : float, optional
+        Per-run confidence and fuzzy-match thresholds in the range 0.0–1.0.
+    keep_variant_wavs : bool, optional
+        Retain intermediate cleaned WAVs. The configured default applies when None.
+    word_timestamps : bool, optional
+        Enable Whisper word timestamps. The configured default applies when None.
     progress_callback : callable, optional
         Called as ``progress_callback(current_index, total, filename)``
         after each file completes.
@@ -223,6 +436,10 @@ def run_batch(
                 ollama_model=ollama_model,
                 enable_diarisation=enable_diarisation,
                 output_dir=file_output_dir,
+                consensus_threshold=consensus_threshold,
+                similarity_threshold=similarity_threshold,
+                keep_variant_wavs=keep_variant_wavs,
+                word_timestamps=word_timestamps,
             )
             result.consensus_path = pipeline_out["consensus_path"]
             result.export_paths = pipeline_out.get("export_paths", {})
@@ -334,13 +551,40 @@ Examples:
         "--language",
         "-l",
         default=None,
-        help="BCP-47 language code hint (e.g. 'en'). Omit for auto-detect.",
+        help="BCP-47 language code hint (e.g. 'en'), or 'auto' to override a "
+        "configured language and auto-detect.",
     )
     parser.add_argument(
         "--consensus-models",
         nargs="*",
         default=None,
         help="Whisper model names for consensus (space-separated, e.g. 'base small medium').",
+    )
+    parser.add_argument(
+        "--whisper-model",
+        choices=["tiny", "base", "small", "medium", "large"],
+        default=None,
+        help="Use one Whisper model for this run (shorthand for --consensus-models).",
+    )
+    parser.add_argument(
+        "--device",
+        choices=["auto", "cpu", "cuda", "mps"],
+        default=None,
+        help="Whisper compute device. 'auto' probes CUDA, MPS, then CPU.",
+    )
+    parser.add_argument(
+        "--parallelism",
+        type=_parallelism,
+        default=None,
+        metavar="AUTO|N",
+        help="Transcription worker count ('auto' or a positive integer).",
+    )
+    parser.add_argument(
+        "--hardware-preset",
+        choices=["max", "background"],
+        default=None,
+        help="Detect hardware and apply the selected model/device/parallelism preset "
+        "for this run. Explicit CLI settings still win.",
     )
     parser.add_argument(
         "--alignment-strategy",
@@ -355,6 +599,38 @@ Examples:
         choices=["pdf", "docx", "srt", "vtt"],
         default=None,
         help="Export formats to generate (space-separated).",
+    )
+    parser.add_argument(
+        "--consensus-threshold",
+        type=_unit_interval,
+        default=None,
+        metavar="0..1",
+        help="Minimum transcript agreement fraction for a HIGH-confidence word.",
+    )
+    parser.add_argument(
+        "--similarity-threshold",
+        type=_unit_interval,
+        default=None,
+        metavar="0..1",
+        help="Fuzzy-match acceptance threshold.",
+    )
+    parser.add_argument(
+        "--noise-floor-mode",
+        choices=["vad", "fixed"],
+        default=None,
+        help="Noise-floor detection strategy.",
+    )
+    parser.add_argument(
+        "--word-timestamps",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Enable word-level Whisper timestamps (normally only for SRT/VTT).",
+    )
+    parser.add_argument(
+        "--keep-variant-wavs",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Retain or discard intermediate cleaned WAV variants.",
     )
     parser.add_argument(
         "--recursive",
@@ -383,6 +659,18 @@ Examples:
         help="Ollama model name for LLM reconstruction (e.g. 'mistral', 'neural-chat').",
     )
     parser.add_argument(
+        "--ollama-base-url",
+        default=None,
+        help="Ollama API base URL for this run.",
+    )
+    parser.add_argument(
+        "--ollama-timeout",
+        type=_positive_float,
+        default=None,
+        metavar="SECONDS",
+        help="Ollama request timeout in seconds.",
+    )
+    parser.add_argument(
         "--output-dir",
         "-o",
         default=None,
@@ -393,7 +681,8 @@ Examples:
     return parser
 
 
-if __name__ == "__main__":
+def main(argv: list[str] | None = None) -> int:
+    """CLI entry point. Returns a process exit code for testability."""
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s  %(levelname)-8s  %(name)s — %(message)s",
@@ -401,22 +690,32 @@ if __name__ == "__main__":
     )
 
     parser = _build_parser()
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
+    if args.whisper_model and args.consensus_models:
+        parser.error("--whisper-model and --consensus-models cannot be used together")
 
-    output_dir = Path(args.output_dir) if args.output_dir else None
-    consensus_models = tuple(args.consensus_models) if args.consensus_models else None
+    settings = _resolve_cli_settings(args)
+    _apply_runtime_settings(settings)
+    _display_settings(settings)
+
+    output_dir = settings["output directory"][0]
+    consensus_models = settings["models"][0]
     batch_results = run_batch(
         inputs=args.inputs,
-        language=args.language,
+        language=settings["language"][0],
         consensus_models=consensus_models,
         export_formats=args.export,
         recursive=args.recursive,
-        alignment_strategy=args.alignment_strategy,
+        alignment_strategy=settings["alignment"][0],
         enable_diarisation=args.diarise,
         enable_nlp=args.nlp,
         enable_llm=args.llm,
-        ollama_model=args.ollama_model,
+        ollama_model=settings["Ollama model"][0],
         output_dir=output_dir,
+        consensus_threshold=settings["consensus threshold"][0],
+        similarity_threshold=settings["similarity threshold"][0],
+        keep_variant_wavs=settings["keep variant WAVs"][0],
+        word_timestamps=settings["word timestamps"][0],
     )
 
     print(f"\n{'─'*60}")
@@ -425,4 +724,8 @@ if __name__ == "__main__":
     )
     print(f"  Report: {CONSENSUS_DIR / 'batch_report.md'}")
     print(f"{'─'*60}\n")
-    sys.exit(0 if all(r.success for r in batch_results) else 1)
+    return 0 if all(r.success for r in batch_results) else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

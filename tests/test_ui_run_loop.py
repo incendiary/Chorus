@@ -293,6 +293,7 @@ def _restore_run_env(monkeypatch):
         else:
             monkeypatch.delenv(var, raising=False)
     monkeypatch.setattr(config, "WHISPER_DEVICE", config.WHISPER_DEVICE)
+    monkeypatch.setattr(config, "NOISE_FLOOR_MODE", config.NOISE_FLOOR_MODE)
     monkeypatch.setattr(
         config, "TRANSCRIPTION_PARALLELISM", config.TRANSCRIPTION_PARALLELISM
     )

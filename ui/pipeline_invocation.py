@@ -227,9 +227,10 @@ def _render_idle_state(
     os.environ["WHISPER_MODEL"] = config_obj.model_choice
     os.environ["CONSENSUS_MODELS"] = ",".join(config_obj.consensus_models)
     os.environ["NOISE_FLOOR_MODE"] = config_obj.noise_mode_choice
+    config.NOISE_FLOOR_MODE = config_obj.noise_mode_choice
 
-    # Apply device and parallelism overrides to the live config module so the
-    # transcription engine and orchestrator pick them up without a restart.
+    # Apply live config overrides so the current process picks them up without
+    # a restart; environment values alone affect only later processes/imports.
     _effective_device = (
         config_obj.device_choice
         if config_obj.device_choice != "auto"
