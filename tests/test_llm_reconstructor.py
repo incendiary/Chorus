@@ -176,7 +176,7 @@ def test_probe_model_success():
         "reconstruction.ollama_client.request.urlopen",
         return_value=_make_urlopen_response(body),
     ):
-        with patch("reconstruction.ollama_client.OLLAMA_MODEL", "llama3.1:8b"):
+        with patch("config.OLLAMA_MODEL", "llama3.1:8b"):
             ok, reason = probe_model()
     assert ok is True
     assert reason == ""
@@ -198,7 +198,7 @@ def test_probe_model_model_not_pulled():
         "reconstruction.ollama_client.request.urlopen",
         return_value=_make_urlopen_response(body),
     ):
-        with patch("reconstruction.ollama_client.OLLAMA_MODEL", "llama3.1:8b"):
+        with patch("config.OLLAMA_MODEL", "llama3.1:8b"):
             ok, reason = probe_model()
     assert ok is False
     assert "not pulled" in reason

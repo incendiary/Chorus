@@ -822,3 +822,31 @@ class TestConsensusModelForwarding:
             )
 
         assert captured["model_names"] == ("base", "small")
+
+    @pytest.mark.usefixtures("patch_consensus_dir")
+    def test_run_pipeline_forwards_word_timestamps(self, synthetic_audio):
+        """A per-run timestamp override should reach the transcription stage."""
+        from pipeline_runner import run_pipeline
+
+        captured: dict[str, Any] = {}
+
+        def _capture_pass(
+            variant_paths: dict[str, Path],
+            stem: str,
+            progress_callback=None,
+            **kwargs,
+        ) -> dict[str, dict]:
+            captured["word_timestamps"] = kwargs.get("word_timestamps")
+            if progress_callback:
+                for i, key in enumerate(variant_paths):
+                    progress_callback(i + 1, len(variant_paths), key)
+            return MOCK_TRANSCRIPTS
+
+        with patch("pipeline_runner.run_transcription_pass", side_effect=_capture_pass):
+            run_pipeline(
+                audio_path=synthetic_audio,
+                language="en",
+                word_timestamps=True,
+            )
+
+        assert captured["word_timestamps"] is True

@@ -456,16 +456,31 @@ remain on disk; only the in-memory copy is freed).
 
 ## Hardware Survey
 
-The **🔍 Detect recommended settings** button in the UI sidebar surveys your hardware
-in-process (RAM, CPU cores, GPU via PyTorch) and pre-populates the model, device, and
-parallelism controls with the best fit for your machine. Recommendations use the same
-thresholds as the `devops-practices/survey-ollama-env.sh` script.
+The **🔍 Apply** button in the UI sidebar surveys your hardware in-process (RAM, CPU
+cores, GPU via PyTorch) and pre-populates the model, device, and parallelism controls
+with the best fit for your machine. The button is the confirmation step: it changes
+the current Streamlit session, and those three values are used by the next UI run. It
+does not edit `.env`.
 
-The same logic is available from the command line:
+The batch command uses the same in-process recommendation logic. Selecting a preset
+is an explicit, run-local confirmation; specific CLI options still take precedence:
+
+```bash
+python -m batch_processor.batch_runner recordings/ --hardware-preset max
+python -m batch_processor.batch_runner recordings/ --hardware-preset background
+```
+
+The older interactive shell assistant has a broader role: it also recommends and can
+pull Ollama models, and offers to persist selected `WHISPER_MODEL`, `OLLAMA_MODEL`, and
+`OLLAMA_BASE_URL` values to `.env` after confirmation:
 
 ```bash
 bash devops-practices/survey-ollama-env.sh
 ```
+
+Batch startup always prints its effective non-secret settings and their sources. The
+precedence is CLI option, hardware preset, real process environment, project `.env`,
+then built-in default.
 
 ---
 

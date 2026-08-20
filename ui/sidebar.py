@@ -174,6 +174,12 @@ def render_sidebar() -> SidebarConfig:
 
         if st.session_state.get("survey_summary"):
             st.info(st.session_state["survey_summary"])
+        st.caption(
+            "The Apply button changes this Streamlit session only. Batch runs offer "
+            "the same presets with `--hardware-preset max|background`; the interactive "
+            "`devops-practices/survey-ollama-env.sh` assistant can update `.env` after "
+            "you confirm each setting."
+        )
 
         model_choice = st.selectbox(
             "Model size",

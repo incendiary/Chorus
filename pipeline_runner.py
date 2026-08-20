@@ -120,6 +120,7 @@ def run_pipeline(
     event_callback: Callable[[dict], None] | None = None,
     output_dir: Path | None = None,
     keep_variant_wavs: bool | None = None,
+    word_timestamps: bool | None = None,
 ) -> dict[str, Path]:
     """
     Execute the full Chorus pipeline on a single audio file.
@@ -160,6 +161,9 @@ def run_pipeline(
         Retain the intermediate cleaned WAVs instead of deleting them once
         every stage that reads them has finished.  If None,
         ``config.KEEP_VARIANT_WAVS`` applies (default: delete).
+    word_timestamps : bool, optional
+        Enable Whisper word-level timestamps. If None, the configured value
+        applies. This is normally needed only for word-level SRT/VTT exports.
 
     Returns
     -------
@@ -317,6 +321,7 @@ def run_pipeline(
         model_names=consensus_models,
         segment_callback=_segment_progress,
         on_pass_start=_on_pass_start,
+        word_timestamps=word_timestamps,
     )
     _progress("All transcription variants complete.", 0.80, stage="transcribing")
 
