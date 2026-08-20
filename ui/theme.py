@@ -302,9 +302,7 @@ def apply_page_chrome() -> None:
         }
     }
 </style>
-""".replace(
-            "__CHORUS_PRIMARY__", theme["primary"]
-        )
+""".replace("__CHORUS_PRIMARY__", theme["primary"])
         .replace("__CHORUS_SURFACE__", theme["surface"])
         .replace("__CHORUS_BORDER__", theme["border"])
         .replace("__CHORUS_HEADER_A__", theme["header_a"])

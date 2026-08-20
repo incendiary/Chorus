@@ -170,6 +170,34 @@ def test_second_start_while_running_returns_false(tmp_path, monkeypatch):
     assert manager.is_running() is False
 
 
+def test_second_manager_cannot_overlap_live_run(tmp_path, monkeypatch):
+    """Direct construction must not bypass process-wide single-run ownership."""
+    monkeypatch.delenv("CHORUS_SYNC_RUN", raising=False)
+
+    started = threading.Event()
+    release = threading.Event()
+
+    def blocking_fake(
+        audio_path, progress_callback=None, event_callback=None, **kwargs
+    ):
+        started.set()
+        release.wait(timeout=5)
+        return {"consensus_path": Path("dummy.md"), "elapsed_seconds": 0.01}
+
+    monkeypatch.setattr("ui.pipeline_invocation.run_pipeline", blocking_fake)
+
+    first = RunManager()
+    assert first.start(_make_job(tmp_path, run_id="run-1", names=("a.wav",)))
+    assert started.wait(timeout=5)
+
+    second = RunManager()
+    assert second.get_state()["status"] == "running"
+    assert second.start(_make_job(tmp_path, run_id="run-2", names=("b.wav",))) is False
+
+    release.set()
+    first._thread.join(timeout=5)
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # RunManager / run_worker — per-file exception handling
 # ─────────────────────────────────────────────────────────────────────────────

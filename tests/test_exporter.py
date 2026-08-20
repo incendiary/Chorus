@@ -754,6 +754,14 @@ class TestZipExportOutputDirIsolation:
         ai_context_path = output_dir / "test_ai_context.md"
         ai_context_path.write_text("# AI Context\n\nGood recording.\n")
 
+        bundle_path = output_dir / "test_bundle.json"
+        bundle_path.write_text('{"meta": {"schema_version": 1}}')
+
+        parsing_guide_path = output_dir / "HOW_TO_PARSE_CHORUS_OUTPUT.md"
+        parsing_guide_path.write_text(
+            "# How to Parse Chorus Output\n\n## Output format reference\n"
+        )
+
         diarised_path = output_dir / "test_diarised.md"
         diarised_path.write_text("# Diarised\n\nAlice: Hello world.\n")
 
@@ -772,6 +780,12 @@ class TestZipExportOutputDirIsolation:
             "_speakers.json" in n for n in names
         ), "Missing speakers sidecar in ZIP"
         assert any("_ai_context.md" in n for n in names), "Missing AI context in ZIP"
+        assert "test_bundle.json" in names, "Missing transcript bundle in ZIP"
+        assert (
+            "HOW_TO_PARSE_CHORUS_OUTPUT.md" in names
+        ), "Missing AI parsing guide in ZIP"
+        guide_text = zf.read("HOW_TO_PARSE_CHORUS_OUTPUT.md").decode("utf-8")
+        assert "Output format reference" in guide_text
         assert any(
             "_diarised.md" in n for n in names
         ), "Missing diarised sidecar in ZIP"
@@ -791,6 +805,12 @@ class TestZipExportOutputDirIsolation:
 
         stale_ai_context = global_dir / "test_ai_context.md"
         stale_ai_context.write_text("# Old AI Context\n\nStale data.\n")
+
+        stale_bundle = global_dir / "test_bundle.json"
+        stale_bundle.write_text('{"stale": true}')
+
+        stale_guide = global_dir / "HOW_TO_PARSE_CHORUS_OUTPUT.md"
+        stale_guide.write_text("# Old parsing guide\n")
 
         # Create fresh consensus in isolated output_dir
         isolated_dir = tmp_path / "isolated"
@@ -815,6 +835,8 @@ class TestZipExportOutputDirIsolation:
         assert not any(
             "_ai_context.md" in n for n in names
         ), "ZIP should not include stale AI context from global dir"
+        assert "test_bundle.json" not in names
+        assert "HOW_TO_PARSE_CHORUS_OUTPUT.md" not in names
 
     def test_zip_contains_consensus_and_plaintext(self, tmp_path):
         """ZIP should always include consensus markdown and plaintext variants."""

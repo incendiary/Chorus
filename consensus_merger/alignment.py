@@ -8,7 +8,7 @@ Given N transcript strings, it:
   2. Aligns the sequences using a majority-vote sliding window.
   3. Assigns a confidence weight to every word position based on how many
      transcripts agree on that token.
-  4. Applies NLTK-based fuzzy similarity for near-matches that differ only
+  4. Applies Levenshtein-based fuzzy similarity for near-matches that differ only
      by minor spelling or recognition artefacts.
 
 Confidence Tiers
@@ -25,23 +25,13 @@ from __future__ import annotations
 
 import logging
 import re
+from collections import Counter
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-
-import nltk
-from nltk.metrics.distance import edit_distance
 
 from config import ALIGNMENT_STRATEGY, CONSENSUS_THRESHOLD, SIMILARITY_THRESHOLD
 
 logger = logging.getLogger(__name__)
-
-# Ensure required NLTK data is available
-for _pkg in ("punkt", "punkt_tab", "stopwords"):
-    try:
-        nltk.data.find(f"tokenizers/{_pkg}" if "punkt" in _pkg else f"corpora/{_pkg}")
-    except LookupError:
-        nltk.download(_pkg, quiet=True)
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Data structures
@@ -97,7 +87,24 @@ def _normalised_similarity(a: str, b: str) -> float:
     max_len = max(len(a), len(b))
     if max_len == 0:
         return 1.0
-    dist = edit_distance(a, b)
+    # The engine needs only Levenshtein distance, not NLTK's tokenisers or
+    # downloadable corpora. Keeping the small dynamic-programming routine here
+    # makes imports deterministic and fully offline.
+    if len(a) < len(b):
+        a, b = b, a
+    previous = list(range(len(b) + 1))
+    for row, left_char in enumerate(a, start=1):
+        current = [row]
+        for column, right_char in enumerate(b, start=1):
+            current.append(
+                min(
+                    current[-1] + 1,
+                    previous[column] + 1,
+                    previous[column - 1] + (left_char != right_char),
+                )
+            )
+        previous = current
+    dist = previous[-1]
     return 1.0 - dist / max_len
 
 
@@ -116,6 +123,81 @@ def _best_fuzzy_match(
             best_score = score
             best_word = candidate
     return best_word, best_score
+
+
+def _group_fuzzy_tokens(
+    tokens: Sequence[str], similarity_threshold: float
+) -> list[tuple[str, list[str]]]:
+    """Return deterministic, order-invariant fuzzy-match components.
+
+    Fuzzy similarity is not transitive. Greedily attaching a token to the
+    first matching canonical therefore made the vote depend on transcript
+    completion and dictionary insertion order. Treating matching forms as an
+    undirected graph and returning its connected components gives the same
+    result for every input ordering. The canonical form is the most frequently
+    observed spelling, with lexical order as a stable tie-breaker.
+    """
+    counts = Counter(tokens)
+    forms = sorted(counts)
+    neighbours = {form: set() for form in forms}
+    for index, left in enumerate(forms):
+        for right in forms[index + 1 :]:
+            if _normalised_similarity(left, right) >= similarity_threshold:
+                neighbours[left].add(right)
+                neighbours[right].add(left)
+
+    groups: list[tuple[str, list[str]]] = []
+    unseen = set(forms)
+    while unseen:
+        seed = min(unseen)
+        stack = [seed]
+        component: set[str] = set()
+        while stack:
+            form = stack.pop()
+            if form in component:
+                continue
+            component.add(form)
+            unseen.discard(form)
+            stack.extend(sorted(neighbours[form] - component, reverse=True))
+
+        canonical = min(component, key=lambda form: (-counts[form], form))
+        members = [form for form in sorted(component) for _ in range(counts[form])]
+        groups.append((canonical, members))
+
+    return sorted(groups, key=lambda group: group[0])
+
+
+def _vote_for_tokens(
+    position_tokens: Sequence[str],
+    *,
+    n_transcripts: int,
+    consensus_threshold: float,
+    similarity_threshold: float,
+) -> WordVote:
+    """Build one vote while retaining every observed form at the position."""
+    groups = _group_fuzzy_tokens(position_tokens, similarity_threshold)
+    canonical, members = min(
+        groups,
+        key=lambda group: (-len(group[1]), group[0]),
+    )
+    count = len(members)
+    confidence = count / n_transcripts
+
+    if confidence >= consensus_threshold:
+        tier = "HIGH"
+    elif count >= 2:
+        tier = "MEDIUM"
+    else:
+        tier = "LOW"
+
+    return WordVote(
+        word=canonical,
+        count=count,
+        total=n_transcripts,
+        confidence=round(confidence, 3),
+        tier=tier,
+        variants=sorted(set(position_tokens)),
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -170,40 +252,12 @@ def _align_positional(
         if not position_tokens:
             continue
 
-        # Group tokens by fuzzy similarity
-        groups: dict[str, list[str]] = {}
-        for token in position_tokens:
-            placed = False
-            for canonical in list(groups.keys()):
-                score = _normalised_similarity(token, canonical)
-                if score >= similarity_threshold:
-                    groups[canonical].append(token)
-                    placed = True
-                    break
-            if not placed:
-                groups[token] = [token]
-
-        # Find the largest group (most agreed-upon token)
-        canonical, members = max(groups.items(), key=lambda kv: len(kv[1]))
-        count = len(members)
-        confidence = count / n_transcripts
-
-        # Assign confidence tier
-        if confidence >= consensus_threshold:
-            tier = "HIGH"
-        elif count >= 2:
-            tier = "MEDIUM"
-        else:
-            tier = "LOW"
-
         votes.append(
-            WordVote(
-                word=canonical,
-                count=count,
-                total=n_transcripts,
-                confidence=round(confidence, 3),
-                tier=tier,
-                variants=list(set(members)),
+            _vote_for_tokens(
+                position_tokens,
+                n_transcripts=n_transcripts,
+                consensus_threshold=consensus_threshold,
+                similarity_threshold=similarity_threshold,
             )
         )
 

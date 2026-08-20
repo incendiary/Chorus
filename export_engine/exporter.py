@@ -140,8 +140,7 @@ def export_pdf(
     md_text = consensus_md_path.read_text(encoding="utf-8")
     html_body = _md_to_html(md_text)
 
-    css = CSS(
-        string="""
+    css = CSS(string="""
         @page { margin: 2cm; }
         body {
             font-family: 'Georgia', serif;
@@ -185,8 +184,7 @@ def export_pdf(
             font-size: 10pt;
         }
         hr { border: none; border-top: 1px solid #dee2e6; margin: 1.5em 0; }
-    """
-    )
+    """)
 
     full_html = f"""<!DOCTYPE html>
 <html lang="en">
@@ -657,6 +655,10 @@ def export_zip(
     - ``{stem}_most_likely_clean.txt`` — plain transcript with LOW words omitted
     - ``{stem}_best_guess.txt`` — clean transcript with no markup whatsoever
 
+    Pipeline-generated sidecars are included when present in the output directory,
+    including ``{stem}_bundle.json``, ``HOW_TO_PARSE_CHORUS_OUTPUT.md``, and
+    ``{stem}_ai_context.md``.
+
     Optionally includes any formats from ``include_formats``
     (``"pdf"``, ``"docx"``, ``"srt"``, ``"vtt"``).
 
@@ -694,6 +696,16 @@ def export_zip(
         ai_context_path = target_dir / f"{stem}_ai_context.md"
         if ai_context_path.exists():
             zf.write(ai_context_path, ai_context_path.name)
+
+        # Machine-readable transcript bundle — included if it exists
+        bundle_path = target_dir / f"{stem}_bundle.json"
+        if bundle_path.exists():
+            zf.write(bundle_path, bundle_path.name)
+
+        # AI-facing file and formatting guide — included if it exists
+        parsing_guide_path = target_dir / "HOW_TO_PARSE_CHORUS_OUTPUT.md"
+        if parsing_guide_path.exists():
+            zf.write(parsing_guide_path, parsing_guide_path.name)
 
         # Diarised transcript — included if it exists
         diarised_path = target_dir / f"{stem}_diarised.md"

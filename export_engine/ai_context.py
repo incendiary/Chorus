@@ -7,7 +7,7 @@ alongside a question about the transcription.  It contains:
   1. **Methodology overview** — how Chorus generated the transcript
   2. **Processing metadata** — model, language, device, alignment strategy
   3. **Confidence statistics** — HIGH/MEDIUM/LOW word distribution
-  4. **Clean transcript** — the "most likely" text without markup
+  4. **Clean transcript** — the most-voted text without markup
   5. **Uncertainty annotations** — every uncertain word with its variants,
      position, and confidence score
   6. **Speaker information** — if diarisation was enabled
@@ -71,8 +71,8 @@ def _methodology_section(consensus_threshold: float) -> str:
     pct_str = _format_pct(consensus_threshold)
     return f"""## Methodology
 
-Chorus is a **multi-pass consensus transcription engine** that improves
-transcription accuracy through redundancy and voting:
+Chorus is a **multi-pass consensus transcription engine** that exposes
+inter-variant agreement through redundancy and voting:
 
 1. **Audio Variant Generation** — The original audio is processed through
    multiple cleaning filters (high-pass, normalisation, spectral denoising)
@@ -85,17 +85,17 @@ transcription accuracy through redundancy and voting:
 3. **Word-Level Consensus Voting** — All transcripts are aligned
    word-by-word and a confidence vote is computed for each position:
    - **HIGH (≥ {pct_str}% agreement):** The word appears in most or all variants.
-     Very likely correct.
+     This is high agreement, not a correctness guarantee.
    - **MEDIUM (50% agreement):** The word appears in roughly half the
-     variants. Probably correct but worth a second look.
+     variants. The variants disagree, so review is recommended.
    - **LOW (25% agreement):** The word appears in only one variant.
-     Likely an artefact, mishearing, or hallucination.
+     The variants strongly disagree, so review is recommended.
 
 4. **Consensus Rendering** — The final transcript uses the most-voted word
    at each position, annotated with confidence tiers.
 
-This approach significantly reduces single-pass transcription errors,
-particularly for noisy audio, accented speech, or domain-specific terminology.
+The tiers are agreement signals, not calibrated error probabilities. Chorus has
+not been shown to reduce overall word error rate beyond single-pass Whisper.
 """
 
 
@@ -247,8 +247,7 @@ def generate_ai_context_pack(
     sections.append(_methodology_section(consensus_threshold))
 
     # ── Processing Metadata ──────────────────────────────────────────────────
-    sections.append(
-        f"""## Processing Configuration
+    sections.append(f"""## Processing Configuration
 
 | Parameter | Value |
 |-----------|-------|
@@ -263,8 +262,7 @@ def generate_ai_context_pack(
 | Total consensus words | {len(votes)} |
 | Chorus version | `{chorus_version}` |
 | Bundle schema version | `{schema_version}` |
-"""
-    )
+""")
 
     # ── Variant details ──────────────────────────────────────────────────────
     variant_lines = [
@@ -281,18 +279,16 @@ def generate_ai_context_pack(
     sections.append("\n".join(variant_lines))
 
     # ── Confidence Statistics ────────────────────────────────────────────────
-    sections.append(
-        f"""## Confidence Statistics
+    sections.append(f"""## Confidence Statistics
 
 | Tier | Count | Percentage | Interpretation |
 |------|------:|----------:|----------------|
-| HIGH | {n_high} | {n_high / total * 100:.1f}% | ≥ {pct_str}% variant agreement — very likely correct |
-| MEDIUM | {n_med} | {n_med / total * 100:.1f}% | 50% agreement — probably correct, worth reviewing |
-| LOW | {n_low} | {n_low / total * 100:.1f}% | 25% agreement — single variant only, possibly an error |
+| HIGH | {n_high} | {n_high / total * 100:.1f}% | ≥ {pct_str}% variant agreement — strongest agreement signal |
+| MEDIUM | {n_med} | {n_med / total * 100:.1f}% | 50% agreement — review recommended |
+| LOW | {n_low} | {n_low / total * 100:.1f}% | 25% agreement — single variant only, review required |
 
-**Overall reliability score:** {n_high / total * 100:.1f}% of words are HIGH confidence.
-"""
-    )
+**High-agreement share:** {n_high / total * 100:.1f}% of words are HIGH confidence.
+""")
 
     # ── Speaker Information ──────────────────────────────────────────────────
     if speaker_labels:
@@ -312,7 +308,7 @@ def generate_ai_context_pack(
         sections.append("\n".join(speaker_lines))
 
     # ── Clean Transcript ─────────────────────────────────────────────────────
-    sections.append("## Clean Transcript (Most Likely)\n")
+    sections.append("## Clean Transcript (Most-Voted)\n")
     sections.append(
         "The following is the plain-text transcript using the most-voted word "
         "at each position. No confidence markup is applied.\n"
@@ -324,17 +320,18 @@ def generate_ai_context_pack(
     sections.append(_build_uncertainty_table(votes, consensus_threshold))
 
     # ── Usage Guidance ───────────────────────────────────────────────────────
-    sections.append(
-        """
+    sections.append("""
 ## Usage Guidance for AI Systems
 
 When using this transcript:
 
-1. **Trust HIGH-confidence words** — they have strong multi-variant agreement.
+1. **Use HIGH-confidence words as the strongest agreement signal** — agreement
+   is not a correctness guarantee.
 2. **Verify MEDIUM-confidence words** — check surrounding context for sense.
 3. **Treat LOW-confidence words with scepticism** — they may be hallucinations,
    filler words, or misheard audio. Consider the variants listed above.
-4. **If asked about accuracy**, reference the confidence statistics above.
+4. **If asked about accuracy**, do not infer it from agreement statistics;
+   request ground-truth evaluation or human review.
 5. **If quoting the transcript**, prefer HIGH-confidence passages.
 6. **For critical applications** (legal, medical), flag that this is an
    automated transcription and recommend human verification of uncertain sections.
@@ -352,8 +349,7 @@ suitable for programmatic extraction and AI analysis.
 ---
 
 *Generated by Chorus Engine — AI Context Pack Module*
-"""
-    )
+""")
 
     # ── Write file ───────────────────────────────────────────────────────────
     target_dir = output_dir or CONSENSUS_DIR

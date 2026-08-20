@@ -10,6 +10,7 @@ Covers:
 
 from __future__ import annotations
 
+import itertools
 import time
 
 from consensus_merger.alignment import WordVote, align_transcripts
@@ -109,6 +110,30 @@ class TestFuzzyMatching:
         result = align_transcripts(variants)
         assert len(result) == 1
         assert result[0].tier in ("HIGH", "MEDIUM")
+
+    def test_grouping_is_order_invariant_for_transitive_chain(self):
+        """A~B and B~C must not produce completion-order-dependent votes."""
+        forms = ("abcde", "abxde", "abxdy", "abxdy")
+        observed = set()
+
+        for permutation in itertools.permutations(forms):
+            variants = dict(zip(("a", "b", "c", "d"), permutation, strict=True))
+            vote = align_transcripts(
+                variants, strategy="positional", similarity_threshold=0.8
+            )[0]
+            observed.add((vote.word, vote.count, vote.confidence, vote.tier))
+
+        assert observed == {("abxdy", 4, 1.0, "HIGH")}
+
+    def test_variants_include_dissenting_observed_forms(self):
+        vote = align_transcripts(
+            {"a": "fox", "b": "fox", "c": "fox", "d": "dog"},
+            strategy="positional",
+        )[0]
+
+        assert vote.word == "fox"
+        assert vote.count == 3
+        assert vote.variants == ["dog", "fox"]
 
 
 # ─────────────────────────────────────────────────────────────────────────────

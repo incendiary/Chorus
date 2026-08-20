@@ -1,10 +1,15 @@
 # Chorus Engine
 
-**Chorus is not a better transcriber — it's a transcriber that knows when it's wrong.**
+**Chorus is a multi-pass transcriber that makes inter-variant disagreement visible.**
 
 A multi-pass consensus audio transcription engine powered by OpenAI Whisper. Chorus ingests raw audio, generates distinct cleaned variants (high-pass, normalised, denoised), transcribes each independently, and synthesises the results into a single, confidence-weighted "consensus transcript".
 
-Voting across acoustic perspectives does not make the words more accurate — benchmarking showed transcript accuracy on par with a single Whisper pass (see [Measured accuracy](#measured-accuracy-v410-benchmark)). What it does produce is **calibrated uncertainty**: word-level confidence tiers that reliably separate the words you can trust from the words you should check. Plain Whisper hands you a transcript with its errors invisibly distributed; Chorus hands you the same transcript with the errors flagged — for your own review, or for a downstream LLM told exactly which words to distrust.
+Voting across acoustic perspectives has not been shown to improve overall word
+accuracy: the current small benchmark was broadly on par with a single Whisper
+pass (see [Measured accuracy](#measured-accuracy-v410-benchmark)). Chorus instead
+reports word-level agreement tiers. These tiers identify where variants agree or
+disagree, but they are not calibrated error probabilities and cannot guarantee
+that an agreed word is correct. Use them to prioritise human or downstream review.
 
 ---
 
@@ -37,7 +42,7 @@ environment yourself.
 2. **Clone the repository at the current release:**
 
    ```bash
-   git clone -b v4.1.0 https://github.com/incendiary/Chorus.git
+   git clone -b v4.1.1 https://github.com/incendiary/Chorus.git
    cd Chorus
    ```
 
@@ -71,6 +76,17 @@ environment yourself.
 
    Open your browser at [http://localhost:8501](http://localhost:8501).
 
+   Chorus is localhost-only by default. To deliberately bind the native UI to
+   another interface, acknowledge the exposure and override Streamlit explicitly:
+
+   ```bash
+   CHORUS_LOCALHOST_ONLY=false streamlit run ui/app.py --server.address=0.0.0.0
+   ```
+
+   Exposed mode displays a persistent warning. Chorus is not an authenticated,
+   internet-facing or multi-user service; add appropriate access controls and
+   review upstream component advisories before using this mode.
+
 *Whisper model weights are cached under `~/.cache/whisper` after first use, so
 subsequent runs are significantly faster.*
 
@@ -84,7 +100,7 @@ Once the UI is open at [http://localhost:8501](http://localhost:8501), configura
 
 - **Settings preset — Max / Background:** click **🔍 Apply** to survey your machine's RAM, CPU, and GPU in-process and auto-select a model size, compute device, and parallelism for you. **Max** picks the largest model your hardware can run with full parallelism (machine dedicated to Chorus); **Background** steps one model tier down and pins parallelism to 1 (machine stays responsive for other work). This is the fastest way to get sensible settings without knowing the trade-offs yourself — use it first, then fine-tune the controls below if you want to.
 - **Model size:** `tiny` → `large`. Larger is more accurate but slower; `base` is the recommended default for CPU-only machines.
-- **Consensus models:** optionally select more than one Whisper model size to transcribe with — Chorus votes across all of them for extra confidence signal (slower, more accurate).
+- **Consensus models:** optionally select more than one Whisper model size to transcribe with. Chorus votes across all of them for a broader agreement signal, at additional runtime and memory cost.
 - **Compute device:** Auto-detect (recommended), CPU, NVIDIA CUDA, or Apple MPS.
 - **Auto parallelism / worker count:** how many variants transcribe simultaneously.
 - **Alignment strategy** and **noise floor mode:** advanced tuning — defaults are sensible for most audio.
@@ -128,15 +144,19 @@ Also generated per-run: `{stem}_bundle.json`, a structured JSON file with every 
 
 | Rendering | Confidence Tier | Meaning | Recommended Action |
 |-----------|-----------------|---------|--------------------|
-| Plain text | **HIGH** (≥ 75 %) | Word appears in 3 or 4 variants. | Accept — high agreement. |
+| Plain text | **HIGH** (≥ 75 %) | Word appears in 3 or 4 variants. | High agreement; still review when accuracy is critical. |
 | `==highlighted==` | **MEDIUM** (50 %) | Word appears in exactly 2 variants. | Review — split consensus. |
-| **~~struck bold~~** | **LOW** (25 %) | Word appears in only 1 variant. | Flag — likely an artefact. |
+| **~~struck bold~~** | **LOW** (25 %) | Word appears in only 1 variant. | Review — the variants disagree. |
 
 *Note: The exact threshold percentages are configurable in `config.py`, or per-run via the two confidence-threshold sliders in the UI sidebar.*
 
 ---
 
-Download individual formats from the results panel, or **Download All** for a ZIP bundle. Every completed run is also browsable later from the **Past Jobs** page in the sidebar — no need to keep the browser tab open.
+Download individual formats from the results panel, or **Download All** for a ZIP
+bundle. The full archive includes the AI context pack, structured JSON bundle, and
+`HOW_TO_PARSE_CHORUS_OUTPUT.md` guide so it can be handed to an AI agent as one
+self-describing package. Every completed run is also browsable later from the
+**Past Jobs** page in the sidebar — no need to keep the browser tab open.
 
 ---
 
@@ -145,7 +165,7 @@ Download individual formats from the results panel, or **Download All** for a ZI
 - **Acoustic Pre-processing Pipeline:** Applies dynamic range normalisation, high-pass filtering, and spectral subtraction denoising via `librosa` and `scipy`. Supports VAD-based noise floor detection.
 - **Local Transcription:** Fully offline transcription using OpenAI's `whisper` models. No audio data leaves your machine. Word-level timestamps always enabled.
 - **Dual Alignment Strategies:** Choose between Needleman-Wunsch sequence alignment (handles insertions/deletions) or legacy positional alignment (fast, word-by-word).
-- **Consensus Voting Logic:** Multi-variant alignment that compares transcripts word-for-word, grouping near-matches using NLTK fuzzy similarity.
+- **Consensus Voting Logic:** Multi-variant alignment that compares transcripts word-for-word, grouping near-matches using Levenshtein similarity.
 - **Confidence Highlighting:** The final output is an annotated Markdown document where words are highlighted based on inter-variant agreement.
 - **AI Context Pack:** Machine-generated structured document for LLM consumption — includes methodology, confidence data, uncertainty annotations, and usage guidance.
 - **Speaker Diarisation:** `pyannote.audio` integration for multi-speaker identification with persistent editable speaker names.
@@ -167,21 +187,19 @@ in [`benchmarks/RESULTS.md`](benchmarks/RESULTS.md)):
 | Condition | Single-pass WER | Chorus consensus WER |
 |---|---|---|
 | Clean | 0.0314 | **0.0288** |
-| Noisy (SNR 5 dB) | **0.1024** | 0.1107 |
+| Noisy (SNR 5 dB) | **0.1024** | 0.1095 |
 
-**The honest headline: Chorus is not a better transcriber — it's a transcriber
-that knows when it's wrong.** Consensus does *not* reliably improve raw accuracy
-over a single Whisper pass: most per-file scores are identical, and on noisy
-audio single-pass was slightly better. What the multi-pass architecture *does*
-buy, strongly, is **calibrated uncertainty**: HIGH-tier words were 97.8 %
-correct on clean audio and 92.7 % on noisy audio, while every MEDIUM- and
-LOW-tier word in the noisy condition was wrong. The confidence tiers tell you
-exactly which words to distrust — something a single Whisper pass cannot do.
-Treat the tiers, the annotated consensus document, and the machine-readable
-`bundle.json` as the product; treat the transcript accuracy as equivalent to
-plain Whisper. If raw accuracy is all you need, a larger Whisper model run
-once is the cheaper path. (Caveats: single speaker, read speech, small
-MEDIUM/LOW sample — see the results file.)
+**The bounded conclusion:** consensus did not reliably improve raw accuracy over
+a single Whisper pass. Most per-file scores were identical, and on noisy audio
+single-pass was slightly better. In this dataset, HIGH-tier precision was 97.82 %
+on clean audio and 92.49 % on noisy audio. All nine MEDIUM- and LOW-tier noisy
+words were wrong, but that sample is far too small to establish general
+calibration or error-detection reliability. Treat the tiers, annotated consensus
+document, and machine-readable `bundle.json` as review signals, not correctness
+guarantees. If raw accuracy is the only requirement, a larger Whisper model run
+once may be the cheaper path. The benchmark covers 15 short, single-speaker
+LibriSpeech utterances and does not validate conversational, multi-speaker, or
+long-form audio; see the results file for the full caveats.
 
 ---
 

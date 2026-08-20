@@ -272,6 +272,30 @@ class TestMultiAlignmentColumnIntegrity:
         assert um_columns[0]["b"] == "um"
         assert um_columns[0]["c"] == "um"
 
+    def test_unequal_insertion_runs_align_shared_suffix(self):
+        """An extra prefix in one run must not split a shared inserted word."""
+        reference = _numbered(10)
+        token_lists = {
+            "reference": reference,
+            "b": ["w0", "w1", "um", "hello", "w2", "w3", "w4"],
+            "c": ["w0", "w1", "hello", "w2", "w3", "w4"],
+            "d": list(reference),
+        }
+
+        columns = _build_multi_alignment(token_lists)
+        hello_columns = [column for column in columns if "hello" in column.values()]
+
+        assert len(hello_columns) == 1
+        assert hello_columns[0]["b"] == "hello"
+        assert hello_columns[0]["c"] == "hello"
+
+        votes = align_transcripts_sequence(
+            {key: " ".join(tokens) for key, tokens in token_lists.items()}
+        )
+        hello_vote = next(vote for vote in votes if vote.word == "hello")
+        assert hello_vote.count == 2
+        assert hello_vote.tier == "MEDIUM"
+
     def test_every_token_is_preserved_in_order(self):
         """Merging must neither drop nor reorder any variant's words."""
         reference = _numbered(24)

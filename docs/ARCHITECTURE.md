@@ -109,8 +109,16 @@ GPU acceleration: 10-50× speedup on inference.
 
 ## Security
 
-- Local models only (no cloud dependencies)
+- Localhost-only host binding by default; network exposure requires explicit opt-in
+- Persistent UI warning when exposure is enabled or the declared policy mismatches
+  the effective bind
+- Whisper runs locally; optional diarisation downloads a gated Hugging Face model
 - Non-root Docker user (process isolation)
 - Input validation (file existence, format checks)
 - Pre-commit secret scanning (GitLeaks)
 - Configuration via environment (no hardcoded secrets)
+
+The localhost boundary reduces reachability; it is not a sandbox for model loading.
+Optional diarisation must use the hardcoded official model only while the Lightning
+checkpoint-loader advisory is open. Do not treat Chorus as an authenticated multi-user
+service without additional deployment controls and an upstream dependency review.

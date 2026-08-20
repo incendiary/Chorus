@@ -1,2 +1,16 @@
 [theme]
 base = "light"
+
+[server]
+# Security default: native Chorus listens only on this machine. Network exposure
+# requires an explicit override and CHORUS_LOCALHOST_ONLY=false acknowledgement.
+address = "127.0.0.1"
+port = 8501
+headless = true
+enableCORS = true
+enableXsrfProtection = true
+maxUploadSize = 500
+
+[browser]
+serverAddress = "localhost"
+gatherUsageStats = false
