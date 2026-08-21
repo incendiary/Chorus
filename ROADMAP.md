@@ -32,6 +32,8 @@ Tracked improvements identified during the June 2026 repository assessment.
 
 - [x] **Audio filter property-based tests** (v2.0.6) — verify that filters produce expected acoustic characteristics (e.g., high-pass actually attenuates below cutoff, normalisation hits target dBFS). ✓ Added `TestFilterAcousticProperties`.
 
+- [ ] **Add shell-level test coverage for `devops-practices/survey-ollama-env.sh`** — the script has no automated tests; `tests/test_hardware_survey.py` covers only the Python UI module (`ui/hardware_survey.py`). Surfaced after fixing a real gap: the script always detected GPU type correctly but never turned that into a `WHISPER_DEVICE` recommendation or offered it at the apply step, so running the script (even selecting "apply all") could never update `WHISPER_DEVICE` — only manual `.env` edits could. Fixed by adding a `DEVICE_RECOMMENDED` block mirroring `ui/hardware_survey.py::_recommend_device`'s CUDA > MPS > CPU priority, wired into the recommendation display, the apply list, and the summary; verified end-to-end against a real `.env` (flip to `cpu`, run script, select the item, confirm it writes back `mps` and nothing else changes). No regression test exists for any of this — needs `bats` or an equivalent shell-test harness (none currently in the repo) covering: device recommendation matches the Python module for CUDA/MPS/CPU inputs, the apply step writes only the keys explicitly selected, and skipping leaves `.env` untouched.
+
 ---
 
 ## Future Enhancements
