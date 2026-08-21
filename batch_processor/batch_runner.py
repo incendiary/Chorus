@@ -218,6 +218,37 @@ def _resolve_cli_settings(args: argparse.Namespace) -> dict[str, tuple[object, s
     }
 
 
+def _attach_file_logging(
+    output_dir: Path | None,
+) -> tuple[logging.FileHandler, Path, int]:
+    """Attach a per-batch log file, mirroring ``ui/run_worker.py``'s pattern.
+
+    Unlike the Streamlit background-run path, batch runs have no run_id and
+    can run for many hours unattended (or inside ``screen``/``tmux``, whose
+    own scrollback is finite and easy to lose long before the batch ends).
+    Without this, the only record of a run was the console — there was
+    nothing on disk to check after the fact.
+    """
+    log_dir = output_dir if output_dir is not None else CONSENSUS_DIR
+    log_dir.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    log_path = log_dir / f"batch_{stamp}.log"
+
+    handler = logging.FileHandler(log_path, encoding="utf-8")
+    handler.setLevel(logging.INFO)
+    handler.setFormatter(
+        logging.Formatter(
+            "%(asctime)s  %(levelname)-8s  %(name)s — %(message)s", "%H:%M:%S"
+        )
+    )
+    root_logger = logging.getLogger()
+    root_logger.addHandler(handler)
+    previous_root_level = root_logger.level
+    if root_logger.getEffectiveLevel() > logging.INFO:
+        root_logger.setLevel(logging.INFO)
+    return handler, log_path, previous_root_level
+
+
 def _apply_runtime_settings(settings: dict[str, tuple[object, str]]) -> None:
     """Apply settings consumed dynamically by downstream modules."""
     config.WHISPER_DEVICE = str(settings["device"][0])
@@ -700,29 +731,38 @@ def main(argv: list[str] | None = None) -> int:
 
     output_dir = settings["output directory"][0]
     consensus_models = settings["models"][0]
-    batch_results = run_batch(
-        inputs=args.inputs,
-        language=settings["language"][0],
-        consensus_models=consensus_models,
-        export_formats=args.export,
-        recursive=args.recursive,
-        alignment_strategy=settings["alignment"][0],
-        enable_diarisation=args.diarise,
-        enable_nlp=args.nlp,
-        enable_llm=args.llm,
-        ollama_model=settings["Ollama model"][0],
-        output_dir=output_dir,
-        consensus_threshold=settings["consensus threshold"][0],
-        similarity_threshold=settings["similarity threshold"][0],
-        keep_variant_wavs=settings["keep variant WAVs"][0],
-        word_timestamps=settings["word timestamps"][0],
-    )
+
+    handler, log_path, previous_root_level = _attach_file_logging(output_dir)
+    print(f"  log file               {log_path}")
+    try:
+        batch_results = run_batch(
+            inputs=args.inputs,
+            language=settings["language"][0],
+            consensus_models=consensus_models,
+            export_formats=args.export,
+            recursive=args.recursive,
+            alignment_strategy=settings["alignment"][0],
+            enable_diarisation=args.diarise,
+            enable_nlp=args.nlp,
+            enable_llm=args.llm,
+            ollama_model=settings["Ollama model"][0],
+            output_dir=output_dir,
+            consensus_threshold=settings["consensus threshold"][0],
+            similarity_threshold=settings["similarity threshold"][0],
+            keep_variant_wavs=settings["keep variant WAVs"][0],
+            word_timestamps=settings["word timestamps"][0],
+        )
+    finally:
+        logging.getLogger().removeHandler(handler)
+        logging.getLogger().setLevel(previous_root_level)
+        handler.close()
 
     print(f"\n{'─'*60}")
     print(
         f"  Batch complete: {sum(r.success for r in batch_results)}/{len(batch_results)} succeeded"  # noqa: E501
     )
     print(f"  Report: {CONSENSUS_DIR / 'batch_report.md'}")
+    print(f"  Log:    {log_path}")
     print(f"{'─'*60}\n")
     return 0 if all(r.success for r in batch_results) else 1
 
