@@ -266,6 +266,19 @@ else
   fi
 fi
 
+# ── Whisper device recommendation ────────────────────────────────────────────
+# Mirrors ui/hardware_survey.py::_recommend_device — same priority order,
+# CUDA > MPS > CPU, so the CLI survey and the in-app "Detect" button never
+# disagree about what a given machine should use.
+
+if [[ "$GPU_TYPE" == "NVIDIA CUDA" ]]; then
+  DEVICE_RECOMMENDED="cuda"
+elif [[ "$GPU_TYPE" == "Apple Silicon (MPS)" ]]; then
+  DEVICE_RECOMMENDED="mps"
+else
+  DEVICE_RECOMMENDED="cpu"
+fi
+
 get_model_info() {
   case "$1" in
   "qwen2.5:0.5b") echo "Qwen2.5 0.5B — smallest viable option, low RAM (~1GB)" ;;
@@ -291,6 +304,10 @@ echo ""
 echo -e "${GREEN}Recommended Whisper model for transcription:${NC}"
 echo "  WHISPER_MODEL=${WHISPER_RECOMMENDED}"
 echo "  Reason: $WHISPER_REASONING"
+echo ""
+echo -e "${GREEN}Recommended compute device:${NC}"
+echo "  WHISPER_DEVICE=${DEVICE_RECOMMENDED}"
+echo "  Reason: detected GPU type is '${GPU_TYPE}'"
 echo ""
 echo "  See docs/CONFIGURATION.md for full model comparison."
 
@@ -503,6 +520,10 @@ ENV_REC_KEYS+=("WHISPER_MODEL")
 ENV_REC_VALUES+=("$WHISPER_RECOMMENDED")
 ENV_REC_DESCS+=("Whisper model size  (${WHISPER_REASONING})")
 
+ENV_REC_KEYS+=("WHISPER_DEVICE")
+ENV_REC_VALUES+=("$DEVICE_RECOMMENDED")
+ENV_REC_DESCS+=("Whisper compute device  (detected GPU: ${GPU_TYPE})")
+
 ENV_REC_KEYS+=("OLLAMA_MODEL")
 ENV_REC_VALUES+=("$PRIMARY_MODEL")
 ENV_REC_DESCS+=("Ollama model for LLM reconstruction")
@@ -601,5 +622,6 @@ echo "System: $UNAME | RAM: ${TOTAL_MEM_GB}GB | CPU: $CPU_CORES cores | GPU: $GP
 echo "Ollama: $([ "$OLLAMA_INSTALLED" = true ] && echo "Installed" || echo "Not installed") | Status: $([ "$OLLAMA_RUNNING" = true ] && echo "Running" || echo "Not running")"
 echo "Recommended Ollama model: $PRIMARY_MODEL"
 echo "Recommended Whisper model: $WHISPER_RECOMMENDED  (${WHISPER_REASONING})"
+echo "Recommended Whisper device: $DEVICE_RECOMMENDED  (detected GPU: ${GPU_TYPE})"
 echo ""
 echo -e "${GREEN}✓ Survey complete!${NC}"
