@@ -185,9 +185,14 @@ def check_diarisation_ready() -> tuple[bool, str]:
     Verify diarisation can actually run before a batch starts.
 
     Attempts the real pipeline load (not just a metadata/gating check), since
-    that is the only way to be sure both models are accessible. Returns
-    ``(True, "")`` when ready, or ``(False, reason)`` with the actionable
-    message from ``_try_load_pipeline``.
+    that is the only way to be sure every model it needs is accessible.
+    Returns ``(True, "")`` when ready, or ``(False, reason)`` with the
+    actionable message from ``_try_load_pipeline``.
+
+    This is authoritative but incremental: pipeline construction stops at
+    the first inaccessible model it hits, so one call can only ever report
+    one blocker even when several exist. See ``diarisation_repo_status`` for
+    best-effort visibility into every known candidate at once.
 
     Callers should surface *reason* and require an explicit, informed choice
     before continuing in stub mode — the silent fallback previously produced
@@ -197,6 +202,95 @@ def check_diarisation_ready() -> tuple[bool, str]:
     """
     pipeline, reason = _try_load_pipeline()
     return pipeline is not None, reason or ""
+
+
+# Repos observed, by direct investigation, to matter to
+# pyannote/speaker-diarization-3.1 under the installed pyannote.audio version
+# (4.0.7, checked 2026-08-22): the pipeline itself, the two models named in
+# its Hub config.yaml (segmentation, embedding), and a further model the
+# installed library's own Python defaults route through regardless of that
+# config.yaml (community-1, providing PLDA scoring). This list is NOT
+# authoritative or guaranteed exhaustive — a different pyannote.audio version
+# has already been shown, within one evening, to depend on a different set.
+# check_diarisation_ready() (a real pipeline load) is the only ground truth;
+# this exists purely so a user can accept every likely-needed licence in one
+# pass instead of discovering them one at a time through repeated retries.
+KNOWN_DEPENDENCY_REPOS: tuple[str, ...] = (
+    "pyannote/speaker-diarization-3.1",
+    "pyannote/segmentation-3.0",
+    "pyannote/wespeaker-voxceleb-resnet34-LM",
+    "pyannote/speaker-diarization-community-1",
+)
+
+_WEIGHT_EXTENSIONS = (".bin", ".pt", ".pth", ".safetensors", ".onnx", ".npz", ".ckpt")
+_METADATA_FILENAMES = {".gitattributes", ".gitignore"}
+
+
+def _pick_real_file(files: list[str]) -> str:
+    """Choose a file whose access reflects the repo's real gate.
+
+    ``.gitattributes`` and similar repo-metadata files are typically
+    downloadable even in a fully gated repo, so checking access to
+    "the first file returned" gives the same false-positive risk this
+    function exists to avoid. Prefer an actual weight file; fall back to
+    any non-metadata file; fall back to whatever was returned rather than
+    raise, since even a wrong guess here is still a real access check.
+    """
+    candidates = [
+        f
+        for f in files
+        if f not in _METADATA_FILENAMES and not f.lower().endswith(".md")
+    ]
+    weighty = [f for f in candidates if f.lower().endswith(_WEIGHT_EXTENSIONS)]
+    if weighty:
+        return weighty[0]
+    if candidates:
+        return candidates[0]
+    return files[0]
+
+
+def check_repo_access(repo_id: str, token: str | None) -> tuple[bool, str]:
+    """Check whether *token* can actually download from *repo_id*.
+
+    Hits the same ``resolve/main/...`` endpoint a real pipeline load
+    depends on, via an authenticated HEAD request — not
+    ``HfApi.model_info()``'s gating field, which reported every repo in
+    ``KNOWN_DEPENDENCY_REPOS`` as accessible on 2026-08-22 while the real
+    download for one of them still hard-403'd for hours.
+    """
+    if not token:
+        return False, "no token"
+    try:
+        from huggingface_hub import get_hf_file_metadata, hf_hub_url, list_repo_files
+
+        files = list_repo_files(repo_id, token=token)
+        if not files:
+            return False, "repo has no files"
+        target = _pick_real_file(files)
+        get_hf_file_metadata(hf_hub_url(repo_id, target), token=token)
+        return True, ""
+    except Exception as exc:  # noqa: BLE001 — any failure means "not accessible"
+        return False, str(exc)
+
+
+def diarisation_repo_status() -> list[dict[str, object]]:
+    """Best-effort per-repo access status for every entry in
+    ``KNOWN_DEPENDENCY_REPOS``, so a caller can show a full checklist rather
+    than the single blocker ``check_diarisation_ready`` finds per call.
+
+    Not authoritative and not guaranteed exhaustive — see the module-level
+    comment on ``KNOWN_DEPENDENCY_REPOS``. Each entry:
+    ``{"repo": str, "url": str, "accessible": bool}``.
+    """
+    token = _get_hf_token()
+    return [
+        {
+            "repo": repo,
+            "url": f"https://huggingface.co/{repo}",
+            "accessible": check_repo_access(repo, token)[0],
+        }
+        for repo in KNOWN_DEPENDENCY_REPOS
+    ]
 
 
 def _load_pipeline():

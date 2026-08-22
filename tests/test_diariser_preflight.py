@@ -122,3 +122,80 @@ def test_load_pipeline_still_returns_none_on_failure_for_existing_callers(monkey
         lambda: (None, "some reason"),
     )
     assert _load_pipeline() is None
+
+
+class TestKnownRepoChecklist:
+    """diarisation_repo_status() must check real file access, not repo
+    metadata — HfApi.model_info() reported every known repo as accessible
+    on real casework audio while one of them still hard-403'd on download
+    for hours. It must also not be fooled by always-public repo-metadata
+    files (.gitattributes, README.md) that stay downloadable even in a
+    fully gated repo."""
+
+    def test_picks_a_weight_file_over_metadata_files(self):
+        from diarisation.diariser import _pick_real_file
+
+        chosen = _pick_real_file(
+            [".gitattributes", "README.md", "pytorch_model.bin", "config.yaml"]
+        )
+        assert chosen == "pytorch_model.bin"
+
+    def test_falls_back_to_any_non_metadata_file(self):
+        from diarisation.diariser import _pick_real_file
+
+        chosen = _pick_real_file([".gitattributes", "config.yaml"])
+        assert chosen == "config.yaml"
+
+    def test_falls_back_to_first_file_if_only_metadata_present(self):
+        from diarisation.diariser import _pick_real_file
+
+        chosen = _pick_real_file([".gitattributes"])
+        assert chosen == ".gitattributes"
+
+    def test_no_token_is_reported_as_inaccessible(self):
+        from diarisation.diariser import check_repo_access
+
+        ok, reason = check_repo_access("pyannote/segmentation-3.0", None)
+        assert ok is False
+        assert "token" in reason
+
+    def test_real_file_head_failure_reports_inaccessible(self):
+        from diarisation import diariser
+
+        def _raise(*_a, **_kw):
+            raise RuntimeError("403 Client Error: gated")
+
+        with (
+            patch(
+                "huggingface_hub.list_repo_files",
+                lambda repo, token=None: ["pytorch_model.bin"],
+            ),
+            patch("huggingface_hub.get_hf_file_metadata", _raise),
+            patch("huggingface_hub.hf_hub_url", lambda repo, f: f"https://x/{f}"),
+        ):
+            ok, reason = diariser.check_repo_access("some/repo", "hf_faketoken")
+
+        assert ok is False
+        assert "gated" in reason
+
+    def test_status_checks_every_known_repo(self, monkeypatch):
+        from diarisation import diariser
+
+        monkeypatch.setattr(diariser, "_get_hf_token", lambda: "hf_faketoken")
+        seen: list[str] = []
+
+        def _fake_check(repo, token):
+            seen.append(repo)
+            return (repo != "pyannote/speaker-diarization-community-1", "")
+
+        monkeypatch.setattr(diariser, "check_repo_access", _fake_check)
+        status = diariser.diarisation_repo_status()
+
+        assert seen == list(diariser.KNOWN_DEPENDENCY_REPOS)
+        assert {e["repo"]: e["accessible"] for e in status} == {
+            "pyannote/speaker-diarization-3.1": True,
+            "pyannote/segmentation-3.0": True,
+            "pyannote/wespeaker-voxceleb-resnet34-LM": True,
+            "pyannote/speaker-diarization-community-1": False,
+        }
+        assert all(e["url"].startswith("https://huggingface.co/") for e in status)
