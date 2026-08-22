@@ -96,11 +96,16 @@ class LabelledSegment:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def _load_pipeline():
+def _try_load_pipeline() -> tuple[object | None, str | None]:
     """
     Attempt to load the pyannote speaker-diarization pipeline.
 
-    Returns the pipeline object or ``None`` if unavailable.
+    Returns ``(pipeline, None)`` on success or ``(None, reason)`` on failure,
+    where *reason* is a specific, actionable message. This is the single
+    place that attempts the real load, so both the silent-fallback path
+    (``_load_pipeline``) and the pre-flight check (``check_diarisation_ready``)
+    see exactly the same failure a real run would hit — not a lighter proxy
+    that could pass while the real load still fails.
     """
     try:
         import torch
@@ -108,11 +113,10 @@ def _load_pipeline():
 
         hf_token = _get_hf_token()
         if not hf_token:
-            logger.warning(
-                "HUGGINGFACE_TOKEN not set — diarisation will use stub mode. "
-                "Set the token to enable full speaker identification."
+            return None, (
+                "HUGGINGFACE_TOKEN is not set. Create a read-only token at "
+                "https://huggingface.co/settings/tokens/new and set it in .env."
             )
-            return None
 
         logger.info("Loading pyannote speaker-diarization-3.1 pipeline…")
         # pyannote.audio 4.x renamed the credential argument from
@@ -141,18 +145,61 @@ def _load_pipeline():
         except (RuntimeError, OSError, ValueError):
             logger.debug("Could not move diarisation pipeline to CUDA.", exc_info=True)
 
-        return pipeline
+        return pipeline, None
 
     except ImportError:
-        logger.warning(
-            "pyannote.audio is not installed. "
-            "Install with: pip install pyannote.audio  "
-            "Falling back to stub diarisation."
+        return None, (
+            "pyannote.audio is not installed. Install with: pip install pyannote.audio"
         )
-        return None
     except (RuntimeError, OSError, ValueError) as exc:
-        logger.warning("Failed to load diarisation pipeline: %s. Using stub.", exc)
-        return None
+        # This is the failure that went unnoticed on real casework audio: the
+        # 3.1 pipeline pulls in a second gated model (pyannote/segmentation-3.0)
+        # as an internal dependency. Accepting the top-level pipeline's licence
+        # is not enough on its own — both licences must be accepted separately,
+        # and a repo that hasn't been accepted raises here with the offending
+        # URL in the message, which is exactly what makes this reason worth
+        # surfacing verbatim rather than replacing it with a generic one.
+        return None, (
+            f"Failed to load the diarisation pipeline: {exc}\n"
+            "If this mentions a gated repo, accept its licence while signed in "
+            "with the account that owns the token, then retry:\n"
+            "  https://huggingface.co/pyannote/speaker-diarization-3.1\n"
+            "  https://huggingface.co/pyannote/segmentation-3.0\n"
+            "Both must be accepted separately — the pipeline depends on both."
+        )
+
+
+def check_diarisation_ready() -> tuple[bool, str]:
+    """
+    Verify diarisation can actually run before a batch starts.
+
+    Attempts the real pipeline load (not just a metadata/gating check), since
+    that is the only way to be sure both models are accessible. Returns
+    ``(True, "")`` when ready, or ``(False, reason)`` with the actionable
+    message from ``_try_load_pipeline``.
+
+    Callers should surface *reason* and require an explicit, informed choice
+    before continuing in stub mode — the silent fallback previously produced
+    a fully "successful" run that had quietly assigned an entire recording's
+    audio to a single fake speaker for every file, with no error and no
+    output-level marker that anything had degraded.
+    """
+    pipeline, reason = _try_load_pipeline()
+    return pipeline is not None, reason or ""
+
+
+def _load_pipeline():
+    """
+    Attempt to load the pyannote speaker-diarization pipeline.
+
+    Returns the pipeline object or ``None`` if unavailable. Logs the same
+    reason ``check_diarisation_ready`` would report, at WARNING level, so a
+    caller that skips the pre-flight check still sees why it fell back.
+    """
+    pipeline, reason = _try_load_pipeline()
+    if pipeline is None:
+        logger.warning("%s Using stub diarisation.", reason)
+    return pipeline
 
 
 def _stub_diarisation(audio_path: Path) -> list[SpeakerSegment]:
