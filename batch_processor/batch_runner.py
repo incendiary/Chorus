@@ -575,8 +575,18 @@ Examples:
     )
     parser.add_argument(
         "inputs",
-        nargs="+",
-        help="Audio files, directories, or glob patterns.",
+        nargs="*",
+        help="Audio files, directories, or glob patterns. Not required with "
+        "--check-diarisation.",
+    )
+    parser.add_argument(
+        "--check-diarisation",
+        action="store_true",
+        help="Check whether diarisation can actually run right now (loads "
+        "the real pipeline; does not process any audio) and exit — 0 if "
+        "ready, 1 if not. Takes no inputs. This is the normal way to verify "
+        "readiness before an unattended run; starting a real --diarise batch "
+        "just to see whether it immediately refuses is not.",
     )
     parser.add_argument(
         "--language",
@@ -730,6 +740,21 @@ def main(argv: list[str] | None = None) -> int:
 
     parser = _build_parser()
     args = parser.parse_args(argv)
+
+    if args.check_diarisation:
+        from diarisation.diariser import check_diarisation_ready
+
+        ready, reason = check_diarisation_ready()
+        if ready:
+            print("Diarisation is ready.")
+            return 0
+        print("Diarisation is NOT ready:\n")
+        print(reason)
+        return 1
+
+    if not args.inputs:
+        parser.error("inputs are required unless --check-diarisation is given")
+
     if args.whisper_model and args.consensus_models:
         parser.error("--whisper-model and --consensus-models cannot be used together")
 
