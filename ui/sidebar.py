@@ -509,6 +509,7 @@ def render_sidebar() -> SidebarConfig:
 
         if st.session_state.get("show_diarisation_dialog"):
             from diarisation.diariser import check_diarisation_ready as _probe_diar
+            from diarisation.diariser import diarisation_repo_status
 
             _diar_dialog_reason = st.session_state.get(
                 "diarisation_fail_reason", "Diarisation is not available."
@@ -519,15 +520,26 @@ def render_sidebar() -> SidebarConfig:
                 st.error(_diar_dialog_reason)
                 st.markdown(
                     "**Diarisation needs a Hugging Face token and accepted "
-                    "licences for the gated models pyannote loads.** Which "
-                    "repos are involved depends on the installed pyannote.audio "
-                    "version — the message above names whichever one actually "
-                    "failed just now, not a fixed list. Typically:\n\n"
+                    "licences for the gated models pyannote loads.**"
+                )
+                st.markdown(
                     "1. Create a **read-only** token: "
                     "https://huggingface.co/settings/tokens/new\n"
                     "2. Set it as `HUGGINGFACE_TOKEN` in `.env`\n"
-                    "3. Visit the gated repo URL named in the message above, "
-                    "signed in as the same account, and accept its terms\n\n"
+                    "3. Visit each ❌ repo below, signed in as the same "
+                    "account, and accept its terms:"
+                )
+                for _entry in diarisation_repo_status():
+                    _icon = "✅" if _entry["accessible"] else "❌"
+                    st.markdown(f"   {_icon} [{_entry['repo']}]({_entry['url']})")
+                st.caption(
+                    "Checked just now. This list covers models known to "
+                    "matter for the currently installed pyannote.audio — a "
+                    "different version could depend on others not shown "
+                    "here. The error above (from an actual pipeline load) is "
+                    "the real authority on whether diarisation will work; "
+                    "this list exists so you can accept every licence you're "
+                    "likely to need in one pass instead of one at a time. "
                     "See the **Help** page in the sidebar for full setup guidance."
                 )
                 col1, col2 = st.columns(2)
