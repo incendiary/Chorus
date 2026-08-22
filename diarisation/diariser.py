@@ -153,19 +153,32 @@ def _try_load_pipeline() -> tuple[object | None, str | None]:
         )
     except (RuntimeError, OSError, ValueError) as exc:
         # This is the failure that went unnoticed on real casework audio: the
-        # 3.1 pipeline pulls in a second gated model (pyannote/segmentation-3.0)
-        # as an internal dependency. Accepting the top-level pipeline's licence
-        # is not enough on its own — both licences must be accepted separately,
-        # and a repo that hasn't been accepted raises here with the offending
-        # URL in the message, which is exactly what makes this reason worth
-        # surfacing verbatim rather than replacing it with a generic one.
+        # 3.1 pipeline's own config.yaml declares it pulls in two further
+        # models internally — one for segmentation, one for speaker embedding
+        # — and each is a separate repo with its own access rules. Accepting
+        # the top-level pipeline's licence does not accept anything for its
+        # dependencies. A gated dependency that has not been accepted raises
+        # here with its own repo's URL in the message, which is exactly what
+        # makes str(exc) worth surfacing verbatim rather than replacing it
+        # with paraphrased guidance that could go stale (or be wrong for a
+        # failure that has nothing to do with gating at all).
         return None, (
-            f"Failed to load the diarisation pipeline: {exc}\n"
-            "If this mentions a gated repo, accept its licence while signed in "
-            "with the account that owns the token, then retry:\n"
+            f"Failed to load the diarisation pipeline: {exc}\n\n"
+            "speaker-diarization-3.1 depends on three separate repos: the "
+            "pipeline itself, plus two it loads internally — "
+            "pyannote/segmentation-3.0 (segmentation) and "
+            "pyannote/wespeaker-voxceleb-resnet34-LM (embedding). If the "
+            "message above names a gated repo, accept its licence while "
+            "signed in with the account that owns the token, then retry:\n"
             "  https://huggingface.co/pyannote/speaker-diarization-3.1\n"
             "  https://huggingface.co/pyannote/segmentation-3.0\n"
-            "Both must be accepted separately — the pipeline depends on both."
+            "  https://huggingface.co/pyannote/wespeaker-voxceleb-resnet34-LM\n"
+            "(the embedding model is not gated as of pyannote 3.1, but "
+            "which of these three actually needs accepting can change "
+            "between pyannote releases — the message above names the one "
+            "that failed this time). If nothing above mentions gating, the "
+            "failure is something else — a network or cache problem, most "
+            "likely — and accepting licences will not fix it."
         )
 
 

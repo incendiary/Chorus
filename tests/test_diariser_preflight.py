@@ -46,10 +46,15 @@ def test_not_ready_when_token_missing(monkeypatch):
     assert "HUGGINGFACE_TOKEN" in reason
 
 
-def test_gated_repo_failure_names_both_required_licences(monkeypatch):
+def test_gated_repo_failure_names_all_three_required_repos(monkeypatch):
     """Reproduces the exact failure mode seen on real audio: the top-level
     pipeline's licence was accepted, but its internal dependency on
-    segmentation-3.0 was not, so pyannote raised on that second repo."""
+    segmentation-3.0 was not, so pyannote raised on that second repo.
+
+    The pipeline's own config.yaml declares three dependencies (itself,
+    segmentation-3.0, wespeaker-voxceleb-resnet34-LM); the message must name
+    all three, not just the one that happened to fail on real audio — a
+    different pyannote release could gate the embedding model instead."""
     monkeypatch.setattr("diarisation.diariser._get_hf_token", lambda: "hf_faketoken")
 
     class _FakePipelineCls:
@@ -73,6 +78,33 @@ def test_gated_repo_failure_names_both_required_licences(monkeypatch):
     assert ok is False
     assert "segmentation-3.0" in reason
     assert "speaker-diarization-3.1" in reason
+    assert "wespeaker-voxceleb-resnet34-LM" in reason
+
+
+def test_non_gating_failure_does_not_falsely_blame_licences(monkeypatch):
+    """A network or cache failure has nothing to do with gated-model
+    licences. The message must not tell the user to go accept licence
+    terms as if that were the fix — the check must not overfit to the one
+    failure mode it happened to be discovered from."""
+    monkeypatch.setattr("diarisation.diariser._get_hf_token", lambda: "hf_faketoken")
+
+    class _FakePipelineCls:
+        @staticmethod
+        def from_pretrained(*_args, **_kwargs):
+            raise RuntimeError("Connection timed out while fetching model files.")
+
+    with patch.dict(
+        "sys.modules",
+        {
+            "torch": MagicMock(),
+            "pyannote.audio": MagicMock(Pipeline=_FakePipelineCls),
+        },
+    ):
+        ok, reason = check_diarisation_ready()
+
+    assert ok is False
+    assert "Connection timed out" in reason
+    assert "accepting licences will not fix it" in reason
 
 
 def test_load_pipeline_still_returns_none_on_failure_for_existing_callers(monkeypatch):
