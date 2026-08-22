@@ -498,6 +498,63 @@ def render_sidebar() -> SidebarConfig:
             "🗣️ Speaker Diarisation",
             help="Identify multiple speakers (requires HUGGINGFACE_TOKEN).",
         )
+        if enable_diarisation:
+            from diarisation.diariser import check_diarisation_ready
+
+            _diar_ok, _diar_reason = check_diarisation_ready()
+            if not _diar_ok:
+                enable_diarisation = False
+                st.session_state["show_diarisation_dialog"] = True
+                st.session_state["diarisation_fail_reason"] = _diar_reason
+
+        if st.session_state.get("show_diarisation_dialog"):
+            from diarisation.diariser import check_diarisation_ready as _probe_diar
+
+            _diar_dialog_reason = st.session_state.get(
+                "diarisation_fail_reason", "Diarisation is not available."
+            )
+
+            @st.dialog("Speaker Diarisation — Setup Required")
+            def _diarisation_setup_dialog():
+                st.error(_diar_dialog_reason)
+                st.markdown(
+                    "**Diarisation needs a Hugging Face token and accepted "
+                    "licences for the gated models pyannote loads.** Which "
+                    "repos are involved depends on the installed pyannote.audio "
+                    "version — the message above names whichever one actually "
+                    "failed just now, not a fixed list. Typically:\n\n"
+                    "1. Create a **read-only** token: "
+                    "https://huggingface.co/settings/tokens/new\n"
+                    "2. Set it as `HUGGINGFACE_TOKEN` in `.env`\n"
+                    "3. Visit the gated repo URL named in the message above, "
+                    "signed in as the same account, and accept its terms\n\n"
+                    "See the **Help** page in the sidebar for full setup guidance."
+                )
+                col1, col2 = st.columns(2)
+                with col1:
+                    if st.button(
+                        "Dismiss", use_container_width=True, key="diarisation_dismiss"
+                    ):
+                        st.session_state["show_diarisation_dialog"] = False
+                        st.rerun()
+                with col2:
+                    if st.button(
+                        "Retry",
+                        type="primary",
+                        use_container_width=True,
+                        key="diarisation_retry",
+                    ):
+                        _ok, _new_reason = _probe_diar()
+                        if _ok:
+                            st.session_state["show_diarisation_dialog"] = False
+                            st.rerun()
+                        else:
+                            st.session_state["diarisation_fail_reason"] = _new_reason
+                            st.rerun()
+
+            _diarisation_setup_dialog()
+        else:
+            st.session_state.pop("diarisation_fail_reason", None)
         st.caption("ℹ️ Word-level timestamps are always enabled for precise subtitles.")
 
         # ── Export Formats ────────────────────────────────────────────────────
