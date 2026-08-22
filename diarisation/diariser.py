@@ -152,33 +152,31 @@ def _try_load_pipeline() -> tuple[object | None, str | None]:
             "pyannote.audio is not installed. Install with: pip install pyannote.audio"
         )
     except (RuntimeError, OSError, ValueError) as exc:
-        # This is the failure that went unnoticed on real casework audio: the
-        # 3.1 pipeline's own config.yaml declares it pulls in two further
-        # models internally — one for segmentation, one for speaker embedding
-        # — and each is a separate repo with its own access rules. Accepting
-        # the top-level pipeline's licence does not accept anything for its
-        # dependencies. A gated dependency that has not been accepted raises
-        # here with its own repo's URL in the message, which is exactly what
-        # makes str(exc) worth surfacing verbatim rather than replacing it
-        # with paraphrased guidance that could go stale (or be wrong for a
-        # failure that has nothing to do with gating at all).
+        # This is the failure that went unnoticed on real casework audio.
+        # Do not enumerate the pipeline's dependencies here by name — that
+        # was tried twice and was wrong both times within the same evening:
+        # a config.yaml fetched from the Hub named two internal models
+        # (segmentation-3.0, wespeaker-voxceleb-resnet34-LM), but the
+        # installed pyannote.audio's actual default __init__ signature
+        # (pyannote/audio/pipelines/speaker_diarization.py) bundles
+        # segmentation, embedding, and PLDA scoring into a third, different
+        # checkpoint (pyannote/speaker-diarization-community-1) instead —
+        # a library-version-dependent architecture change that a hardcoded
+        # repo list cannot track. str(exc) already names whichever repo
+        # actually failed, correctly, on every pyannote version, because it
+        # comes from the real request that just happened — that is the only
+        # part of this message that generalises.
         return None, (
             f"Failed to load the diarisation pipeline: {exc}\n\n"
-            "speaker-diarization-3.1 depends on three separate repos: the "
-            "pipeline itself, plus two it loads internally — "
-            "pyannote/segmentation-3.0 (segmentation) and "
-            "pyannote/wespeaker-voxceleb-resnet34-LM (embedding). If the "
-            "message above names a gated repo, accept its licence while "
-            "signed in with the account that owns the token, then retry:\n"
-            "  https://huggingface.co/pyannote/speaker-diarization-3.1\n"
-            "  https://huggingface.co/pyannote/segmentation-3.0\n"
-            "  https://huggingface.co/pyannote/wespeaker-voxceleb-resnet34-LM\n"
-            "(the embedding model is not gated as of pyannote 3.1, but "
-            "which of these three actually needs accepting can change "
-            "between pyannote releases — the message above names the one "
-            "that failed this time). If nothing above mentions gating, the "
-            "failure is something else — a network or cache problem, most "
-            "likely — and accepting licences will not fix it."
+            "If the message above names a gated repo (a huggingface.co URL "
+            "with 'restricted' or '403'), visit that exact URL while signed "
+            "in with the account that owns HUGGINGFACE_TOKEN and accept its "
+            "terms, then retry. Which repos are involved depends on the "
+            "installed pyannote.audio version, so there is no fixed list to "
+            "check in advance — this message always reflects the actual "
+            "failure just now, not a guess. If nothing above mentions "
+            "gating, the failure is something else — a network or cache "
+            "problem, most likely — and accepting licences will not fix it."
         )
 
 

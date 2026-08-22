@@ -2,13 +2,21 @@
 tests/test_diariser_preflight.py — Tests for the diarisation pre-flight check.
 
 Covers the bug this check exists to catch: a real casework batch run where
-speaker-diarization-3.1's internal dependency on the separately-gated
-pyannote/segmentation-3.0 repo failed to load. The failure was swallowed by
-a broad except clause and silently downgraded to a single-speaker stub, so
-every file in the batch "succeeded" while quietly assigning the entire
-recording to one fake speaker. check_diarisation_ready() exists so that
-failure is caught before any file is processed, not discovered afterwards
-by reading the output.
+speaker-diarization-3.1's internal dependency on a separately-gated model
+failed to load. The failure was swallowed by a broad except clause and
+silently downgraded to a single-speaker stub, so every file in the batch
+"succeeded" while quietly assigning the entire recording to one fake
+speaker. check_diarisation_ready() exists so that failure is caught before
+any file is processed, not discovered afterwards by reading the output.
+
+Which repo is actually involved is deliberately not hardcoded anywhere in
+the check or these tests: a config.yaml fetched from the Hub named one set
+of internal dependencies, but the installed pyannote.audio's actual default
+pipeline bundled them into an entirely different, third checkpoint instead
+— a library-version-dependent detail no fixed list can track. The tests
+below use a repo name that has never appeared anywhere in this codebase to
+prove the message genuinely relays whatever failed, rather than one that
+happens to match a name the implementation was written to expect.
 """
 
 from __future__ import annotations
@@ -46,15 +54,13 @@ def test_not_ready_when_token_missing(monkeypatch):
     assert "HUGGINGFACE_TOKEN" in reason
 
 
-def test_gated_repo_failure_names_all_three_required_repos(monkeypatch):
-    """Reproduces the exact failure mode seen on real audio: the top-level
-    pipeline's licence was accepted, but its internal dependency on
-    segmentation-3.0 was not, so pyannote raised on that second repo.
-
-    The pipeline's own config.yaml declares three dependencies (itself,
-    segmentation-3.0, wespeaker-voxceleb-resnet34-LM); the message must name
-    all three, not just the one that happened to fail on real audio — a
-    different pyannote release could gate the embedding model instead."""
+def test_gated_repo_failure_names_whatever_actually_failed(monkeypatch):
+    """The message must relay the real failing repo verbatim rather than
+    assume a fixed dependency list. Uses a repo name that has never
+    appeared anywhere in this codebase or its history — proof that nothing
+    here special-cases known repo names, since the actual dependency set
+    has already changed once between when this check was written and when
+    it was first run against the real, installed pyannote.audio."""
     monkeypatch.setattr("diarisation.diariser._get_hf_token", lambda: "hf_faketoken")
 
     class _FakePipelineCls:
@@ -62,8 +68,8 @@ def test_gated_repo_failure_names_all_three_required_repos(monkeypatch):
         def from_pretrained(*_args, **_kwargs):
             raise RuntimeError(
                 "Cannot access gated repo for url "
-                "https://huggingface.co/pyannote/segmentation-3.0/resolve/main/"
-                "pytorch_model.bin."
+                "https://huggingface.co/some-org/never-seen-before-repo/resolve/"
+                "main/weights.bin."
             )
 
     with patch.dict(
@@ -76,9 +82,10 @@ def test_gated_repo_failure_names_all_three_required_repos(monkeypatch):
         ok, reason = check_diarisation_ready()
 
     assert ok is False
-    assert "segmentation-3.0" in reason
-    assert "speaker-diarization-3.1" in reason
-    assert "wespeaker-voxceleb-resnet34-LM" in reason
+    assert "never-seen-before-repo" in reason
+    assert "segmentation-3.0" not in reason
+    assert "wespeaker" not in reason
+    assert "speaker-diarization-community-1" not in reason
 
 
 def test_non_gating_failure_does_not_falsely_blame_licences(monkeypatch):
