@@ -31,6 +31,7 @@ from batch_processor.batch_runner import (
     _resolve_cli_settings,
     _write_batch_report,
     discover_audio_files,
+    main,
     run_batch,
 )
 
@@ -561,3 +562,61 @@ class TestBuildParser:
         output = capsys.readouterr().out
         assert endpoint not in output
         assert "configured endpoint (value hidden)" in output
+
+
+class TestDiarisationPreflightGate:
+    """--diarise must refuse to start rather than silently run every file
+    through the single-speaker stub — the exact failure mode that produced
+    a fully "successful" real batch with fabricated speaker labels in every
+    output before this gate existed."""
+
+    def test_diarise_without_readiness_refuses_to_start(self, tmp_path, capsys) -> None:
+        audio = tmp_path / "a.wav"
+        audio.write_bytes(b"fake")
+        with (
+            patch(
+                "diarisation.diariser.check_diarisation_ready",
+                return_value=(False, "HUGGINGFACE_TOKEN is not set."),
+            ),
+            pytest.raises(SystemExit),
+        ):
+            main([str(audio), "--diarise"])
+        err = capsys.readouterr().err
+        assert "HUGGINGFACE_TOKEN is not set." in err
+        assert "--allow-diarisation-stub" in err
+
+    def test_allow_diarisation_stub_bypasses_the_check(self, tmp_path) -> None:
+        audio = tmp_path / "a.wav"
+        audio.write_bytes(b"fake")
+        with (
+            patch("diarisation.diariser.check_diarisation_ready") as mock_check,
+            patch("batch_processor.batch_runner.run_batch", return_value=[]),
+        ):
+            main([str(audio), "--diarise", "--allow-diarisation-stub"])
+        mock_check.assert_not_called()
+
+    def test_diarise_ready_proceeds_without_the_flag(self, tmp_path) -> None:
+        audio = tmp_path / "a.wav"
+        audio.write_bytes(b"fake")
+        with (
+            patch(
+                "diarisation.diariser.check_diarisation_ready",
+                return_value=(True, ""),
+            ) as mock_check,
+            patch(
+                "batch_processor.batch_runner.run_batch", return_value=[]
+            ) as mock_run,
+        ):
+            main([str(audio), "--diarise"])
+        mock_check.assert_called_once()
+        mock_run.assert_called_once()
+
+    def test_no_diarise_skips_the_check_entirely(self, tmp_path) -> None:
+        audio = tmp_path / "a.wav"
+        audio.write_bytes(b"fake")
+        with (
+            patch("diarisation.diariser.check_diarisation_ready") as mock_check,
+            patch("batch_processor.batch_runner.run_batch", return_value=[]),
+        ):
+            main([str(audio)])
+        mock_check.assert_not_called()

@@ -675,6 +675,14 @@ Examples:
         help="Enable speaker diarisation (requires HUGGINGFACE_TOKEN).",
     )
     parser.add_argument(
+        "--allow-diarisation-stub",
+        action="store_true",
+        help="Skip the diarisation pre-flight check and proceed even if the "
+        "pipeline can't load, falling back to a single-speaker stub for "
+        "every file. Without this flag, --diarise refuses to start rather "
+        "than silently produce fake speaker labels.",
+    )
+    parser.add_argument(
         "--nlp",
         action="store_true",
         help="Enable spaCy NLP reconstruction for LOW-confidence tokens.",
@@ -724,6 +732,22 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.whisper_model and args.consensus_models:
         parser.error("--whisper-model and --consensus-models cannot be used together")
+
+    if args.diarise and not args.allow_diarisation_stub:
+        from diarisation.diariser import check_diarisation_ready
+
+        ready, reason = check_diarisation_ready()
+        if not ready:
+            parser.error(
+                "--diarise was requested, but diarisation cannot run:\n\n"
+                f"{reason}\n\n"
+                "Without this, every file would silently complete with all "
+                "audio assigned to a single fake speaker — the exact failure "
+                "that went unnoticed on a real batch before this check "
+                "existed. Fix the above and retry, or pass "
+                "--allow-diarisation-stub to proceed anyway with informed "
+                "consent."
+            )
 
     settings = _resolve_cli_settings(args)
     _apply_runtime_settings(settings)
