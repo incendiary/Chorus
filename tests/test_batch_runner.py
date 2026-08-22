@@ -620,3 +620,55 @@ class TestDiarisationPreflightGate:
         ):
             main([str(audio)])
         mock_check.assert_not_called()
+
+
+class TestCheckDiarisationFlag:
+    """--check-diarisation must be a real, standalone way to answer "is
+    diarisation ready?" — before this existed, the only way was to start a
+    real --diarise batch and see whether it immediately refused, which is a
+    debug workaround, not a documented user operation."""
+
+    def test_check_diarisation_ready_prints_and_exits_zero(self, capsys) -> None:
+        with patch(
+            "diarisation.diariser.check_diarisation_ready",
+            return_value=(True, ""),
+        ):
+            code = main(["--check-diarisation"])
+        assert code == 0
+        assert "ready" in capsys.readouterr().out.lower()
+
+    def test_check_diarisation_not_ready_prints_reason_and_exits_one(
+        self, capsys
+    ) -> None:
+        with patch(
+            "diarisation.diariser.check_diarisation_ready",
+            return_value=(False, "HUGGINGFACE_TOKEN is not set."),
+        ):
+            code = main(["--check-diarisation"])
+        assert code == 1
+        assert "HUGGINGFACE_TOKEN is not set." in capsys.readouterr().out
+
+    def test_check_diarisation_requires_no_inputs(self, capsys) -> None:
+        """The whole point is checking readiness without any audio files —
+        argparse must not demand a positional input for this to work."""
+        with patch(
+            "diarisation.diariser.check_diarisation_ready",
+            return_value=(True, ""),
+        ):
+            code = main(["--check-diarisation"])
+        assert code == 0
+
+    def test_check_diarisation_never_touches_run_batch(self) -> None:
+        with (
+            patch(
+                "diarisation.diariser.check_diarisation_ready",
+                return_value=(True, ""),
+            ),
+            patch("batch_processor.batch_runner.run_batch") as mock_run,
+        ):
+            main(["--check-diarisation"])
+        mock_run.assert_not_called()
+
+    def test_normal_invocation_still_requires_inputs(self) -> None:
+        with pytest.raises(SystemExit):
+            main([])
