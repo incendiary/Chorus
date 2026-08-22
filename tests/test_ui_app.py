@@ -158,6 +158,47 @@ class TestSpacyUnavailable:
         assert at.session_state["spacy_fail_reason"] == "Model en_core_web_md not found"
 
 
+class TestDiarisationUnavailable:
+    """Enabling diarisation when the pipeline can't load must not silently
+    proceed to a fake single-speaker stub — the exact failure that produced
+    a fully "successful" real batch with fabricated speaker labels in every
+    output, discovered on real casework audio before this check existed."""
+
+    def test_diarisation_checkbox_triggers_setup_dialog_when_not_ready(self):
+        with patch(
+            "diarisation.diariser.check_diarisation_ready",
+            return_value=(False, "HUGGINGFACE_TOKEN is not set."),
+        ):
+            at = _run_app()
+            diar_cb = _checkbox(at, "Speaker Diarisation")
+            diar_cb.set_value(True)
+            at.run()
+
+        assert not at.exception
+        assert at.session_state["show_diarisation_dialog"] is True
+        assert (
+            at.session_state["diarisation_fail_reason"]
+            == "HUGGINGFACE_TOKEN is not set."
+        )
+
+    def test_diarisation_checkbox_succeeds_when_ready(self):
+        """When diarisation is ready, no setup dialog should be flagged."""
+        with patch(
+            "diarisation.diariser.check_diarisation_ready",
+            return_value=(True, ""),
+        ):
+            at = _run_app()
+            diar_cb = _checkbox(at, "Speaker Diarisation")
+            diar_cb.set_value(True)
+            at.run()
+
+        assert not at.exception
+        assert (
+            "show_diarisation_dialog" not in at.session_state
+            or not at.session_state.get("show_diarisation_dialog")
+        )
+
+
 class TestLanguageSelector:
     """The language control offers valid Whisper codes and confirms the choice."""
 
