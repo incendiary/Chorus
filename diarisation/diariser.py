@@ -346,6 +346,21 @@ def diarise(audio_path: str | Path) -> list[SpeakerSegment]:
     logger.info("Running diarisation on: %s", audio_path.name)
     diarization = pipeline(str(audio_path))
 
+    # pyannote.audio 4.x's default (non-legacy) pipeline returns a
+    # DiarizeOutput wrapper (speaker_diarization / exclusive_speaker_
+    # diarization / speaker_embeddings) rather than the bare, itertracks-
+    # capable Annotation older pipeline versions returned directly. This
+    # ran for real on real casework audio: the pipeline loaded, every gated
+    # model was accessible, diarisation actually executed for over an hour,
+    # then failed at this exact line with "'DiarizeOutput' object has no
+    # attribute 'itertracks'" — a full pass of real compute lost to a
+    # result-shape mismatch, not an access problem. Detect rather than
+    # assume one shape, since assuming wrongly here throws away real work.
+    if not hasattr(diarization, "itertracks") and hasattr(
+        diarization, "speaker_diarization"
+    ):
+        diarization = diarization.speaker_diarization
+
     segments: list[SpeakerSegment] = []
     for turn, _, speaker in diarization.itertracks(yield_label=True):
         dur = turn.end - turn.start

@@ -199,3 +199,91 @@ class TestKnownRepoChecklist:
             "pyannote/speaker-diarization-community-1": False,
         }
         assert all(e["url"].startswith("https://huggingface.co/") for e in status)
+
+
+class TestDiarizeOutputCompatibility:
+    """Ran for real, tonight, on real casework audio: the pipeline loaded,
+    every gated model was accessible, diarisation actually executed for
+    over an hour on a real 40-minute recording, then crashed at the final
+    parsing step with "'DiarizeOutput' object has no attribute 'itertracks'"
+    — pyannote.audio 4.x's default pipeline wraps its result in a
+    dataclass (speaker_diarization / exclusive_speaker_diarization /
+    speaker_embeddings) instead of returning the bare, itertracks-capable
+    Annotation older pipeline versions returned directly. The failure was
+    caught by a broad except in pipeline_runner.py, so the file "succeeded"
+    with no diarised.md at all and no error visible outside the log — an
+    hour of real compute produced nothing.
+    """
+
+    class _FakeTurn:
+        def __init__(self, start: float, end: float) -> None:
+            self.start = start
+            self.end = end
+
+    class _FakeAnnotation:
+        """Old-style return shape: itertracks directly on the pipeline's
+        own result, matching pyannote.audio pre-4.x."""
+
+        def itertracks(self, yield_label: bool = True):
+            yield (
+                TestDiarizeOutputCompatibility._FakeTurn(0.0, 2.0),
+                None,
+                "SPEAKER_00",
+            )
+            yield (
+                TestDiarizeOutputCompatibility._FakeTurn(2.0, 4.0),
+                None,
+                "SPEAKER_01",
+            )
+
+    class _FakeDiarizeOutput:
+        """New-style return shape: pyannote.audio 4.x's default pipeline.
+        Deliberately has no itertracks of its own — only the wrapped
+        Annotation does — to prove the fix doesn't just get lucky."""
+
+        def __init__(self, annotation) -> None:
+            self.speaker_diarization = annotation
+            self.exclusive_speaker_diarization = annotation
+            self.speaker_embeddings = None
+
+    def test_old_style_annotation_result_still_works(self, monkeypatch, tmp_path):
+        """Pre-4.x pyannote returned the Annotation directly. Must not
+        regress this path while fixing the new one."""
+        from diarisation.diariser import diarise
+
+        audio = tmp_path / "audio.wav"
+        audio.write_bytes(b"fake")
+        fake_pipeline = MagicMock(
+            return_value=TestDiarizeOutputCompatibility._FakeAnnotation()
+        )
+        monkeypatch.setattr(
+            "diarisation.diariser._load_pipeline", lambda: fake_pipeline
+        )
+
+        segments = diarise(audio)
+
+        assert [s.speaker for s in segments] == ["SPEAKER_00", "SPEAKER_01"]
+
+    def test_new_style_diarizeoutput_result_is_unwrapped(self, monkeypatch, tmp_path):
+        """Reproduces the exact real-world crash: a result object with no
+        itertracks of its own, only a wrapped .speaker_diarization
+        Annotation that has it."""
+        from diarisation.diariser import diarise
+
+        audio = tmp_path / "audio.wav"
+        audio.write_bytes(b"fake")
+        wrapped = TestDiarizeOutputCompatibility._FakeDiarizeOutput(
+            TestDiarizeOutputCompatibility._FakeAnnotation()
+        )
+        assert not hasattr(wrapped, "itertracks"), (
+            "fixture must not accidentally have itertracks, or this test "
+            "proves nothing about the unwrapping logic"
+        )
+        fake_pipeline = MagicMock(return_value=wrapped)
+        monkeypatch.setattr(
+            "diarisation.diariser._load_pipeline", lambda: fake_pipeline
+        )
+
+        segments = diarise(audio)
+
+        assert [s.speaker for s in segments] == ["SPEAKER_00", "SPEAKER_01"]
