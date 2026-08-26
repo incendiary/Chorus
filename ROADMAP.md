@@ -293,4 +293,85 @@ Follow-up evidence and dependency work is tracked in issues #219 and #220.
 
 ---
 
-*Last updated: 14 August 2026*
+## Completed — v4.2.0 Diarisation correctness and CLI/UI parity
+
+Prompted by a real, multi-day production run on real casework audio (see Validation
+below), which surfaced two distinct diarisation failures that every prior test suite had
+missed — both fixed here, together with the pre-flight tooling that should have caught
+them sooner.
+
+- [x] **Diarisation refuses to run when it can't actually work** (v4.2.0) (#229) — `--diarise`
+  now calls `check_diarisation_ready()` (a real pipeline load, not a metadata check)
+  before processing any file, and refuses to start rather than silently completing every
+  file with a single-speaker stub. `--allow-diarisation-stub` opts back into the old
+  silent behaviour explicitly. The Streamlit UI got the same check as a setup dialog
+  (#233).
+- [x] **The pre-flight check's guidance stopped hardcoding which repos matter** (v4.2.0) (#230, #231) — an early version named specific gated Hugging Face repos in its error message;
+  within the same evening the installed `pyannote.audio` version turned out to route
+  through a different set of repos than its own Hub `config.yaml` implied. The message
+  now only ever relays the real error from the attempted load, which is correct on any
+  version.
+- [x] **A full checklist of known diarisation dependencies, checked by real file access** (v4.2.0)
+  (#234) — `diarisation_repo_status()` checks every known candidate repo via an
+  authenticated HEAD request to an actual weight file, not `HfApi.model_info()`'s gating
+  field (which reported every repo accessible while one of them still hard-403'd for
+  hours) and not "the first file returned" (which is `.gitattributes` for some repos —
+  always public even in a fully gated repo).
+- [x] **Fixed the actual diarisation crash** (v4.2.0) (#235) — `pyannote.audio` 4.x's default
+  pipeline wraps its result in a `DiarizeOutput` dataclass instead of returning the bare
+  `Annotation` older versions returned. `diarise()` called `.itertracks()` on whatever it
+  got back, unconditionally. On real audio this meant diarisation could run for over an
+  hour of correct, fully-licensed compute and then crash at the final parsing step,
+  caught by a broad `except` in `pipeline_runner.py` — the file "succeeded" with no
+  `diarised.md` at all. Now detects the result shape and unwraps it.
+- [x] **`--check-diarisation`** (v4.2.0) (#232) — a standalone readiness check. Before this, the
+  only way to answer "is diarisation ready?" was to start a real batch and watch it
+  refuse — a debug workaround, not a documented operation.
+- [x] **Batch CLI runs persist a log file** (v4.2.0) (#228) — previously the only record of an
+  unattended batch was console output, which is exactly as durable as a terminal's
+  scrollback (100 lines by default in `screen`) — already lost by the time a multi-hour
+  slowdown needed investigating on this same production run.
+- [x] **`survey-ollama-env.sh` recommends and can write `WHISPER_DEVICE`** (v4.2.0) (#227) — the
+  script always detected GPU type correctly but never turned it into a device
+  recommendation, so running it (even choosing "apply all") could never fix a
+  device pinned to `cpu`.
+- [x] **Batch CLI configuration parity with the Web UI** (v4.2.0) (#226) — per-run overrides for
+  model, device, parallelism, hardware presets, alignment, thresholds, noise floor,
+  word timestamps, and WAV retention, with every effective setting and its source
+  (`CLI` / `hardware preset` / `.env` / `default`) printed before processing starts.
+- [x] **Full output archives include the machine-readable bundle and parsing guide** (v4.2.0)
+  (#225) — `Download Full Output Archive` previously omitted `{stem}_bundle.json` and
+  `HOW_TO_PARSE_CHORUS_OUTPUT.md`.
+
+### Validation
+
+A full production run was carried out on nine real recordings for an active financial
+ombudsman complaint (`--whisper-model large --device mps --diarise --nlp --llm
+--keep-variant-wavs --no-word-timestamps --alignment-strategy sequence`), 2026-08-24 to
+2026-08-26: **9 of 9 files succeeded, 0 failed, 20.0 hours total processing time.**
+
+Every file produced genuine multi-speaker diarisation (3–6 distinct speakers per
+recording, matching each recording's real content — not a fixed count, not a stub), the
+full export set, and measurably-working confidence reconstruction (spaCy plus Ollama
+lifted 300–600 LOW-confidence words per file into MEDIUM). Across the entire ~21-hour
+log, exactly one warning occurred (a single Ollama request timeout on one word, during a
+period of heavy host-machine memory pressure unrelated to Chorus) and it was handled
+exactly as designed — the affected word was left at its prior tier, and every other word
+in that file and every subsequent file was unaffected. No errors, no crashes, no silent
+degradation.
+
+This is the first real-world confirmation that diarisation produces genuine output
+end-to-end since the `DiarizeOutput` fix — the load-only pre-flight check had already
+been verified in isolation, but not a full pipeline run against hours of real audio.
+
+Known open items from this session, not yet actioned, tracked separately: a CLI
+single-run lock (two overlapping invocations against the same output directory collided
+and deadlocked for 10.5 hours during this same production window — the Web UI's
+`RunManager` already prevents this, the CLI does not), four CLI settings still without a
+Web UI equivalent (word timestamps, WAV retention, Ollama base URL/timeout), and a
+comprehensive CLI/Web UI flag reference (current documentation covers roughly 6 of 22
+flags).
+
+---
+
+*Last updated: 26 August 2026*
