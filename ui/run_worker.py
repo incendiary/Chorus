@@ -168,6 +168,7 @@ def execute_run(job: RunJob, manager: RunManager) -> None:
                     for key in _OUTPUT_PATH_KEYS
                     if results.get(key) is not None
                 }
+                file_state["diarisation_error"] = results.get("diarisation_error")
             except (
                 Exception
             ) as exc:  # noqa: BLE001 - mirrors pipeline_invocation.py run loop

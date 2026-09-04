@@ -206,6 +206,29 @@ class TestRunBatch:
         assert len(call_log) == 3
         assert all(r.success for r in results)
 
+    def test_diarisation_error_is_threaded_onto_the_result(
+        self, tmp_path: Path
+    ) -> None:
+        """run_batch must carry pipeline_runner's diarisation_error through to
+        BatchResult rather than dropping it — otherwise a per-file diarisation
+        failure is invisible outside the log."""
+        _make_wav(tmp_path / "a.wav")
+
+        def _mock_pipeline(audio_path: Path, **kwargs) -> dict:
+            out = _fake_pipeline_result(audio_path, kwargs.get("output_dir"))
+            out["diarisation_error"] = "torchcodec is not available"
+            return out
+
+        with (
+            patch("pipeline_runner.run_pipeline", side_effect=_mock_pipeline),
+            patch("batch_processor.batch_runner._write_batch_report"),
+        ):
+            results = run_batch(inputs=[tmp_path])
+
+        assert len(results) == 1
+        assert results[0].success is True
+        assert results[0].diarisation_error == "torchcodec is not available"
+
     def test_per_file_output_isolation(self, tmp_path: Path) -> None:
         """When output_dir is given, each file must write into its own <stem>/ subdir."""
         _make_wav(tmp_path / "interview.wav")
@@ -451,6 +474,34 @@ class TestWriteBatchReport:
         assert "Failed:** 1" in text
         assert "good.wav" in text
         assert "bad.wav" in text
+
+    def test_report_flags_diarisation_failure_on_an_otherwise_ok_file(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """A file that completed successfully but whose diarisation failed
+        must still count as a success (the transcript is genuinely fine) but
+        must not render as a bare, indistinguishable '✅ OK' — a real run
+        did exactly that: torchcodec couldn't decode the audio, diarisation
+        failed, and the report showed '1 succeeded, 0 failed' with no trace
+        of the missing speaker labels."""
+        out_dir = tmp_path / "consensus"
+        out_dir.mkdir(parents=True)
+        monkeypatch.setattr("config.CONSENSUS_DIR", out_dir)
+        monkeypatch.setattr("batch_processor.batch_runner.CONSENSUS_DIR", out_dir)
+
+        r = BatchResult(Path("call.wav"))
+        r.success = True
+        r.elapsed_seconds = 1595.4
+        r.diarisation_error = "torchcodec is not available"
+
+        path = _write_batch_report([r])
+        text = path.read_text(encoding="utf-8")
+
+        assert "Succeeded:** 1" in text
+        assert "Failed:** 0" in text
+        assert "diarisation failed" in text.lower()
+        assert "torchcodec is not available" in text
+        assert "✅ OK |" not in text
 
 
 # ─────────────────────────────────────────────────────────────────────────────
