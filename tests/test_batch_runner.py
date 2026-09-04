@@ -17,6 +17,7 @@ test, following the same mocking style used in ``tests/test_integration.py``.
 
 from __future__ import annotations
 
+import os
 import struct
 import wave
 from pathlib import Path
@@ -30,8 +31,11 @@ from batch_processor.batch_runner import (
     _display_settings,
     _resolve_cli_settings,
     _write_batch_report,
+    acquire_batch_lock,
+    check_batch_lock,
     discover_audio_files,
     main,
+    release_batch_lock,
     run_batch,
 )
 
@@ -723,3 +727,90 @@ class TestCheckDiarisationFlag:
     def test_normal_invocation_still_requires_inputs(self) -> None:
         with pytest.raises(SystemExit):
             main([])
+
+
+class TestBatchLock:
+    """A single ``--output-dir`` must never be driven by two overlapping
+    batches — a real collision left two processes hammering the same variant
+    WAV and deadlocked for over ten hours on real casework audio before
+    being killed manually. The lock must block a genuinely live run, ignore
+    a stale leftover PID file, and always clean up after itself."""
+
+    def test_live_pid_blocks_a_second_run(self, tmp_path) -> None:
+        lock_path = tmp_path / ".chorus-batch.lock"
+        lock_path.write_text(str(os.getpid()), encoding="utf-8")
+        ready, reason = check_batch_lock(tmp_path)
+        assert ready is False
+        assert str(os.getpid()) in reason
+        assert "--output-dir" in reason
+
+    def test_stale_pid_does_not_block(self, tmp_path) -> None:
+        lock_path = tmp_path / ".chorus-batch.lock"
+        # PIDs this large are never actually assigned by the OS.
+        lock_path.write_text("999999999", encoding="utf-8")
+        ready, reason = check_batch_lock(tmp_path)
+        assert ready is True
+        assert reason == ""
+
+    def test_no_lock_file_is_ready(self, tmp_path) -> None:
+        ready, reason = check_batch_lock(tmp_path)
+        assert ready is True
+        assert reason == ""
+
+    def test_acquire_writes_this_process_pid(self, tmp_path) -> None:
+        lock_path = acquire_batch_lock(tmp_path)
+        assert lock_path.read_text(encoding="utf-8").strip() == str(os.getpid())
+        release_batch_lock(lock_path)
+
+    def test_release_removes_the_lock_file(self, tmp_path) -> None:
+        lock_path = acquire_batch_lock(tmp_path)
+        assert lock_path.exists()
+        release_batch_lock(lock_path)
+        assert not lock_path.exists()
+
+    def test_release_is_safe_when_file_already_gone(self, tmp_path) -> None:
+        lock_path = tmp_path / ".chorus-batch.lock"
+        release_batch_lock(lock_path)  # must not raise
+
+    def test_main_refuses_to_start_against_a_locked_output_dir(
+        self, tmp_path, capsys
+    ) -> None:
+        audio = tmp_path / "a.wav"
+        audio.write_bytes(b"fake")
+        out_dir = tmp_path / "out"
+        out_dir.mkdir()
+        (out_dir / ".chorus-batch.lock").write_text(str(os.getpid()), encoding="utf-8")
+        with pytest.raises(SystemExit):
+            main([str(audio), "--output-dir", str(out_dir)])
+        err = capsys.readouterr().err
+        assert str(os.getpid()) in err
+        assert "--output-dir" in err
+
+    def test_main_acquires_and_releases_the_lock_around_a_run(self, tmp_path) -> None:
+        audio = tmp_path / "a.wav"
+        audio.write_bytes(b"fake")
+        out_dir = tmp_path / "out"
+        out_dir.mkdir()
+        lock_path = out_dir / ".chorus-batch.lock"
+        with patch(
+            "batch_processor.batch_runner.run_batch", return_value=[]
+        ) as mock_run:
+            main([str(audio), "--output-dir", str(out_dir)])
+        mock_run.assert_called_once()
+        assert not lock_path.exists()
+
+    def test_main_releases_the_lock_even_if_run_batch_raises(self, tmp_path) -> None:
+        audio = tmp_path / "a.wav"
+        audio.write_bytes(b"fake")
+        out_dir = tmp_path / "out"
+        out_dir.mkdir()
+        lock_path = out_dir / ".chorus-batch.lock"
+        with (
+            patch(
+                "batch_processor.batch_runner.run_batch",
+                side_effect=RuntimeError("boom"),
+            ),
+            pytest.raises(RuntimeError),
+        ):
+            main([str(audio), "--output-dir", str(out_dir)])
+        assert not lock_path.exists()
