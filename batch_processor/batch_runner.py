@@ -381,9 +381,15 @@ class BatchResult:
         self.export_paths: dict[str, Path | None] = {}
         self.elapsed_seconds = 0.0
         self.error: str | None = None
+        self.diarisation_error: str | None = None
 
     def __repr__(self) -> str:
-        status = "OK" if self.success else f"FAIL: {self.error}"
+        if not self.success:
+            status = f"FAIL: {self.error}"
+        elif self.diarisation_error:
+            status = f"OK (diarisation failed: {self.diarisation_error})"
+        else:
+            status = "OK"
         return f"<BatchResult {self.path.name} [{status}]>"
 
 
@@ -558,6 +564,7 @@ def run_batch(
             )
             result.consensus_path = pipeline_out["consensus_path"]
             result.export_paths = pipeline_out.get("export_paths", {})
+            result.diarisation_error = pipeline_out.get("diarisation_error")
 
             # ── Optional: Export additional formats ────────────────────────
             # (pipeline handles NLP, LLM, and diarisation; export_all used here
@@ -624,7 +631,12 @@ def _write_batch_report(results: list[BatchResult]) -> Path:
     ]
 
     for idx, r in enumerate(results, start=1):
-        status = "✅ OK" if r.success else f"❌ {r.error or 'Unknown error'}"
+        if not r.success:
+            status = f"❌ {r.error or 'Unknown error'}"
+        elif r.diarisation_error:
+            status = f"⚠️ OK — diarisation failed: {r.diarisation_error}"
+        else:
+            status = "✅ OK"
         cons_lnk = f"`{r.consensus_path.name}`" if r.consensus_path else "—"
         lines.append(
             f"| {idx} | `{r.path.name}` | {status} | {r.elapsed_seconds} s | {cons_lnk} |"  # noqa: E501
@@ -896,10 +908,17 @@ def main(argv: list[str] | None = None) -> int:
         handler.close()
         release_batch_lock(lock_path)
 
+    diarisation_failures = sum(1 for r in batch_results if r.diarisation_error)
+
     print(f"\n{'─'*60}")
     print(
         f"  Batch complete: {sum(r.success for r in batch_results)}/{len(batch_results)} succeeded"  # noqa: E501
     )
+    if diarisation_failures:
+        print(
+            f"  ⚠️  Diarisation failed on {diarisation_failures}/{len(batch_results)} "
+            "file(s) — see batch_report.md for details"
+        )
     print(f"  Report: {CONSENSUS_DIR / 'batch_report.md'}")
     print(f"  Log:    {log_path}")
     print(f"{'─'*60}\n")

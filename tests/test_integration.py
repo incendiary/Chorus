@@ -359,8 +359,36 @@ class TestOptionalPipelineFeatures:
 
         assert results["diarised_path"] is not None
         assert results["diarised_path"].exists()
+        assert results["diarisation_error"] is None
         assert results["speaker_labels"]
         assert all(label.startswith("SPEAKER_") for label in results["speaker_labels"])
+
+    @pytest.mark.usefixtures("_patch_transcription", "patch_consensus_dir")
+    def test_pipeline_surfaces_diarisation_runtime_failure(
+        self, synthetic_audio, patch_consensus_dir
+    ):
+        """A per-file diarisation failure (e.g. a runtime audio-decode error
+        the pre-flight readiness check can't catch) must be surfaced in the
+        result, not just logged and silently dropped. A real run against real
+        casework audio hit exactly this: torchcodec couldn't decode the WAV,
+        diarisation raised, and the pipeline reported success with no speaker
+        labels and no visible indication that diarisation had even been
+        attempted — indistinguishable from a genuinely single-speaker file."""
+        from pipeline_runner import run_pipeline
+
+        with patch(
+            "diarisation.diariser.diarise",
+            side_effect=RuntimeError("torchcodec is not available"),
+        ):
+            results = run_pipeline(
+                audio_path=synthetic_audio,
+                language="en",
+                enable_diarisation=True,
+            )
+
+        assert results["consensus_path"].exists()  # the rest of the pipeline is intact
+        assert results["diarised_path"] is None
+        assert results["diarisation_error"] == "torchcodec is not available"
 
 
 class TestAlignmentStrategies:

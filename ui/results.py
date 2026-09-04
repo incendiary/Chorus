@@ -456,6 +456,13 @@ def render_file_results(
                         )
 
     # Speaker diarisation
+    if results.get("diarisation_error"):
+        st.warning(
+            "🗣️ Speaker diarisation was requested but failed for this file, "
+            "so there are no speaker labels below — this transcript is "
+            f"otherwise complete.\n\nReason: {results['diarisation_error']}",
+            icon="⚠️",
+        )
     if results.get("diarised_path") and results["diarised_path"].exists():
         st.markdown("##### 🗣️ Speaker Diarisation")
 
