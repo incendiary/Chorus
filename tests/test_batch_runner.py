@@ -17,16 +17,25 @@ test, following the same mocking style used in ``tests/test_integration.py``.
 
 from __future__ import annotations
 
+import os
 import struct
 import wave
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from batch_processor.batch_runner import (
     BatchResult,
     _build_parser,
+    _display_settings,
+    _resolve_cli_settings,
     _write_batch_report,
+    acquire_batch_lock,
+    check_batch_lock,
     discover_audio_files,
+    main,
+    release_batch_lock,
     run_batch,
 )
 
@@ -201,6 +210,29 @@ class TestRunBatch:
         assert len(call_log) == 3
         assert all(r.success for r in results)
 
+    def test_diarisation_error_is_threaded_onto_the_result(
+        self, tmp_path: Path
+    ) -> None:
+        """run_batch must carry pipeline_runner's diarisation_error through to
+        BatchResult rather than dropping it — otherwise a per-file diarisation
+        failure is invisible outside the log."""
+        _make_wav(tmp_path / "a.wav")
+
+        def _mock_pipeline(audio_path: Path, **kwargs) -> dict:
+            out = _fake_pipeline_result(audio_path, kwargs.get("output_dir"))
+            out["diarisation_error"] = "torchcodec is not available"
+            return out
+
+        with (
+            patch("pipeline_runner.run_pipeline", side_effect=_mock_pipeline),
+            patch("batch_processor.batch_runner._write_batch_report"),
+        ):
+            results = run_batch(inputs=[tmp_path])
+
+        assert len(results) == 1
+        assert results[0].success is True
+        assert results[0].diarisation_error == "torchcodec is not available"
+
     def test_per_file_output_isolation(self, tmp_path: Path) -> None:
         """When output_dir is given, each file must write into its own <stem>/ subdir."""
         _make_wav(tmp_path / "interview.wav")
@@ -371,6 +403,32 @@ class TestRunBatch:
 
         assert captured == ["fr"]
 
+    def test_new_per_run_settings_forwarded_to_pipeline(self, tmp_path: Path) -> None:
+        """Threshold, storage, and timestamp overrides must reach the pipeline."""
+        _make_wav(tmp_path / "x.wav")
+        captured: dict = {}
+
+        def _mock_pipeline(audio_path: Path, **kwargs) -> dict:
+            captured.update(kwargs)
+            return _fake_pipeline_result(audio_path)
+
+        with (
+            patch("pipeline_runner.run_pipeline", side_effect=_mock_pipeline),
+            patch("batch_processor.batch_runner._write_batch_report"),
+        ):
+            run_batch(
+                inputs=[tmp_path],
+                consensus_threshold=0.7,
+                similarity_threshold=0.9,
+                keep_variant_wavs=True,
+                word_timestamps=True,
+            )
+
+        assert captured["consensus_threshold"] == 0.7
+        assert captured["similarity_threshold"] == 0.9
+        assert captured["keep_variant_wavs"] is True
+        assert captured["word_timestamps"] is True
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # _write_batch_report
@@ -421,6 +479,34 @@ class TestWriteBatchReport:
         assert "good.wav" in text
         assert "bad.wav" in text
 
+    def test_report_flags_diarisation_failure_on_an_otherwise_ok_file(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """A file that completed successfully but whose diarisation failed
+        must still count as a success (the transcript is genuinely fine) but
+        must not render as a bare, indistinguishable '✅ OK' — a real run
+        did exactly that: torchcodec couldn't decode the audio, diarisation
+        failed, and the report showed '1 succeeded, 0 failed' with no trace
+        of the missing speaker labels."""
+        out_dir = tmp_path / "consensus"
+        out_dir.mkdir(parents=True)
+        monkeypatch.setattr("config.CONSENSUS_DIR", out_dir)
+        monkeypatch.setattr("batch_processor.batch_runner.CONSENSUS_DIR", out_dir)
+
+        r = BatchResult(Path("call.wav"))
+        r.success = True
+        r.elapsed_seconds = 1595.4
+        r.diarisation_error = "torchcodec is not available"
+
+        path = _write_batch_report([r])
+        text = path.read_text(encoding="utf-8")
+
+        assert "Succeeded:** 1" in text
+        assert "Failed:** 0" in text
+        assert "diarisation failed" in text.lower()
+        assert "torchcodec is not available" in text
+        assert "✅ OK |" not in text
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # CLI parser
@@ -459,3 +545,272 @@ class TestBuildParser:
         parser = _build_parser()
         args = parser.parse_args(["a.mp3", "-l", "de"])
         assert args.language == "de"
+
+    def test_runtime_override_options(self) -> None:
+        parser = _build_parser()
+        args = parser.parse_args(
+            [
+                "a.mp3",
+                "--whisper-model",
+                "small",
+                "--device",
+                "cpu",
+                "--parallelism",
+                "2",
+                "--noise-floor-mode",
+                "fixed",
+                "--no-keep-variant-wavs",
+                "--ollama-timeout",
+                "7.5",
+            ]
+        )
+        settings = _resolve_cli_settings(args)
+
+        assert settings["models"] == (("small",), "CLI (--whisper-model)")
+        assert settings["device"] == ("cpu", "CLI (--device)")
+        assert settings["parallelism"] == ("2", "CLI (--parallelism)")
+        assert settings["noise floor"] == ("fixed", "CLI (--noise-floor-mode)")
+        assert settings["keep variant WAVs"] == (
+            False,
+            "CLI (--keep-variant-wavs)",
+        )
+        assert settings["Ollama timeout"] == (7.5, "CLI (--ollama-timeout)")
+
+    def test_language_auto_clears_configured_hint(self) -> None:
+        parser = _build_parser()
+        settings = _resolve_cli_settings(
+            parser.parse_args(["a.mp3", "--language", "auto"])
+        )
+        assert settings["language"] == (None, "CLI (--language)")
+
+    def test_hardware_preset_is_run_local_and_cli_wins(self) -> None:
+        parser = _build_parser()
+        args = parser.parse_args(
+            ["a.mp3", "--hardware-preset", "max", "--device", "cpu"]
+        )
+        recommendation = {
+            "whisper_model": "medium",
+            "device": "mps",
+            "parallelism": "auto",
+        }
+        with (
+            patch("ui.hardware_survey.detect_hardware", return_value={}),
+            patch(
+                "ui.hardware_survey.recommend_settings",
+                return_value=recommendation,
+            ),
+        ):
+            settings = _resolve_cli_settings(args)
+
+        assert settings["models"] == (("medium",), "hardware preset (max)")
+        assert settings["parallelism"] == ("auto", "hardware preset (max)")
+        assert settings["device"] == ("cpu", "CLI (--device)")
+
+    def test_invalid_parallelism_is_rejected(self) -> None:
+        parser = _build_parser()
+        with pytest.raises(SystemExit):
+            parser.parse_args(["a.mp3", "--parallelism", "0"])
+
+    def test_settings_display_hides_endpoint_value(self, capsys) -> None:
+        endpoint = "http://localhost:11434"
+        _display_settings({"Ollama URL": (endpoint, "CLI")})
+        output = capsys.readouterr().out
+        assert endpoint not in output
+        assert "configured endpoint (value hidden)" in output
+
+
+class TestDiarisationPreflightGate:
+    """--diarise must refuse to start rather than silently run every file
+    through the single-speaker stub — the exact failure mode that produced
+    a fully "successful" real batch with fabricated speaker labels in every
+    output before this gate existed."""
+
+    def test_diarise_without_readiness_refuses_to_start(self, tmp_path, capsys) -> None:
+        audio = tmp_path / "a.wav"
+        audio.write_bytes(b"fake")
+        with (
+            patch(
+                "diarisation.diariser.check_diarisation_ready",
+                return_value=(False, "HUGGINGFACE_TOKEN is not set."),
+            ),
+            pytest.raises(SystemExit),
+        ):
+            main([str(audio), "--diarise"])
+        err = capsys.readouterr().err
+        assert "HUGGINGFACE_TOKEN is not set." in err
+        assert "--allow-diarisation-stub" in err
+
+    def test_allow_diarisation_stub_bypasses_the_check(self, tmp_path) -> None:
+        audio = tmp_path / "a.wav"
+        audio.write_bytes(b"fake")
+        with (
+            patch("diarisation.diariser.check_diarisation_ready") as mock_check,
+            patch("batch_processor.batch_runner.run_batch", return_value=[]),
+        ):
+            main([str(audio), "--diarise", "--allow-diarisation-stub"])
+        mock_check.assert_not_called()
+
+    def test_diarise_ready_proceeds_without_the_flag(self, tmp_path) -> None:
+        audio = tmp_path / "a.wav"
+        audio.write_bytes(b"fake")
+        with (
+            patch(
+                "diarisation.diariser.check_diarisation_ready",
+                return_value=(True, ""),
+            ) as mock_check,
+            patch(
+                "batch_processor.batch_runner.run_batch", return_value=[]
+            ) as mock_run,
+        ):
+            main([str(audio), "--diarise"])
+        mock_check.assert_called_once()
+        mock_run.assert_called_once()
+
+    def test_no_diarise_skips_the_check_entirely(self, tmp_path) -> None:
+        audio = tmp_path / "a.wav"
+        audio.write_bytes(b"fake")
+        with (
+            patch("diarisation.diariser.check_diarisation_ready") as mock_check,
+            patch("batch_processor.batch_runner.run_batch", return_value=[]),
+        ):
+            main([str(audio)])
+        mock_check.assert_not_called()
+
+
+class TestCheckDiarisationFlag:
+    """--check-diarisation must be a real, standalone way to answer "is
+    diarisation ready?" — before this existed, the only way was to start a
+    real --diarise batch and see whether it immediately refused, which is a
+    debug workaround, not a documented user operation."""
+
+    def test_check_diarisation_ready_prints_and_exits_zero(self, capsys) -> None:
+        with patch(
+            "diarisation.diariser.check_diarisation_ready",
+            return_value=(True, ""),
+        ):
+            code = main(["--check-diarisation"])
+        assert code == 0
+        assert "ready" in capsys.readouterr().out.lower()
+
+    def test_check_diarisation_not_ready_prints_reason_and_exits_one(
+        self, capsys
+    ) -> None:
+        with patch(
+            "diarisation.diariser.check_diarisation_ready",
+            return_value=(False, "HUGGINGFACE_TOKEN is not set."),
+        ):
+            code = main(["--check-diarisation"])
+        assert code == 1
+        assert "HUGGINGFACE_TOKEN is not set." in capsys.readouterr().out
+
+    def test_check_diarisation_requires_no_inputs(self, capsys) -> None:
+        """The whole point is checking readiness without any audio files —
+        argparse must not demand a positional input for this to work."""
+        with patch(
+            "diarisation.diariser.check_diarisation_ready",
+            return_value=(True, ""),
+        ):
+            code = main(["--check-diarisation"])
+        assert code == 0
+
+    def test_check_diarisation_never_touches_run_batch(self) -> None:
+        with (
+            patch(
+                "diarisation.diariser.check_diarisation_ready",
+                return_value=(True, ""),
+            ),
+            patch("batch_processor.batch_runner.run_batch") as mock_run,
+        ):
+            main(["--check-diarisation"])
+        mock_run.assert_not_called()
+
+    def test_normal_invocation_still_requires_inputs(self) -> None:
+        with pytest.raises(SystemExit):
+            main([])
+
+
+class TestBatchLock:
+    """A single ``--output-dir`` must never be driven by two overlapping
+    batches — a real collision left two processes hammering the same variant
+    WAV and deadlocked for over ten hours on real casework audio before
+    being killed manually. The lock must block a genuinely live run, ignore
+    a stale leftover PID file, and always clean up after itself."""
+
+    def test_live_pid_blocks_a_second_run(self, tmp_path) -> None:
+        lock_path = tmp_path / ".chorus-batch.lock"
+        lock_path.write_text(str(os.getpid()), encoding="utf-8")
+        ready, reason = check_batch_lock(tmp_path)
+        assert ready is False
+        assert str(os.getpid()) in reason
+        assert "--output-dir" in reason
+
+    def test_stale_pid_does_not_block(self, tmp_path) -> None:
+        lock_path = tmp_path / ".chorus-batch.lock"
+        # PIDs this large are never actually assigned by the OS.
+        lock_path.write_text("999999999", encoding="utf-8")
+        ready, reason = check_batch_lock(tmp_path)
+        assert ready is True
+        assert reason == ""
+
+    def test_no_lock_file_is_ready(self, tmp_path) -> None:
+        ready, reason = check_batch_lock(tmp_path)
+        assert ready is True
+        assert reason == ""
+
+    def test_acquire_writes_this_process_pid(self, tmp_path) -> None:
+        lock_path = acquire_batch_lock(tmp_path)
+        assert lock_path.read_text(encoding="utf-8").strip() == str(os.getpid())
+        release_batch_lock(lock_path)
+
+    def test_release_removes_the_lock_file(self, tmp_path) -> None:
+        lock_path = acquire_batch_lock(tmp_path)
+        assert lock_path.exists()
+        release_batch_lock(lock_path)
+        assert not lock_path.exists()
+
+    def test_release_is_safe_when_file_already_gone(self, tmp_path) -> None:
+        lock_path = tmp_path / ".chorus-batch.lock"
+        release_batch_lock(lock_path)  # must not raise
+
+    def test_main_refuses_to_start_against_a_locked_output_dir(
+        self, tmp_path, capsys
+    ) -> None:
+        audio = tmp_path / "a.wav"
+        audio.write_bytes(b"fake")
+        out_dir = tmp_path / "out"
+        out_dir.mkdir()
+        (out_dir / ".chorus-batch.lock").write_text(str(os.getpid()), encoding="utf-8")
+        with pytest.raises(SystemExit):
+            main([str(audio), "--output-dir", str(out_dir)])
+        err = capsys.readouterr().err
+        assert str(os.getpid()) in err
+        assert "--output-dir" in err
+
+    def test_main_acquires_and_releases_the_lock_around_a_run(self, tmp_path) -> None:
+        audio = tmp_path / "a.wav"
+        audio.write_bytes(b"fake")
+        out_dir = tmp_path / "out"
+        out_dir.mkdir()
+        lock_path = out_dir / ".chorus-batch.lock"
+        with patch(
+            "batch_processor.batch_runner.run_batch", return_value=[]
+        ) as mock_run:
+            main([str(audio), "--output-dir", str(out_dir)])
+        mock_run.assert_called_once()
+        assert not lock_path.exists()
+
+    def test_main_releases_the_lock_even_if_run_batch_raises(self, tmp_path) -> None:
+        audio = tmp_path / "a.wav"
+        audio.write_bytes(b"fake")
+        out_dir = tmp_path / "out"
+        out_dir.mkdir()
+        lock_path = out_dir / ".chorus-batch.lock"
+        with (
+            patch(
+                "batch_processor.batch_runner.run_batch",
+                side_effect=RuntimeError("boom"),
+            ),
+            pytest.raises(RuntimeError),
+        ):
+            main([str(audio), "--output-dir", str(out_dir)])
+        assert not lock_path.exists()

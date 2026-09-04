@@ -96,11 +96,16 @@ class LabelledSegment:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def _load_pipeline():
+def _try_load_pipeline() -> tuple[object | None, str | None]:
     """
     Attempt to load the pyannote speaker-diarization pipeline.
 
-    Returns the pipeline object or ``None`` if unavailable.
+    Returns ``(pipeline, None)`` on success or ``(None, reason)`` on failure,
+    where *reason* is a specific, actionable message. This is the single
+    place that attempts the real load, so both the silent-fallback path
+    (``_load_pipeline``) and the pre-flight check (``check_diarisation_ready``)
+    see exactly the same failure a real run would hit — not a lighter proxy
+    that could pass while the real load still fails.
     """
     try:
         import torch
@@ -108,11 +113,10 @@ def _load_pipeline():
 
         hf_token = _get_hf_token()
         if not hf_token:
-            logger.warning(
-                "HUGGINGFACE_TOKEN not set — diarisation will use stub mode. "
-                "Set the token to enable full speaker identification."
+            return None, (
+                "HUGGINGFACE_TOKEN is not set. Create a read-only token at "
+                "https://huggingface.co/settings/tokens/new and set it in .env."
             )
-            return None
 
         logger.info("Loading pyannote speaker-diarization-3.1 pipeline…")
         # pyannote.audio 4.x renamed the credential argument from
@@ -141,18 +145,166 @@ def _load_pipeline():
         except (RuntimeError, OSError, ValueError):
             logger.debug("Could not move diarisation pipeline to CUDA.", exc_info=True)
 
-        return pipeline
+        return pipeline, None
 
     except ImportError:
-        logger.warning(
-            "pyannote.audio is not installed. "
-            "Install with: pip install pyannote.audio  "
-            "Falling back to stub diarisation."
+        return None, (
+            "pyannote.audio is not installed. Install with: pip install pyannote.audio"
         )
-        return None
     except (RuntimeError, OSError, ValueError) as exc:
-        logger.warning("Failed to load diarisation pipeline: %s. Using stub.", exc)
-        return None
+        # This is the failure that went unnoticed on real casework audio.
+        # Do not enumerate the pipeline's dependencies here by name — that
+        # was tried twice and was wrong both times within the same evening:
+        # a config.yaml fetched from the Hub named two internal models
+        # (segmentation-3.0, wespeaker-voxceleb-resnet34-LM), but the
+        # installed pyannote.audio's actual default __init__ signature
+        # (pyannote/audio/pipelines/speaker_diarization.py) bundles
+        # segmentation, embedding, and PLDA scoring into a third, different
+        # checkpoint (pyannote/speaker-diarization-community-1) instead —
+        # a library-version-dependent architecture change that a hardcoded
+        # repo list cannot track. str(exc) already names whichever repo
+        # actually failed, correctly, on every pyannote version, because it
+        # comes from the real request that just happened — that is the only
+        # part of this message that generalises.
+        return None, (
+            f"Failed to load the diarisation pipeline: {exc}\n\n"
+            "If the message above names a gated repo (a huggingface.co URL "
+            "with 'restricted' or '403'), visit that exact URL while signed "
+            "in with the account that owns HUGGINGFACE_TOKEN and accept its "
+            "terms, then retry. Which repos are involved depends on the "
+            "installed pyannote.audio version, so there is no fixed list to "
+            "check in advance — this message always reflects the actual "
+            "failure just now, not a guess. If nothing above mentions "
+            "gating, the failure is something else — a network or cache "
+            "problem, most likely — and accepting licences will not fix it."
+        )
+
+
+def check_diarisation_ready() -> tuple[bool, str]:
+    """
+    Verify diarisation can actually run before a batch starts.
+
+    Attempts the real pipeline load (not just a metadata/gating check), since
+    that is the only way to be sure every model it needs is accessible.
+    Returns ``(True, "")`` when ready, or ``(False, reason)`` with the
+    actionable message from ``_try_load_pipeline``.
+
+    This is authoritative but incremental: pipeline construction stops at
+    the first inaccessible model it hits, so one call can only ever report
+    one blocker even when several exist. See ``diarisation_repo_status`` for
+    best-effort visibility into every known candidate at once.
+
+    Callers should surface *reason* and require an explicit, informed choice
+    before continuing in stub mode — the silent fallback previously produced
+    a fully "successful" run that had quietly assigned an entire recording's
+    audio to a single fake speaker for every file, with no error and no
+    output-level marker that anything had degraded.
+    """
+    pipeline, reason = _try_load_pipeline()
+    return pipeline is not None, reason or ""
+
+
+# Repos observed, by direct investigation, to matter to
+# pyannote/speaker-diarization-3.1 under the installed pyannote.audio version
+# (4.0.7, checked 2026-08-22): the pipeline itself, the two models named in
+# its Hub config.yaml (segmentation, embedding), and a further model the
+# installed library's own Python defaults route through regardless of that
+# config.yaml (community-1, providing PLDA scoring). This list is NOT
+# authoritative or guaranteed exhaustive — a different pyannote.audio version
+# has already been shown, within one evening, to depend on a different set.
+# check_diarisation_ready() (a real pipeline load) is the only ground truth;
+# this exists purely so a user can accept every likely-needed licence in one
+# pass instead of discovering them one at a time through repeated retries.
+KNOWN_DEPENDENCY_REPOS: tuple[str, ...] = (
+    "pyannote/speaker-diarization-3.1",
+    "pyannote/segmentation-3.0",
+    "pyannote/wespeaker-voxceleb-resnet34-LM",
+    "pyannote/speaker-diarization-community-1",
+)
+
+_WEIGHT_EXTENSIONS = (".bin", ".pt", ".pth", ".safetensors", ".onnx", ".npz", ".ckpt")
+_METADATA_FILENAMES = {".gitattributes", ".gitignore"}
+
+
+def _pick_real_file(files: list[str]) -> str:
+    """Choose a file whose access reflects the repo's real gate.
+
+    ``.gitattributes`` and similar repo-metadata files are typically
+    downloadable even in a fully gated repo, so checking access to
+    "the first file returned" gives the same false-positive risk this
+    function exists to avoid. Prefer an actual weight file; fall back to
+    any non-metadata file; fall back to whatever was returned rather than
+    raise, since even a wrong guess here is still a real access check.
+    """
+    candidates = [
+        f
+        for f in files
+        if f not in _METADATA_FILENAMES and not f.lower().endswith(".md")
+    ]
+    weighty = [f for f in candidates if f.lower().endswith(_WEIGHT_EXTENSIONS)]
+    if weighty:
+        return weighty[0]
+    if candidates:
+        return candidates[0]
+    return files[0]
+
+
+def check_repo_access(repo_id: str, token: str | None) -> tuple[bool, str]:
+    """Check whether *token* can actually download from *repo_id*.
+
+    Hits the same ``resolve/main/...`` endpoint a real pipeline load
+    depends on, via an authenticated HEAD request — not
+    ``HfApi.model_info()``'s gating field, which reported every repo in
+    ``KNOWN_DEPENDENCY_REPOS`` as accessible on 2026-08-22 while the real
+    download for one of them still hard-403'd for hours.
+    """
+    if not token:
+        return False, "no token"
+    try:
+        from huggingface_hub import get_hf_file_metadata, hf_hub_url, list_repo_files
+
+        files = list_repo_files(repo_id, token=token)
+        if not files:
+            return False, "repo has no files"
+        target = _pick_real_file(files)
+        get_hf_file_metadata(hf_hub_url(repo_id, target), token=token)
+        return True, ""
+    except Exception as exc:  # noqa: BLE001 — any failure means "not accessible"
+        return False, str(exc)
+
+
+def diarisation_repo_status() -> list[dict[str, object]]:
+    """Best-effort per-repo access status for every entry in
+    ``KNOWN_DEPENDENCY_REPOS``, so a caller can show a full checklist rather
+    than the single blocker ``check_diarisation_ready`` finds per call.
+
+    Not authoritative and not guaranteed exhaustive — see the module-level
+    comment on ``KNOWN_DEPENDENCY_REPOS``. Each entry:
+    ``{"repo": str, "url": str, "accessible": bool}``.
+    """
+    token = _get_hf_token()
+    return [
+        {
+            "repo": repo,
+            "url": f"https://huggingface.co/{repo}",
+            "accessible": check_repo_access(repo, token)[0],
+        }
+        for repo in KNOWN_DEPENDENCY_REPOS
+    ]
+
+
+def _load_pipeline():
+    """
+    Attempt to load the pyannote speaker-diarization pipeline.
+
+    Returns the pipeline object or ``None`` if unavailable. Logs the same
+    reason ``check_diarisation_ready`` would report, at WARNING level, so a
+    caller that skips the pre-flight check still sees why it fell back.
+    """
+    pipeline, reason = _try_load_pipeline()
+    if pipeline is None:
+        logger.warning("%s Using stub diarisation.", reason)
+    return pipeline
 
 
 def _stub_diarisation(audio_path: Path) -> list[SpeakerSegment]:
@@ -193,6 +345,21 @@ def diarise(audio_path: str | Path) -> list[SpeakerSegment]:
 
     logger.info("Running diarisation on: %s", audio_path.name)
     diarization = pipeline(str(audio_path))
+
+    # pyannote.audio 4.x's default (non-legacy) pipeline returns a
+    # DiarizeOutput wrapper (speaker_diarization / exclusive_speaker_
+    # diarization / speaker_embeddings) rather than the bare, itertracks-
+    # capable Annotation older pipeline versions returned directly. This
+    # ran for real on real casework audio: the pipeline loaded, every gated
+    # model was accessible, diarisation actually executed for over an hour,
+    # then failed at this exact line with "'DiarizeOutput' object has no
+    # attribute 'itertracks'" — a full pass of real compute lost to a
+    # result-shape mismatch, not an access problem. Detect rather than
+    # assume one shape, since assuming wrongly here throws away real work.
+    if not hasattr(diarization, "itertracks") and hasattr(
+        diarization, "speaker_diarization"
+    ):
+        diarization = diarization.speaker_diarization
 
     segments: list[SpeakerSegment] = []
     for turn, _, speaker in diarization.itertracks(yield_label=True):
