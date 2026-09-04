@@ -42,6 +42,17 @@ repos:
       - id: check-merge-conflict
       - id: debug-statements
 
+  # pytest: Full test suite, gating pushes rather than every commit
+  - repo: local
+    hooks:
+      - id: pytest
+        name: pytest — Full test suite
+        entry: pytest
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
+
 default_language_version:
   python: "3.11"
 
@@ -49,5 +60,5 @@ ci:
   autofix_commit_msg: "chore(pre-commit): auto-fix linting and formatting"
   autofix_prs: true
   autoupdate_schedule: weekly
-  skip: [gitleaks]
+  skip: [gitleaks, pytest]
   stages: [pre-commit]
