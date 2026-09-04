@@ -25,8 +25,8 @@ from streamlit.testing.v1 import AppTest
 
 from ui.sidebar import SidebarConfig
 
-APP_PATH = "ui/app.py"
 PROJECT_ROOT = str(Path(__file__).resolve().parent.parent)
+APP_PATH = str(Path(PROJECT_ROOT) / "ui" / "app.py")
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Fixtures and canned data

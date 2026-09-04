@@ -9,11 +9,12 @@ the Ollama/spaCy availability probes are mocked where determinism requires it.
 
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import patch
 
 from streamlit.testing.v1 import AppTest
 
-APP_PATH = "ui/app.py"
+APP_PATH = str(Path(__file__).resolve().parent.parent / "ui" / "app.py")
 
 
 def _run_app() -> AppTest:
@@ -205,7 +206,7 @@ class TestLanguageSelector:
     def test_defaults_to_auto_detect_with_feedback(self):
         from streamlit.testing.v1 import AppTest
 
-        at = AppTest.from_file("ui/app.py", default_timeout=60)
+        at = AppTest.from_file(APP_PATH, default_timeout=60)
         at.run()
 
         selector = [s for s in at.selectbox if s.label == "Language"][0]
@@ -218,7 +219,7 @@ class TestLanguageSelector:
         box silently accepted input, so it looked like nothing happened."""
         from streamlit.testing.v1 import AppTest
 
-        at = AppTest.from_file("ui/app.py", default_timeout=60)
+        at = AppTest.from_file(APP_PATH, default_timeout=60)
         at.run()
         [s for s in at.selectbox if s.label == "Language"][0].set_value("fr")
         at.run()
@@ -258,7 +259,7 @@ class TestBuildLabel:
 
         from ui.build_info import BUILD_LABEL
 
-        at = AppTest.from_file("ui/app.py", default_timeout=60)
+        at = AppTest.from_file(APP_PATH, default_timeout=60)
         at.run()
 
         assert not at.exception

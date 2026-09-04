@@ -15,7 +15,7 @@ from unittest.mock import patch
 
 from streamlit.testing.v1 import AppTest
 
-LOGS_PAGE = "ui/pages/2_Logs.py"
+LOGS_PAGE = str(Path(__file__).resolve().parent.parent / "ui" / "pages" / "2_Logs.py")
 
 
 def _write_log(runs_dir: Path, run_id: str, lines: list[str]) -> Path:
