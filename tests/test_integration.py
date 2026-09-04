@@ -359,8 +359,36 @@ class TestOptionalPipelineFeatures:
 
         assert results["diarised_path"] is not None
         assert results["diarised_path"].exists()
+        assert results["diarisation_error"] is None
         assert results["speaker_labels"]
         assert all(label.startswith("SPEAKER_") for label in results["speaker_labels"])
+
+    @pytest.mark.usefixtures("_patch_transcription", "patch_consensus_dir")
+    def test_pipeline_surfaces_diarisation_runtime_failure(
+        self, synthetic_audio, patch_consensus_dir
+    ):
+        """A per-file diarisation failure (e.g. a runtime audio-decode error
+        the pre-flight readiness check can't catch) must be surfaced in the
+        result, not just logged and silently dropped. A real run against real
+        casework audio hit exactly this: torchcodec couldn't decode the WAV,
+        diarisation raised, and the pipeline reported success with no speaker
+        labels and no visible indication that diarisation had even been
+        attempted — indistinguishable from a genuinely single-speaker file."""
+        from pipeline_runner import run_pipeline
+
+        with patch(
+            "diarisation.diariser.diarise",
+            side_effect=RuntimeError("torchcodec is not available"),
+        ):
+            results = run_pipeline(
+                audio_path=synthetic_audio,
+                language="en",
+                enable_diarisation=True,
+            )
+
+        assert results["consensus_path"].exists()  # the rest of the pipeline is intact
+        assert results["diarised_path"] is None
+        assert results["diarisation_error"] == "torchcodec is not available"
 
 
 class TestAlignmentStrategies:
@@ -822,3 +850,31 @@ class TestConsensusModelForwarding:
             )
 
         assert captured["model_names"] == ("base", "small")
+
+    @pytest.mark.usefixtures("patch_consensus_dir")
+    def test_run_pipeline_forwards_word_timestamps(self, synthetic_audio):
+        """A per-run timestamp override should reach the transcription stage."""
+        from pipeline_runner import run_pipeline
+
+        captured: dict[str, Any] = {}
+
+        def _capture_pass(
+            variant_paths: dict[str, Path],
+            stem: str,
+            progress_callback=None,
+            **kwargs,
+        ) -> dict[str, dict]:
+            captured["word_timestamps"] = kwargs.get("word_timestamps")
+            if progress_callback:
+                for i, key in enumerate(variant_paths):
+                    progress_callback(i + 1, len(variant_paths), key)
+            return MOCK_TRANSCRIPTS
+
+        with patch("pipeline_runner.run_transcription_pass", side_effect=_capture_pass):
+            run_pipeline(
+                audio_path=synthetic_audio,
+                language="en",
+                word_timestamps=True,
+            )
+
+        assert captured["word_timestamps"] is True

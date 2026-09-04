@@ -22,9 +22,9 @@ import librosa
 import numpy as np
 import scipy.signal as signal
 
+import config
 from config import (
     HIGH_PASS_CUTOFF_HZ,
-    NOISE_FLOOR_MODE,
     NOISE_REDUCTION_PROP,
     NORMALISATION_TARGET_DBFS,
     TARGET_SAMPLE_RATE,
@@ -244,7 +244,7 @@ def denoise_filter(audio: np.ndarray, sr: int = TARGET_SAMPLE_RATE) -> np.ndarra
     magnitude, phase = np.abs(stft_full), np.angle(stft_full)
 
     # Estimate noise floor
-    if NOISE_FLOOR_MODE == "vad":
+    if config.NOISE_FLOOR_MODE == "vad":
         noise_ref = _find_silence_window_vad(audio, sr)
     else:
         # Fixed mode: first 0.5 s

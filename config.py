@@ -12,6 +12,9 @@ from pathlib import Path
 # Project Root
 # ─────────────────────────────────────────────
 BASE_DIR = Path(__file__).resolve().parent
+DOTENV_PATH = BASE_DIR / ".env"
+_PROCESS_ENV_KEYS = frozenset(os.environ)
+DOTENV_LOADED_KEYS: set[str] = set()
 
 
 def _load_dotenv(dotenv_path: Path) -> None:
@@ -32,10 +35,22 @@ def _load_dotenv(dotenv_path: Path) -> None:
         value = value.strip()
         if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
             value = value[1:-1]
-        os.environ.setdefault(key, value)
+        if key not in os.environ:
+            os.environ[key] = value
+            DOTENV_LOADED_KEYS.add(key)
 
 
-_load_dotenv(BASE_DIR / ".env")
+_load_dotenv(DOTENV_PATH)
+
+
+def config_value_source(env_key: str) -> str:
+    """Return the source that supplied an environment-backed setting."""
+    if env_key in _PROCESS_ENV_KEYS:
+        return "process environment"
+    if env_key in DOTENV_LOADED_KEYS:
+        return f".env ({DOTENV_PATH})"
+    return "default"
+
 
 # ─────────────────────────────────────────────
 # Output Directories
