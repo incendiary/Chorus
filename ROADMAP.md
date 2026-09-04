@@ -342,6 +342,34 @@ them sooner.
 - [x] **Full output archives include the machine-readable bundle and parsing guide** (v4.2.0)
   (#225) — `Download Full Output Archive` previously omitted `{stem}_bundle.json` and
   `HOW_TO_PARSE_CHORUS_OUTPUT.md`.
+- [x] **Single-run lock scoped per `--output-dir`** (v4.2.0) (#238) — two overlapping
+  `batch_runner` invocations against the same output directory previously collided: both
+  processed the same file within seconds of each other, and one's variant-WAV cleanup
+  deleted a file the other still needed for diarisation, deadlocking for over ten hours on
+  real casework audio before being killed manually. `main()` now refuses to start if a
+  live PID already holds the lock for that directory; a stale PID (dead process) is
+  treated as no lock at all.
+- [x] **Per-file diarisation failures are surfaced, not silently dropped** (v4.2.0) (#239) —
+  a second real-world diarisation failure mode, distinct from the ones above: the
+  pre-flight check only verifies repo/model access, not that the installed
+  `torchcodec`/`ffmpeg` combination can actually decode audio at runtime. When it
+  couldn't, `pipeline_runner.py`'s bare `except Exception: logger.warning(...)` produced a
+  transcript with no speaker labels and no visible error — indistinguishable from a
+  genuinely single-speaker recording, with the batch still reporting "1/1 succeeded".
+  `run_pipeline()` now returns the failure as `diarisation_error`, surfaced in the batch
+  report's status column, the console summary, and a warning in the Web UI's results view.
+- [x] **Real pre-commit and pre-push git hooks installed** (v4.2.0) (#241) — the hook
+  actually present in `.git/hooks/pre-commit` was an unrelated stub from a different tool
+  that referenced a missing script and was designed to never block; none of GitLeaks,
+  Ruff, isort, or the file-hygiene checks in `.pre-commit-config.yaml` were being enforced
+  locally. Installed the real framework hooks for both stages, plus a local `pytest` hook
+  scoped to `pre-push`.
+- [x] **Documented the unpatched `lightning` CVE as an accepted risk** (v4.2.0) (#240) —
+  `pip-audit` flags `CVE-2026-58659`/`PYSEC-2026-3624` (an RCE in `lightning`, pulled in
+  transitively by `pyannote-audio`) on every CI run, with no fixed release available yet.
+  Chorus never calls the affected `load_from_checkpoint` path or loads untrusted
+  checkpoints. Recorded in `SECURITY.md` so this is recognised as tracked rather than
+  re-investigated on every future CI run.
 
 ### Validation
 
@@ -364,14 +392,21 @@ This is the first real-world confirmation that diarisation produces genuine outp
 end-to-end since the `DiarizeOutput` fix — the load-only pre-flight check had already
 been verified in isolation, but not a full pipeline run against hours of real audio.
 
-Known open items from this session, not yet actioned, tracked separately: a CLI
-single-run lock (two overlapping invocations against the same output directory collided
-and deadlocked for 10.5 hours during this same production window — the Web UI's
-`RunManager` already prevents this, the CLI does not), four CLI settings still without a
-Web UI equivalent (word timestamps, WAV retention, Ollama base URL/timeout), and a
-comprehensive CLI/Web UI flag reference (current documentation covers roughly 6 of 22
-flags).
+A second, single-file production run on 2026-09-04 (a 16-minute call recording) surfaced
+the runtime diarisation failure described above (#239): `torchcodec` 0.14.0 could not
+decode audio against the installed ffmpeg 9 (it only shipped decoder support for ffmpeg
+4–8 at that version), so diarisation silently produced no speaker labels at all despite
+the pre-flight check passing. Upgrading `torchcodec` to 0.16.0 in the project venv
+resolved the decode failure — re-running diarisation against the same recording produced
+160 segments across 3 distinct speakers, confirming both the environment fix and the
+code fix's premise. `torchcodec`/`ffmpeg` version compatibility remains something to
+watch on any future host with a newer ffmpeg than the installed `torchcodec` supports.
+
+Known open items from this session, not yet actioned, tracked separately: four CLI
+settings still without a Web UI equivalent (word timestamps, WAV retention, Ollama base
+URL/timeout), and a comprehensive CLI/Web UI flag reference (current documentation covers
+roughly 6 of 22 flags).
 
 ---
 
-*Last updated: 26 August 2026*
+*Last updated: 5 September 2026*
