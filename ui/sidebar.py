@@ -174,6 +174,12 @@ def render_sidebar() -> SidebarConfig:
 
         if st.session_state.get("survey_summary"):
             st.info(st.session_state["survey_summary"])
+        st.caption(
+            "The Apply button changes this Streamlit session only. Batch runs offer "
+            "the same presets with `--hardware-preset max|background`; the interactive "
+            "`devops-practices/survey-ollama-env.sh` assistant can update `.env` after "
+            "you confirm each setting."
+        )
 
         model_choice = st.selectbox(
             "Model size",
@@ -492,6 +498,75 @@ def render_sidebar() -> SidebarConfig:
             "🗣️ Speaker Diarisation",
             help="Identify multiple speakers (requires HUGGINGFACE_TOKEN).",
         )
+        if enable_diarisation:
+            from diarisation.diariser import check_diarisation_ready
+
+            _diar_ok, _diar_reason = check_diarisation_ready()
+            if not _diar_ok:
+                enable_diarisation = False
+                st.session_state["show_diarisation_dialog"] = True
+                st.session_state["diarisation_fail_reason"] = _diar_reason
+
+        if st.session_state.get("show_diarisation_dialog"):
+            from diarisation.diariser import check_diarisation_ready as _probe_diar
+            from diarisation.diariser import diarisation_repo_status
+
+            _diar_dialog_reason = st.session_state.get(
+                "diarisation_fail_reason", "Diarisation is not available."
+            )
+
+            @st.dialog("Speaker Diarisation — Setup Required")
+            def _diarisation_setup_dialog():
+                st.error(_diar_dialog_reason)
+                st.markdown(
+                    "**Diarisation needs a Hugging Face token and accepted "
+                    "licences for the gated models pyannote loads.**"
+                )
+                st.markdown(
+                    "1. Create a **read-only** token: "
+                    "https://huggingface.co/settings/tokens/new\n"
+                    "2. Set it as `HUGGINGFACE_TOKEN` in `.env`\n"
+                    "3. Visit each ❌ repo below, signed in as the same "
+                    "account, and accept its terms:"
+                )
+                for _entry in diarisation_repo_status():
+                    _icon = "✅" if _entry["accessible"] else "❌"
+                    st.markdown(f"   {_icon} [{_entry['repo']}]({_entry['url']})")
+                st.caption(
+                    "Checked just now. This list covers models known to "
+                    "matter for the currently installed pyannote.audio — a "
+                    "different version could depend on others not shown "
+                    "here. The error above (from an actual pipeline load) is "
+                    "the real authority on whether diarisation will work; "
+                    "this list exists so you can accept every licence you're "
+                    "likely to need in one pass instead of one at a time. "
+                    "See the **Help** page in the sidebar for full setup guidance."
+                )
+                col1, col2 = st.columns(2)
+                with col1:
+                    if st.button(
+                        "Dismiss", use_container_width=True, key="diarisation_dismiss"
+                    ):
+                        st.session_state["show_diarisation_dialog"] = False
+                        st.rerun()
+                with col2:
+                    if st.button(
+                        "Retry",
+                        type="primary",
+                        use_container_width=True,
+                        key="diarisation_retry",
+                    ):
+                        _ok, _new_reason = _probe_diar()
+                        if _ok:
+                            st.session_state["show_diarisation_dialog"] = False
+                            st.rerun()
+                        else:
+                            st.session_state["diarisation_fail_reason"] = _new_reason
+                            st.rerun()
+
+            _diarisation_setup_dialog()
+        else:
+            st.session_state.pop("diarisation_fail_reason", None)
         st.caption("ℹ️ Word-level timestamps are always enabled for precise subtitles.")
 
         # ── Export Formats ────────────────────────────────────────────────────

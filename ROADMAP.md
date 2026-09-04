@@ -32,6 +32,8 @@ Tracked improvements identified during the June 2026 repository assessment.
 
 - [x] **Audio filter property-based tests** (v2.0.6) — verify that filters produce expected acoustic characteristics (e.g., high-pass actually attenuates below cutoff, normalisation hits target dBFS). ✓ Added `TestFilterAcousticProperties`.
 
+- [ ] **Add shell-level test coverage for `devops-practices/survey-ollama-env.sh`** — the script has no automated tests; `tests/test_hardware_survey.py` covers only the Python UI module (`ui/hardware_survey.py`). Surfaced after fixing a real gap: the script always detected GPU type correctly but never turned that into a `WHISPER_DEVICE` recommendation or offered it at the apply step, so running the script (even selecting "apply all") could never update `WHISPER_DEVICE` — only manual `.env` edits could. Fixed by adding a `DEVICE_RECOMMENDED` block mirroring `ui/hardware_survey.py::_recommend_device`'s CUDA > MPS > CPU priority, wired into the recommendation display, the apply list, and the summary; verified end-to-end against a real `.env` (flip to `cpu`, run script, select the item, confirm it writes back `mps` and nothing else changes). No regression test exists for any of this — needs `bats` or an equivalent shell-test harness (none currently in the repo) covering: device recommendation matches the Python module for CUDA/MPS/CPU inputs, the apply step writes only the keys explicitly selected, and skipping leaves `.env` untouched.
+
 ---
 
 ## Future Enhancements
@@ -291,4 +293,120 @@ Follow-up evidence and dependency work is tracked in issues #219 and #220.
 
 ---
 
-*Last updated: 14 August 2026*
+## Completed — v4.2.0 Diarisation correctness and CLI/UI parity
+
+Prompted by a real, multi-day production run on real casework audio (see Validation
+below), which surfaced two distinct diarisation failures that every prior test suite had
+missed — both fixed here, together with the pre-flight tooling that should have caught
+them sooner.
+
+- [x] **Diarisation refuses to run when it can't actually work** (v4.2.0) (#229) — `--diarise`
+  now calls `check_diarisation_ready()` (a real pipeline load, not a metadata check)
+  before processing any file, and refuses to start rather than silently completing every
+  file with a single-speaker stub. `--allow-diarisation-stub` opts back into the old
+  silent behaviour explicitly. The Streamlit UI got the same check as a setup dialog
+  (#233).
+- [x] **The pre-flight check's guidance stopped hardcoding which repos matter** (v4.2.0) (#230, #231) — an early version named specific gated Hugging Face repos in its error message;
+  within the same evening the installed `pyannote.audio` version turned out to route
+  through a different set of repos than its own Hub `config.yaml` implied. The message
+  now only ever relays the real error from the attempted load, which is correct on any
+  version.
+- [x] **A full checklist of known diarisation dependencies, checked by real file access** (v4.2.0)
+  (#234) — `diarisation_repo_status()` checks every known candidate repo via an
+  authenticated HEAD request to an actual weight file, not `HfApi.model_info()`'s gating
+  field (which reported every repo accessible while one of them still hard-403'd for
+  hours) and not "the first file returned" (which is `.gitattributes` for some repos —
+  always public even in a fully gated repo).
+- [x] **Fixed the actual diarisation crash** (v4.2.0) (#235) — `pyannote.audio` 4.x's default
+  pipeline wraps its result in a `DiarizeOutput` dataclass instead of returning the bare
+  `Annotation` older versions returned. `diarise()` called `.itertracks()` on whatever it
+  got back, unconditionally. On real audio this meant diarisation could run for over an
+  hour of correct, fully-licensed compute and then crash at the final parsing step,
+  caught by a broad `except` in `pipeline_runner.py` — the file "succeeded" with no
+  `diarised.md` at all. Now detects the result shape and unwraps it.
+- [x] **`--check-diarisation`** (v4.2.0) (#232) — a standalone readiness check. Before this, the
+  only way to answer "is diarisation ready?" was to start a real batch and watch it
+  refuse — a debug workaround, not a documented operation.
+- [x] **Batch CLI runs persist a log file** (v4.2.0) (#228) — previously the only record of an
+  unattended batch was console output, which is exactly as durable as a terminal's
+  scrollback (100 lines by default in `screen`) — already lost by the time a multi-hour
+  slowdown needed investigating on this same production run.
+- [x] **`survey-ollama-env.sh` recommends and can write `WHISPER_DEVICE`** (v4.2.0) (#227) — the
+  script always detected GPU type correctly but never turned it into a device
+  recommendation, so running it (even choosing "apply all") could never fix a
+  device pinned to `cpu`.
+- [x] **Batch CLI configuration parity with the Web UI** (v4.2.0) (#226) — per-run overrides for
+  model, device, parallelism, hardware presets, alignment, thresholds, noise floor,
+  word timestamps, and WAV retention, with every effective setting and its source
+  (`CLI` / `hardware preset` / `.env` / `default`) printed before processing starts.
+- [x] **Full output archives include the machine-readable bundle and parsing guide** (v4.2.0)
+  (#225) — `Download Full Output Archive` previously omitted `{stem}_bundle.json` and
+  `HOW_TO_PARSE_CHORUS_OUTPUT.md`.
+- [x] **Single-run lock scoped per `--output-dir`** (v4.2.0) (#238) — two overlapping
+  `batch_runner` invocations against the same output directory previously collided: both
+  processed the same file within seconds of each other, and one's variant-WAV cleanup
+  deleted a file the other still needed for diarisation, deadlocking for over ten hours on
+  real casework audio before being killed manually. `main()` now refuses to start if a
+  live PID already holds the lock for that directory; a stale PID (dead process) is
+  treated as no lock at all.
+- [x] **Per-file diarisation failures are surfaced, not silently dropped** (v4.2.0) (#239) —
+  a second real-world diarisation failure mode, distinct from the ones above: the
+  pre-flight check only verifies repo/model access, not that the installed
+  `torchcodec`/`ffmpeg` combination can actually decode audio at runtime. When it
+  couldn't, `pipeline_runner.py`'s bare `except Exception: logger.warning(...)` produced a
+  transcript with no speaker labels and no visible error — indistinguishable from a
+  genuinely single-speaker recording, with the batch still reporting "1/1 succeeded".
+  `run_pipeline()` now returns the failure as `diarisation_error`, surfaced in the batch
+  report's status column, the console summary, and a warning in the Web UI's results view.
+- [x] **Real pre-commit and pre-push git hooks installed** (v4.2.0) (#241) — the hook
+  actually present in `.git/hooks/pre-commit` was an unrelated stub from a different tool
+  that referenced a missing script and was designed to never block; none of GitLeaks,
+  Ruff, isort, or the file-hygiene checks in `.pre-commit-config.yaml` were being enforced
+  locally. Installed the real framework hooks for both stages, plus a local `pytest` hook
+  scoped to `pre-push`.
+- [x] **Documented the unpatched `lightning` CVE as an accepted risk** (v4.2.0) (#240) —
+  `pip-audit` flags `CVE-2026-58659`/`PYSEC-2026-3624` (an RCE in `lightning`, pulled in
+  transitively by `pyannote-audio`) on every CI run, with no fixed release available yet.
+  Chorus never calls the affected `load_from_checkpoint` path or loads untrusted
+  checkpoints. Recorded in `SECURITY.md` so this is recognised as tracked rather than
+  re-investigated on every future CI run.
+
+### Validation
+
+A full production run was carried out on nine real recordings for an active financial
+ombudsman complaint (`--whisper-model large --device mps --diarise --nlp --llm
+--keep-variant-wavs --no-word-timestamps --alignment-strategy sequence`), 2026-08-24 to
+2026-08-26: **9 of 9 files succeeded, 0 failed, 20.0 hours total processing time.**
+
+Every file produced genuine multi-speaker diarisation (3–6 distinct speakers per
+recording, matching each recording's real content — not a fixed count, not a stub), the
+full export set, and measurably-working confidence reconstruction (spaCy plus Ollama
+lifted 300–600 LOW-confidence words per file into MEDIUM). Across the entire ~21-hour
+log, exactly one warning occurred (a single Ollama request timeout on one word, during a
+period of heavy host-machine memory pressure unrelated to Chorus) and it was handled
+exactly as designed — the affected word was left at its prior tier, and every other word
+in that file and every subsequent file was unaffected. No errors, no crashes, no silent
+degradation.
+
+This is the first real-world confirmation that diarisation produces genuine output
+end-to-end since the `DiarizeOutput` fix — the load-only pre-flight check had already
+been verified in isolation, but not a full pipeline run against hours of real audio.
+
+A second, single-file production run on 2026-09-04 (a 16-minute call recording) surfaced
+the runtime diarisation failure described above (#239): `torchcodec` 0.14.0 could not
+decode audio against the installed ffmpeg 9 (it only shipped decoder support for ffmpeg
+4–8 at that version), so diarisation silently produced no speaker labels at all despite
+the pre-flight check passing. Upgrading `torchcodec` to 0.16.0 in the project venv
+resolved the decode failure — re-running diarisation against the same recording produced
+160 segments across 3 distinct speakers, confirming both the environment fix and the
+code fix's premise. `torchcodec`/`ffmpeg` version compatibility remains something to
+watch on any future host with a newer ffmpeg than the installed `torchcodec` supports.
+
+Known open items from this session, not yet actioned, tracked separately: four CLI
+settings still without a Web UI equivalent (word timestamps, WAV retention, Ollama base
+URL/timeout), and a comprehensive CLI/Web UI flag reference (current documentation covers
+roughly 6 of 22 flags).
+
+---
+
+*Last updated: 5 September 2026*

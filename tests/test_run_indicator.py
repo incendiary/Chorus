@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import patch
 
 from streamlit.testing.v1 import AppTest
+
+APP_PATH = str(Path(__file__).resolve().parent.parent / "ui" / "app.py")
 
 
 def _state(status: str, files: list[dict] | None = None) -> dict:
@@ -33,7 +36,7 @@ class TestRunIndicator:
     def test_no_state_renders_nothing(self) -> None:
         """With no active-run state, no pill is rendered."""
         with patch("ui.run_indicator.load_state", return_value=None):
-            at = AppTest.from_file("ui/app.py", default_timeout=30)
+            at = AppTest.from_file(APP_PATH, default_timeout=30)
             at.run()
 
         assert not at.exception
@@ -48,7 +51,7 @@ class TestRunIndicator:
         with patch(
             "ui.run_indicator.load_state", return_value=_state("running", files)
         ):
-            at = AppTest.from_file("ui/app.py", default_timeout=30)
+            at = AppTest.from_file(APP_PATH, default_timeout=30)
             at.run()
 
         assert not at.exception
@@ -60,7 +63,7 @@ class TestRunIndicator:
     def test_interrupted_state_shows_warning(self) -> None:
         """An interrupted state surfaces a warning rather than a progress pill."""
         with patch("ui.run_indicator.load_state", return_value=_state("interrupted")):
-            at = AppTest.from_file("ui/app.py", default_timeout=30)
+            at = AppTest.from_file(APP_PATH, default_timeout=30)
             at.run()
 
         assert not at.exception
@@ -71,7 +74,7 @@ class TestRunIndicator:
     def test_finished_state_renders_nothing(self) -> None:
         """A finished run is not an active run — the indicator stays silent."""
         with patch("ui.run_indicator.load_state", return_value=_state("finished")):
-            at = AppTest.from_file("ui/app.py", default_timeout=30)
+            at = AppTest.from_file(APP_PATH, default_timeout=30)
             at.run()
 
         assert not at.exception

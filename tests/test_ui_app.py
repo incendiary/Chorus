@@ -9,11 +9,12 @@ the Ollama/spaCy availability probes are mocked where determinism requires it.
 
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import patch
 
 from streamlit.testing.v1 import AppTest
 
-APP_PATH = "ui/app.py"
+APP_PATH = str(Path(__file__).resolve().parent.parent / "ui" / "app.py")
 
 
 def _run_app() -> AppTest:
@@ -158,13 +159,54 @@ class TestSpacyUnavailable:
         assert at.session_state["spacy_fail_reason"] == "Model en_core_web_md not found"
 
 
+class TestDiarisationUnavailable:
+    """Enabling diarisation when the pipeline can't load must not silently
+    proceed to a fake single-speaker stub — the exact failure that produced
+    a fully "successful" real batch with fabricated speaker labels in every
+    output, discovered on real casework audio before this check existed."""
+
+    def test_diarisation_checkbox_triggers_setup_dialog_when_not_ready(self):
+        with patch(
+            "diarisation.diariser.check_diarisation_ready",
+            return_value=(False, "HUGGINGFACE_TOKEN is not set."),
+        ):
+            at = _run_app()
+            diar_cb = _checkbox(at, "Speaker Diarisation")
+            diar_cb.set_value(True)
+            at.run()
+
+        assert not at.exception
+        assert at.session_state["show_diarisation_dialog"] is True
+        assert (
+            at.session_state["diarisation_fail_reason"]
+            == "HUGGINGFACE_TOKEN is not set."
+        )
+
+    def test_diarisation_checkbox_succeeds_when_ready(self):
+        """When diarisation is ready, no setup dialog should be flagged."""
+        with patch(
+            "diarisation.diariser.check_diarisation_ready",
+            return_value=(True, ""),
+        ):
+            at = _run_app()
+            diar_cb = _checkbox(at, "Speaker Diarisation")
+            diar_cb.set_value(True)
+            at.run()
+
+        assert not at.exception
+        assert (
+            "show_diarisation_dialog" not in at.session_state
+            or not at.session_state.get("show_diarisation_dialog")
+        )
+
+
 class TestLanguageSelector:
     """The language control offers valid Whisper codes and confirms the choice."""
 
     def test_defaults_to_auto_detect_with_feedback(self):
         from streamlit.testing.v1 import AppTest
 
-        at = AppTest.from_file("ui/app.py", default_timeout=60)
+        at = AppTest.from_file(APP_PATH, default_timeout=60)
         at.run()
 
         selector = [s for s in at.selectbox if s.label == "Language"][0]
@@ -177,7 +219,7 @@ class TestLanguageSelector:
         box silently accepted input, so it looked like nothing happened."""
         from streamlit.testing.v1 import AppTest
 
-        at = AppTest.from_file("ui/app.py", default_timeout=60)
+        at = AppTest.from_file(APP_PATH, default_timeout=60)
         at.run()
         [s for s in at.selectbox if s.label == "Language"][0].set_value("fr")
         at.run()
@@ -217,7 +259,7 @@ class TestBuildLabel:
 
         from ui.build_info import BUILD_LABEL
 
-        at = AppTest.from_file("ui/app.py", default_timeout=60)
+        at = AppTest.from_file(APP_PATH, default_timeout=60)
         at.run()
 
         assert not at.exception
