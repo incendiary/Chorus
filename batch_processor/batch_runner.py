@@ -32,7 +32,9 @@ Programmatic Usage
 from __future__ import annotations
 
 import argparse
+import contextlib
 import logging
+import os
 import sys
 import time
 from collections.abc import Callable
@@ -218,6 +220,88 @@ def _resolve_cli_settings(args: argparse.Namespace) -> dict[str, tuple[object, s
     }
 
 
+def _lock_path(output_dir: Path | None) -> Path:
+    """The lock file's location, mirroring ``_attach_file_logging``'s
+    output-dir-or-CONSENSUS_DIR fallback so the two features agree on where
+    a given run's shared state lives."""
+    lock_dir = output_dir if output_dir is not None else CONSENSUS_DIR
+    return lock_dir / ".chorus-batch.lock"
+
+
+def _pid_is_alive(pid: int) -> bool:
+    """Best-effort liveness check. ``os.kill(pid, 0)`` sends no signal — it
+    only asks the OS whether *pid* could be signalled at all."""
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        # Exists, just not ours to signal — still alive.
+        return True
+    return True
+
+
+def check_batch_lock(output_dir: Path | None) -> tuple[bool, str]:
+    """Check whether another batch is already running against this output
+    directory.
+
+    Two overlapping ``batch_runner`` invocations against the same
+    ``--output-dir`` collided on real casework audio: both processes hit the
+    same file and the same variant seconds apart, one process's RC-1 WAV
+    cleanup deleted a file the other was still reading for diarisation, and
+    the two then deadlocked for over ten hours before being killed by hand.
+    The Web UI's ``RunManager.start()`` already refuses a second concurrent
+    run; the CLI had no equivalent.
+
+    Returns ``(True, "")`` when it's safe to proceed, or ``(False, reason)``
+    naming the PID and how to resolve it. A lock file naming a PID that is no
+    longer running is stale (most likely a prior run that crashed before
+    reaching its cleanup) and is treated as safe to proceed, not as a
+    blocker — see ``acquire_batch_lock``, which reclaims it.
+    """
+    lock_path = _lock_path(output_dir)
+    if not lock_path.exists():
+        return True, ""
+    try:
+        existing_pid = int(
+            lock_path.read_text(encoding="utf-8").strip().splitlines()[0]
+        )
+    except (ValueError, IndexError, OSError):
+        # Unreadable or malformed — can't trust it as a real lock.
+        return True, ""
+    if _pid_is_alive(existing_pid):
+        return False, (
+            f"Another batch is already running against this output directory "
+            f"(PID {existing_pid}).\n\n"
+            "Two overlapping batches against the same output directory "
+            "previously collided — both processing the same file at the same "
+            "time — and deadlocked for over ten hours on real casework audio "
+            "before being killed manually. Wait for the other run to finish, "
+            "confirm it has actually stopped and remove "
+            f"{lock_path} if it hasn't, or use a different --output-dir."
+        )
+    return True, ""
+
+
+def acquire_batch_lock(output_dir: Path | None) -> Path:
+    """Write this process's PID as the lock for *output_dir*.
+
+    Call only after ``check_batch_lock`` has confirmed it's safe — this
+    unconditionally overwrites whatever lock (live or stale) was there,
+    which is exactly how a stale lock left by a crashed run gets reclaimed.
+    """
+    lock_path = _lock_path(output_dir)
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    lock_path.write_text(str(os.getpid()), encoding="utf-8")
+    return lock_path
+
+
+def release_batch_lock(lock_path: Path) -> None:
+    """Remove the lock file. Safe to call even if it's already gone."""
+    with contextlib.suppress(FileNotFoundError):
+        lock_path.unlink()
+
+
 def _attach_file_logging(
     output_dir: Path | None,
 ) -> tuple[logging.FileHandler, Path, int]:
@@ -297,9 +381,15 @@ class BatchResult:
         self.export_paths: dict[str, Path | None] = {}
         self.elapsed_seconds = 0.0
         self.error: str | None = None
+        self.diarisation_error: str | None = None
 
     def __repr__(self) -> str:
-        status = "OK" if self.success else f"FAIL: {self.error}"
+        if not self.success:
+            status = f"FAIL: {self.error}"
+        elif self.diarisation_error:
+            status = f"OK (diarisation failed: {self.diarisation_error})"
+        else:
+            status = "OK"
         return f"<BatchResult {self.path.name} [{status}]>"
 
 
@@ -474,6 +564,7 @@ def run_batch(
             )
             result.consensus_path = pipeline_out["consensus_path"]
             result.export_paths = pipeline_out.get("export_paths", {})
+            result.diarisation_error = pipeline_out.get("diarisation_error")
 
             # ── Optional: Export additional formats ────────────────────────
             # (pipeline handles NLP, LLM, and diarisation; export_all used here
@@ -540,7 +631,12 @@ def _write_batch_report(results: list[BatchResult]) -> Path:
     ]
 
     for idx, r in enumerate(results, start=1):
-        status = "✅ OK" if r.success else f"❌ {r.error or 'Unknown error'}"
+        if not r.success:
+            status = f"❌ {r.error or 'Unknown error'}"
+        elif r.diarisation_error:
+            status = f"⚠️ OK — diarisation failed: {r.diarisation_error}"
+        else:
+            status = "✅ OK"
         cons_lnk = f"`{r.consensus_path.name}`" if r.consensus_path else "—"
         lines.append(
             f"| {idx} | `{r.path.name}` | {status} | {r.elapsed_seconds} s | {cons_lnk} |"  # noqa: E501
@@ -781,6 +877,11 @@ def main(argv: list[str] | None = None) -> int:
     output_dir = settings["output directory"][0]
     consensus_models = settings["models"][0]
 
+    lock_ready, lock_reason = check_batch_lock(output_dir)
+    if not lock_ready:
+        parser.error(lock_reason)
+    lock_path = acquire_batch_lock(output_dir)
+
     handler, log_path, previous_root_level = _attach_file_logging(output_dir)
     print(f"  log file               {log_path}")
     try:
@@ -805,11 +906,19 @@ def main(argv: list[str] | None = None) -> int:
         logging.getLogger().removeHandler(handler)
         logging.getLogger().setLevel(previous_root_level)
         handler.close()
+        release_batch_lock(lock_path)
+
+    diarisation_failures = sum(1 for r in batch_results if r.diarisation_error)
 
     print(f"\n{'─'*60}")
     print(
         f"  Batch complete: {sum(r.success for r in batch_results)}/{len(batch_results)} succeeded"  # noqa: E501
     )
+    if diarisation_failures:
+        print(
+            f"  ⚠️  Diarisation failed on {diarisation_failures}/{len(batch_results)} "
+            "file(s) — see batch_report.md for details"
+        )
     print(f"  Report: {CONSENSUS_DIR / 'batch_report.md'}")
     print(f"  Log:    {log_path}")
     print(f"{'─'*60}\n")
