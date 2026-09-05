@@ -44,9 +44,11 @@ buggy code is worthless — prove your regression tests fail before the fix.**
 ## 1. The project
 
 **Repository:** https://github.com/incendiary/Chorus (public)
-**Review target:** `main` at commit `f701304`. Everything is merged and pushed; there is
-no feature branch to check out. `VERSION` says `4.1.0`; there are 28 commits since that
-tag, so a release bump is pending.
+**Review target:** `main` at commit `4d13219`. Everything is merged and pushed; there is
+no feature branch to check out. `VERSION` says `4.2.0`, but **no `v4.2.0` git tag or
+GitHub release exists yet** — a scheduled workflow has an open issue (#242) flagging
+exactly this. Whether to tag now or gate it behind this review's findings is the first
+decision for the maintainer; see §11.
 
 **What it is:** Chorus Engine is a local, containerised Streamlit application for
 high-fidelity audio transcription using a multi-pass consensus method. It runs entirely
@@ -65,9 +67,9 @@ results to identify which words are trustworthy.
 7. `batch_processor/` — unattended CLI for directories
 8. `ui/` — Streamlit dashboard with background runs that survive tab close
 
-**Scale:** ~9,800 lines of application Python, ~8,200 lines of tests across 27 test
-files, 430 tests passing. `ui/` (3,785) and `export_engine/` (1,191) are the largest
-packages.
+**Scale:** ~19,900 lines of Python total, ~9,100 lines of it tests across 29 test files,
+491 tests passing (2 skipped). `ui/` (3,873) and `export_engine/` (1,199) are still the
+largest packages.
 
 **Context that should shape your review:** this is a *personal working tool* and a
 *learning vehicle*, not a product with users. The maintainer's stated bar is **"prove it
@@ -124,6 +126,12 @@ accuracy**.
 - Should README/docs be reworded so no reader infers an accuracy claim that is not
   evidenced?
 
+**Nothing here has changed since the 28 July 2026 review.** No new benchmark has run and
+no long-form ground truth has been sourced — this section is carried forward verbatim
+because it is still true, not because it was re-verified this round. The work since then
+(§4) was almost entirely about diarisation correctness and CLI/Web UI reliability, not
+about the WER claim. Do not treat "unchanged" as "resolved."
+
 ---
 
 ## 3. Conventions this repo is held to
@@ -164,9 +172,13 @@ changed line should trace to the request. Mention unrelated dead code rather tha
 deleting it.
 
 **Existing CI:** `ci.yml`, `security.yml` (CodeQL, Bandit, GitLeaks, TruffleHog,
-dependency audit), `release.yml`, `ollama-model-tags-check.yml`. Local mirror via
-`bash local-ci.sh --list` / `--dry-run` / `--sync`. Note: a bare `local-ci.sh` run
-auto-installs a pre-push hook, so use a flag unless hook installation is intended.
+dependency audit), `release.yml`, `ollama-model-tags-check.yml`. There is no
+`local-ci.sh` in this repo. Real pre-commit and pre-push git hooks were installed this
+session (`pre-commit install` for both `--hook-type pre-commit` and
+`--hook-type pre-push`) — the hook previously present was an unrelated stub from a
+different tool that referenced a missing script and was designed to always exit `0`
+regardless, so none of GitLeaks/Ruff/isort/file-hygiene was actually enforced locally
+before now. Verify the hooks are still real, not silently reverted to a no-op stub.
 
 ### 3.2 The Karpathy three-layer framework
 
@@ -267,27 +279,101 @@ with the existing history in `REVIEW.md` and `ROADMAP.md`.
 
 ## 4. What was just changed (verify this work critically)
 
-Seven PRs merged in the session immediately before this review:
+Twenty-three commits landed since the 28 July review's baseline (`f701304`), across two
+version bumps. **This review has not happened yet against any of it** — nobody has
+adversarially checked this work the way the 28 July review checked RC-10/RC-11.
+
+### v4.1.1 — determinism and release hardening (#214–#221)
+
+Closed out the 28 July review's remaining action items: deterministic consensus
+alignment (stable tie-breaking, anchor-local insertion alignment, order-independent
+fuzzy groups), process-wide `RunManager` run exclusion, honest agreement-not-accuracy
+language in generated output, dependency/import-time cleanup, and Streamlit binding to
+loopback by default with a warning on deliberate exposure.
+
+### v4.2.0 — diarisation correctness and CLI/Web UI parity (#222–#237)
+
+Prompted by a real, ~20-hour production run on nine real recordings for an active
+financial ombudsman complaint (evidentiary audio — see `ROADMAP.md`'s Validation note
+under this version), which surfaced two distinct diarisation failure modes that every
+prior test suite had missed:
 
 | PR | Change |
 |---|---|
-| #207 | RC-10 — word timestamps made opt-in; degeneracy guard added (flags any transcript where one 3-gram exceeds 20%) |
-| #208 | RC-11 — alignment merge rewritten to key columns by reference position; shared insertions merged into one column |
-| #209 | RB-2 benchmark re-run; benchmark's unrepresentativeness documented |
-| #210 | RC-1 — intermediate variant WAVs reclaimed after each run (`outputs/variants/` had reached 21 GB across 232 files) |
-| #211 | Weekly workflow was filing a duplicate GitHub issue every run — its dedup search used a title containing `(s)`, which GitHub's search parser treats as syntax, so the guard never matched |
-| #212 | RC-8 closed as obsolete; MPS speed claim in docs replaced with measured figures (1.05× `base`, 1.7× `small`, 2.7× `medium` — the docs had claimed "3–5× for base and small", wrong in both magnitude and direction) |
-| #213 | Roadmap brought back in line |
+| #226 | Batch CLI config overrides, hardware presets, and effective-setting provenance, matching the Web UI |
+| #227 | `survey-ollama-env.sh` never actually recommended or wrote `WHISPER_DEVICE` — always detected GPU type correctly but never turned it into a device recommendation |
+| #228 | Batch CLI runs persist a log file — previously the only record of an unattended run was console output, already lost by the time a multi-hour slowdown needed investigating |
+| #229 | `--diarise` refuses to start rather than silently completing every file with a single-speaker stub, if `check_diarisation_ready()` (a real pipeline load) fails |
+| #230–#231 | The pre-flight check's guidance stopped hardcoding which HuggingFace repos matter — an early version named specific gated repos, then the installed `pyannote.audio` version turned out to route through a *different* set of repos than its own Hub `config.yaml` implied, within the same evening |
+| #232 | `--check-diarisation` — a standalone readiness check, so verifying diarisation works no longer means starting a real batch and watching it refuse |
+| #233 | The Web UI got the same pre-flight check as the CLI (previously CLI-only) |
+| #234 | `diarisation_repo_status()` checks every known dependency repo via an authenticated HEAD request to an actual weight file — `HfApi.model_info()`'s gating field had reported every repo accessible while one still hard-403'd for hours, and "the first file returned" is `.gitattributes` for some repos, always public even when gated |
+| #235 | **The actual diarisation crash.** `pyannote.audio` 4.x's default pipeline wraps its result in a `DiarizeOutput` dataclass instead of the bare `Annotation` older versions returned. `diarise()` called `.itertracks()` on whatever it got back, unconditionally — diarisation could run for over an hour of real compute and then crash at the final parsing step, caught by a broad `except` in `pipeline_runner.py`, so the file "succeeded" with no `diarised.md` at all |
+
+### Post-v4.2.0, not yet in any tagged release (#238–#243)
+
+Found and fixed *after* the nine-file production run, while preparing to process a new,
+unrelated recording for the same case:
+
+- **#238 — single-run lock for the batch CLI.** Two overlapping `batch_runner`
+  invocations against the same `--output-dir` collided during the nine-file run itself:
+  both processed the same file within seconds of each other, and one's variant-WAV
+  cleanup deleted a file the other still needed for diarisation, deadlocking for **over
+  ten hours** before being killed manually. `main()` now refuses to start if a live PID
+  already holds the lock for that directory.
+- **#239 — a second, distinct diarisation silent-failure mode.** On the very next
+  production run (a single new recording), diarisation failed again — this time
+  `torchcodec` 0.14.0 couldn't decode audio against the host's installed ffmpeg 9 (it
+  only shipped decoder support for ffmpeg 4–8), and `pipeline_runner.py`'s bare
+  `except Exception: logger.warning(...)` around the whole diarisation block produced a
+  transcript with no speaker labels and no visible error — the batch still reported
+  "1/1 succeeded". Note that **this is the *third* distinct diarisation failure mode
+  found in as many weeks** (credential kwarg naming, `DiarizeOutput` shape, now a
+  runtime decode failure) — see §6 for the question this should raise about the pattern.
+  `run_pipeline()` now returns the error as `diarisation_error` rather than only logging
+  it; surfaced in the batch report, the console summary, and a Web UI warning.
+  `torchcodec` was bumped 0.14.0 → 0.16.0 and pinned explicitly (previously an unpinned
+  transitive dependency of `pyannote-audio`).
+- **#240 — `PYSEC-2026-3624`/`CVE-2026-58659` documented as an accepted risk.**
+  `pip-audit` flags an RCE in `lightning` (pulled in by `pyannote-audio`) on every CI
+  run. The fix merged upstream 2026-07-14 but has not shipped in a release — `2.6.5`
+  (2026-05-27) is still the latest, and predates the fix. No new tag has been cut since,
+  over 50 days and 15+ unrelated commits later. Recorded in `SECURITY.md`, cross-linked
+  with tracking issue #219. **Verify the reachability claim**: Chorus never calls
+  `LightningModule.load_from_checkpoint` directly and only loads pyannote's own pinned
+  weights — is that actually the whole exploit surface, or does something in the
+  dependency chain call it indirectly?
+- **#241 — real pre-commit/pre-push git hooks installed.** See §3.1's note — the hook
+  previously present did nothing.
+- **#243 — the previous version of *this document*, plus a working-notes file, folded
+  into `ROADMAP.md`.**
+- **#236, #224, #223, #215, #214 — five Dependabot bumps**, one of which (`streamlit`
+  1.59.2 → 1.63.0, landed via two successive Dependabot force-pushes to the same PR
+  branch, 1.62.0 then 1.63.0) had a genuine, undocumented breaking change:
+  `AppTest.from_file`'s relative-path resolution changed from CWD-relative to
+  relative-to-the-calling-file, breaking 26 tests across 4 files that passed literal
+  strings like `"ui/app.py"`. Fixed by resolving every such path via `Path(__file__)`.
+  Separately, Dependabot's `spacy` target (3.8.15) had been yanked from PyPI entirely by
+  the time it was actioned — bumped to the next real release (3.8.16) instead.
 
 **Please attack these specifically:**
 
-- **`consensus_merger/sequence_alignment.py::_build_multi_alignment`** is the highest-risk
-  change — it is the heart of the consensus mechanism and it was rewritten. Reference-based
-  (star) alignment is used, with the *longest* transcript chosen as reference. On real
-  audio that meant the **most divergent variant anchored the alignment**. This was
-  consciously left as a design question rather than fixed. Is that defensible? Would a
-  progressive or consistency-based multiple alignment be materially better, and is that
-  worth the complexity for a personal tool?
+- **`consensus_merger/sequence_alignment.py::_build_multi_alignment`** is unchanged
+  since 28 July and remains the highest-risk code in the repo — see the original
+  question below, still open. Reference-based (star) alignment is used, with the
+  *longest* transcript chosen as reference. On real audio that meant the **most
+  divergent variant anchored the alignment**. Is that defensible? Would a progressive or
+  consistency-based multiple alignment be materially better, and is that worth the
+  complexity for a personal tool?
+- **`diarisation/diariser.py::diarise`** and **`pipeline_runner.py`'s diarisation
+  block.** Three failure modes found in three weeks in this exact code path. Read §6's
+  question about whether the pattern itself, not just each individual bug, needs
+  addressing.
+- **`batch_processor/batch_runner.py`'s new lock functions**
+  (`check_batch_lock`/`acquire_batch_lock`/`release_batch_lock`). Check for a
+  check-then-act race: two processes could both call `check_batch_lock()`, both see no
+  lock, and both proceed to `acquire_batch_lock()` — is there an actual window for this
+  on a local filesystem, and does it matter given the lock is advisory (not `flock`-based)?
 - **`pipeline_runner.py::_discard_variant_wavs`** deletes files. Verify it cannot delete
   anything outside the run's own variants directory, and that its placement after
   diarisation is correct (diarisation re-opens `variant_paths["original"]`).
@@ -299,17 +385,35 @@ Seven PRs merged in the session immediately before this review:
 
 ## 5. Known open items — do not re-report these as discoveries
 
-- **RC-6** — `export_engine/exporter.py` is 827 lines across six export formats.
+- **RC-6** — `export_engine/exporter.py` is 1,199 lines across six export formats.
   Reviewed as low priority, well-tested and stable. Deliberately not split.
 - **Consensus WER claim unproven** — see §2. Known, not hidden.
 - **No long-form benchmark** — no representative ground truth exists. Known gap.
-- **21 GB of historical variant WAVs** still on the maintainer's disk. The fix prevents
-  recurrence; the existing files are the maintainer's data to remove.
-- **36 stale remote branches** on the origin from earlier merged work.
-- **One open GitHub issue** (#194) — a genuine Ollama model tag that no longer resolves.
+- **`VERSION` says `4.2.0` with no matching git tag or GitHub release** — issue #242,
+  auto-filed. Deliberately unresolved pending this review; see §11.
+- **Four CLI settings have no Web UI equivalent** (word-level timestamps, WAV retention,
+  Ollama base URL/timeout) — `ROADMAP.md`'s "Planned — post-v4.2.0 cleanup" section.
+- **A comprehensive CLI/Web UI flag reference doc doesn't exist yet** — README documents
+  roughly 6 of 22 flags in passing. Same ROADMAP section.
+- **A cosmetic provenance-label bug** — paired boolean flags
+  (`--word-timestamps`/`--no-word-timestamps`) always report the positive flag's name in
+  the settings-table source column regardless of which was actually passed. The printed
+  *value* is correct; only the label is wrong. Same ROADMAP section.
+- **An unexplained process death, 2026-08-23/24** — a batch process died silently
+  between files mid-run, no error, no OOM signal captured. Not diagnosed; nothing
+  prescribed to fix until it recurs with more evidence. Same ROADMAP section.
+- **Open GitHub issues:** #194 (a genuine Ollama model tag that no longer resolves), #219
+  (tracking the `lightning` CVE, cross-referenced with `SECURITY.md`), #220 (a bounded
+  AMI multi-speaker benchmark, proposed but not built), #242 (the missing v4.2.0 tag,
+  above).
 - **Test pollution** — some tests write artefacts (e.g. `test_srt_consensus.srt`) into the
-  real `outputs/consensus/` rather than a temp directory.
-- **`VERSION` says 4.1.0 with 28 commits since the tag** — release bump pending, deliberate.
+  real `outputs/consensus/` rather than a temp directory. Confirmed directly during the
+  September production runs; not yet fixed.
+- **Remote branch hygiene is currently clean** — down from 36 stale branches at the last
+  review to zero; every merged PR branch was deleted on merge, and one stale
+  fully-superseded duplicate (`codex/batch-cli-config-provenance`, byte-identical to the
+  already-merged #226) was found and deleted this session. Re-verify this hasn't drifted
+  by the time you read this.
 
 ---
 
@@ -331,11 +435,28 @@ Seven PRs merged in the session immediately before this review:
    a pipeline in a plain thread with no Streamlit context, writing an atomic JSON state
    file. Look for races, orphaned threads, and stale-state handling across server restart.
 5. **Is the test suite load-bearing or decorative?** 430 tests passed while both RC-10 and
-   RC-11 were live. That is the single most important signal in this repo. Which tests
-   would have caught them, and what is the smallest set of new tests that would catch the
-   next one?
-6. **Release readiness.** Given §2, what should the release notes claim, and what version
-   number is right?
+   RC-11 were live; 491 tests pass today, after three more diarisation bugs and a
+   10.5-hour deadlock all reached production before being caught. Which tests would have
+   caught each of them, and what is the smallest set of new tests that would catch the
+   next one in this same code path?
+6. **Is the diarisation failure pattern itself the real finding, not any individual bug?**
+   Three distinct failure modes in the same subsystem in three weeks: a wrong credential
+   kwarg name (#229-era), a pyannote result-shape mismatch (#235), and a runtime audio-
+   decode failure (#239). Each was fixed individually and each fix added another
+   layer of defence (pre-flight checks, then per-file error surfacing), but nobody has
+   asked whether `diarisation/diariser.py`'s fundamental approach — wrapping an external,
+   fast-moving library (`pyannote.audio`) with no version-compatibility shim — is
+   structurally prone to this, and what would actually stop a fourth one.
+7. **Is the single-run lock (#238) actually safe, or does it just narrow the window?**
+   It is a plain PID-file check, not `flock`/`fcntl`-based. Confirm whether the
+   check-then-write gap between `check_batch_lock()` and `acquire_batch_lock()` is a real
+   TOCTOU race on a local filesystem with two processes started close together, and
+   whether that matters in practice given how the collision that motivated it actually
+   happened (two manually-started overnight runs, not a tight race).
+8. **Release readiness.** Given §2, and given three post-release diarisation bugs found
+   in the two weeks after v4.2.0's feature work merged, what should the release notes
+   claim, and is `v4.2.0` even the right version number for what's actually shipping, or
+   should the post-release fixes (#238–#241) bump it further?
 
 ---
 
@@ -373,7 +494,7 @@ Everything below is for taking the work over, not just reviewing it.
 ## 8. Environment and how to run it
 
 **Repo:** `git clone https://github.com/incendiary/Chorus.git`
-**Python:** 3.11+ required; the maintainer's venv runs 3.14.6.
+**Python:** 3.11+ required; the maintainer's venv runs 3.14.7.
 **Never install anything system-wide** — always use the project-local venv.
 
 ```bash
@@ -399,10 +520,17 @@ test-clean, ~346 MB, cached in `benchmarks/data/`; `--limit 2` for a smoke run)
 
 ```bash
 python3 -m pytest tests/ -q
-python3 -m black --check .
+python3 -m black --check .   # never pass --exclude here — it overrides pyproject.toml's
+                              # own excludes and wipes the .venv exclusion, which has
+                              # twice caused black to reformat-check the entire virtualenv
 python3 -m ruff check .
 python3 -m isort --check-only .
 ```
+
+Real pre-commit and pre-push git hooks are installed as of #241
+(`pre-commit install` + `pre-commit install --hook-type pre-push`) — GitLeaks/Ruff/isort/
+file-hygiene run on commit, the full `pytest` suite runs on push. Confirm they are still
+live and not reverted to the earlier no-op stub before trusting a clean local run.
 
 **Configuration** lives in `.env` at repo root (not committed; `.env.example` is the
 template). `config.py` parses it with a small stdlib loader — real environment variables
@@ -416,12 +544,16 @@ workflow referencing one. CI runs on GitHub only.
 ## 9. Current state
 
 - **Branch:** `main`, in sync with `origin/main`, clean working tree
-- **Last commit:** `f701304` — *docs: record RC-1 and RC-8 to RC-11 in the roadmap (#213)*
-- **`VERSION`:** `4.1.0` — **28 commits behind the tag**; a release bump is pending and
-  deliberate
-- **Tests:** 430 passing; black/ruff/isort clean
-- **Open issues:** one (#194), a genuine Ollama tag that no longer resolves
-- **Stale remote branches:** 36, from earlier merged work — safe to prune, nobody has
+- **Last commit:** `4d13219` — *docs: fold the Coventry Case fix-list into ROADMAP.md,
+  document the pre-push hook (#243)*
+- **`VERSION`:** `4.2.0` — **no git tag or GitHub release exists yet** (issue #242);
+  whether to cut one is a live decision, not settled
+- **Tests:** 491 passing, 2 skipped; black/ruff/isort clean; real pre-commit/pre-push
+  hooks installed and verified working
+- **Open issues:** #194 (stale Ollama tag), #219 (tracking the `lightning` CVE), #220
+  (proposed AMI multi-speaker benchmark, not built), #242 (missing v4.2.0 tag)
+- **Remote branches:** just `main` and this review branch — clean, one stale duplicate
+  pruned this session
 
 ## 10. Decisions that are final — do not re-litigate
 
@@ -444,47 +576,64 @@ Re-opening any of these wastes time that has already been spent:
 - **The benchmark is known to be unrepresentative** and is retained as a regression gate
   on clean short-form audio only. Do not present its numbers as evidence about long-form
   or noisy performance.
+- **The unpatched `lightning` CVE is an accepted, documented risk, not something to
+  silently suppress in CI.** No upstream fix has shipped. The `Python Dependency Audit`
+  check is expected to stay red on every PR until it does — do not propose CI config
+  changes to make it pass; do check whether the reachability analysis in `SECURITY.md`
+  and issue #219 is actually still correct.
+- **A hook that never blocks is worse than no hook.** The stub previously in
+  `.git/hooks/pre-commit` always exited `0` regardless of what it found. Do not
+  reintroduce anything with that property, even as a stopgap.
 
 ## 11. The next chunk of work
 
-**Objective:** cut release **v4.2.0**.
+**Objective:** decide whether to tag **v4.2.0** now, and either cut it or say precisely
+why not — this review is the gate the maintainer is deliberately waiting on before that
+decision, per issue #242.
 
-Minor, not patch: RC-10 and RC-11 materially change output quality, and RC-1 changes
-on-disk behaviour. Seven PRs (#207–#213) have landed since v4.1.0.
+Unlike the last handover, the release's *feature* work (#222–#237) is already merged,
+tested, and validated against a real 9-file, ~20-hour production run on evidentiary
+audio (`ROADMAP.md`'s Validation note). What's genuinely unresolved is everything found
+*after* that validation run, on the very next production use (#238–#241): a 10.5-hour
+deadlock, a second distinct silent diarisation failure, and the discovery that the local
+git hooks had never actually been enforcing anything. All of that is now fixed and
+merged to `main` too — but nobody has adversarially reviewed whether those fixes are
+sound, or whether the pattern behind three diarisation bugs in three weeks (§6, question
+6) needs something structural rather than another patch.
 
-**Before tagging — the one thing genuinely outstanding.** The last full production run
-was on the *broken* code. Everything since is verified by tests plus targeted
-measurements against saved transcripts, but **nobody has run the whole UI pipeline
-end-to-end on real audio since RC-11 landed.** Both headline bugs were found by running
-the software, not by reading it or by tests. Ask the maintainer whether to do this run
-before tagging; recommend that they do.
+**Before recommending tag or no-tag, address directly:**
+1. Is the diarisation subsystem's repeated-failure pattern (§6, question 6) a
+   release-blocking concern, or three independent, now-fixed bugs?
+2. Is the single-run lock (§6, question 7) actually correct, or does it need `flock`
+   before it's trustworthy for unattended overnight runs?
+3. Does anything in #238–#241 warrant its own regression the way #235's `DiarizeOutput`
+   fix and #239's diarisation-error surfacing already got one? Check coverage, don't
+   assume it from the PR having tests.
+4. Given three post-release fixes landed *after* the feature work that would have
+   defined v4.2.0, is `4.2.0` still the right version number, or should the tag include
+   `.1`/`.2` patch history, or should the whole thing bump to `4.3.0`? The maintainer's
+   own versioning rule (§3.1) says patch = "a batch of related PRs" — #238–#241 read as
+   exactly that.
 
-**Steps:**
-1. Confirm with the maintainer: proceed to release, or validate on real audio first.
-2. Branch. Bump `VERSION` to `4.2.0`. Check `README.md` for any version pin that must
-   move with it.
-3. Move the RC items into a `## Completed — v4.2.0` section in `ROADMAP.md`, following
-   the existing per-version structure.
-4. Draft release notes. **They must not claim consensus improves accuracy** — see §2.
-   The defensible claim is calibrated uncertainty plus two significant correctness fixes.
-5. PR, CI green, squash merge.
-6. Tag `v4.2.0` and create the GitHub release; the tag, `VERSION`, and the release must
-   all agree.
+**Steps once a recommendation is reached:**
+1. Report the recommendation to the maintainer with the reasoning above; this is their
+   decision, not yours to make unilaterally (§0).
+2. If proceeding: confirm `VERSION`, the intended tag, and any final `ROADMAP.md`
+   entries are in sync (`bash tests/version_consistency_test.sh` checks most of this
+   automatically).
+3. Tag and create the GitHub release; the tag, `VERSION`, and the release must all
+   agree. Close issue #242 referencing the release.
+4. If not proceeding: say exactly what must happen first, and file it the same way
+   `ROADMAP.md`'s existing "Planned" sections are structured, not as a vague caveat.
 
 **Done when:**
-- [ ] `VERSION`, git tag, and GitHub release all read `4.2.0`
+- [ ] A tag/no-tag recommendation has been given, with reasoning grounded in this
+      review's findings, not just repeated from this brief
+- [ ] If tagging: `VERSION`, git tag, and GitHub release all agree, and issue #242 is
+      closed
 - [ ] `ROADMAP.md` has no open item that is actually complete
-- [ ] Release notes make no unevidenced accuracy claim
-- [ ] CI green on `main`
+- [ ] CI green on `main` (aside from the accepted `lightning` CVE)
 
-**Optional follow-on work, in rough priority order:**
-1. **Source long-form ground truth** so the founding WER claim can finally be tested —
-   the single highest-value thing left. A human transcript of a real recording, or
-   `large-v3` output as a reference proxy if the maintainer accepts that.
-2. Reconsider **reference selection in alignment** — the longest transcript anchors it,
-   which on real audio meant the most divergent variant became the reference.
-3. Fix **test pollution** — some tests write into the real `outputs/consensus/`.
-4. Prune the 36 stale remote branches.
-
-**Return signal:** commit as `chore: release v4.2.0`, then report the tag, the release
-URL, and explicitly what the notes do and do not claim.
+**Return signal:** report the recommendation and, if a tag was cut, its URL and exactly
+what the release notes do and do not claim (§2 still applies — no unevidenced accuracy
+claim).
