@@ -6,7 +6,7 @@ import json
 import logging
 from urllib import error, request
 
-from config import OLLAMA_BASE_URL, OLLAMA_MODEL, OLLAMA_TIMEOUT_SECONDS
+import config
 
 logger = logging.getLogger(__name__)
 
@@ -16,10 +16,10 @@ def list_models() -> list[str]:
 
     Returns an empty list if Ollama is unreachable or returns no models.
     """
-    tags_url = f"{OLLAMA_BASE_URL.rstrip('/')}/api/tags"
+    tags_url = f"{config.OLLAMA_BASE_URL.rstrip('/')}/api/tags"
     req = request.Request(url=tags_url, method="GET")
     try:
-        with request.urlopen(req, timeout=OLLAMA_TIMEOUT_SECONDS) as resp:
+        with request.urlopen(req, timeout=config.OLLAMA_TIMEOUT_SECONDS) as resp:
             body = resp.read().decode("utf-8")
         data = json.loads(body)
         return sorted(
@@ -43,16 +43,19 @@ def probe_model(model: str | None = None) -> tuple[bool, str]:
         ``(True, "")`` when the model is available, or
         ``(False, reason)`` with a human-readable reason string.
     """
-    target = model or OLLAMA_MODEL
-    tags_url = f"{OLLAMA_BASE_URL.rstrip('/')}/api/tags"
+    target = model or config.OLLAMA_MODEL
+    tags_url = f"{config.OLLAMA_BASE_URL.rstrip('/')}/api/tags"
     req = request.Request(url=tags_url, method="GET")
     try:
-        with request.urlopen(req, timeout=OLLAMA_TIMEOUT_SECONDS) as resp:
+        with request.urlopen(req, timeout=config.OLLAMA_TIMEOUT_SECONDS) as resp:
             body = resp.read().decode("utf-8")
     except TimeoutError:
-        return False, f"Ollama did not respond within {OLLAMA_TIMEOUT_SECONDS:.0f} s"
+        return (
+            False,
+            f"Ollama did not respond within {config.OLLAMA_TIMEOUT_SECONDS:.0f} s",
+        )
     except error.URLError as exc:
-        return False, f"Cannot reach Ollama at {OLLAMA_BASE_URL}: {exc.reason}"
+        return False, f"Cannot reach Ollama at {config.OLLAMA_BASE_URL}: {exc.reason}"
     except error.HTTPError as exc:
         return False, f"Ollama returned HTTP {exc.code}"
 
@@ -121,7 +124,7 @@ def suggest_token(
         )
 
     payload = {
-        "model": model or OLLAMA_MODEL,
+        "model": model or config.OLLAMA_MODEL,
         "prompt": prompt,
         "stream": False,
         "options": {"temperature": 0},
@@ -129,14 +132,14 @@ def suggest_token(
     data = json.dumps(payload).encode("utf-8")
 
     req = request.Request(
-        url=f"{OLLAMA_BASE_URL.rstrip('/')}/api/generate",
+        url=f"{config.OLLAMA_BASE_URL.rstrip('/')}/api/generate",
         data=data,
         headers={"Content-Type": "application/json"},
         method="POST",
     )
 
     try:
-        with request.urlopen(req, timeout=OLLAMA_TIMEOUT_SECONDS) as response:
+        with request.urlopen(req, timeout=config.OLLAMA_TIMEOUT_SECONDS) as response:
             body = response.read().decode("utf-8")
     except (TimeoutError, error.URLError, error.HTTPError) as exc:
         logger.warning("Ollama request failed: %s", exc)

@@ -36,6 +36,22 @@ If you cannot use GitHub's private reporting for any reason, open a regular issu
 - Credit in the release notes, if you'd like it (let us know your preference when
   reporting).
 
+## Known Accepted Risks
+
+- **`lightning` — `CVE-2026-58659` / `PYSEC-2026-3624`** (arbitrary code execution
+  via the `_instantiator` hyperparameter in `LightningModule.load_from_checkpoint`,
+  bypassing `torch.load(weights_only=True)`). `lightning` is a transitive
+  dependency pulled in by `pyannote-audio` for speaker diarisation. The fix
+  merged upstream on 2026-07-14 but has not shipped in a `lightning` release —
+  the latest available version (`2.6.5`) predates the fix and is the version
+  named as vulnerable. Chorus does not call `LightningModule.load_from_checkpoint`
+  or load any user-supplied checkpoint; diarisation only loads pyannote's own
+  pinned, first-party model weights from Hugging Face. `ci/security.yml`'s
+  `pip-audit` step will keep flagging this until `lightning` cuts a release
+  containing the fix — treat that failure as expected and check
+  [Lightning-AI/pytorch-lightning#21832](https://github.com/Lightning-AI/pytorch-lightning/pull/21832)
+  for release status before assuming a new dependency audit failure is this one.
+
 ## Scope
 
 This policy covers the Chorus Engine codebase in this repository — the audio
