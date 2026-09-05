@@ -37,6 +37,7 @@ def _fake_transcribe(
     model_name=None,
     transcripts_dir=None,
     segment_callback=None,
+    word_timestamps=None,
 ):
     """Stand-in for transcription_engine.whisper_engine.transcribe."""
     total_segments = 3

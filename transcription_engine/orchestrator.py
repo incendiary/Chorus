@@ -193,6 +193,7 @@ def _transcribe_one(
     label: str,
     transcripts_dir: Path | None = None,
     segment_callback: Any | None = None,
+    word_timestamps: bool | None = None,
 ) -> tuple[str, str, dict[str, Any]]:
     """Run one transcription unit and return key/label/result."""
     result = transcribe(
@@ -204,6 +205,7 @@ def _transcribe_one(
         model_name=model_name,
         transcripts_dir=transcripts_dir,
         segment_callback=segment_callback,
+        word_timestamps=word_timestamps,
     )
     _write_txt_companion(
         stem=stem,
@@ -224,6 +226,7 @@ def run_transcription_pass(
     model_names: tuple[str, ...] | None = None,
     segment_callback: Any | None = None,
     on_pass_start: Any | None = None,
+    word_timestamps: bool | None = None,
 ) -> dict[str, dict[str, Any]]:
     """
     Transcribe every audio variant and return all results.
@@ -300,6 +303,7 @@ def run_transcription_pass(
                 label=label,
                 transcripts_dir=transcripts_dir,
                 segment_callback=job_segment_callback,
+                word_timestamps=word_timestamps,
             )
             transcripts[result_key] = result
             if progress_callback:
@@ -333,6 +337,8 @@ def run_transcription_pass(
                     model_name,
                     label,
                     transcripts_dir,
+                    None,
+                    word_timestamps,
                 )
                 futures[future] = result_key
 

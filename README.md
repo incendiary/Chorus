@@ -42,7 +42,7 @@ environment yourself.
 2. **Clone the repository at the current release:**
 
    ```bash
-   git clone -b v4.1.1 https://github.com/incendiary/Chorus.git
+   git clone -b v4.2.0 https://github.com/incendiary/Chorus.git
    cd Chorus
    ```
 
@@ -318,7 +318,7 @@ Prefer an isolated environment over managing a Python venv? See
 (Linux and Windows/WSL2), and GHCR pre-built image instructions.
 
 ```bash
-git clone -b v4.1.0 https://github.com/incendiary/Chorus.git
+git clone -b v4.2.0 https://github.com/incendiary/Chorus.git
 cd Chorus
 docker-compose up --build
 ```
@@ -389,6 +389,30 @@ results = run_pipeline(audio_path="meeting.wav", language="en")
 # Or process a directory of files unattended.
 run_batch(["recordings/"], recursive=True)
 ```
+
+### Native batch command
+
+The unattended command reads project `.env` settings, while real process
+environment variables take precedence. Per-run CLI options take precedence over
+both. Chorus prints every effective non-secret batch setting and its source before
+processing starts:
+
+```bash
+python -m batch_processor.batch_runner recordings/ --recursive \
+  --whisper-model medium --device mps --parallelism 1 \
+  --alignment-strategy sequence --consensus-threshold 0.78
+```
+
+Run `python -m batch_processor.batch_runner --help` for all per-run overrides,
+including language, consensus models, noise-floor mode, thresholds, intermediate
+WAV retention, word timestamps, and Ollama connection settings.
+
+For a temporary hardware-tuned model/device/parallelism choice, add
+`--hardware-preset max` or `--hardware-preset background`. The flag is the explicit
+confirmation and changes only that batch process; it does not edit `.env`. For the
+interactive Ollama and persistent `.env` assistant, run
+`bash devops-practices/survey-ollama-env.sh` and confirm the individual settings it
+offers.
 
 The full public surface is `run_pipeline`, `run_batch`,
 `merge_transcripts_with_votes`, `export_all`, and `export_transcript_bundle`.

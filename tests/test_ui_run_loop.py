@@ -25,8 +25,8 @@ from streamlit.testing.v1 import AppTest
 
 from ui.sidebar import SidebarConfig
 
-APP_PATH = "ui/app.py"
 PROJECT_ROOT = str(Path(__file__).resolve().parent.parent)
+APP_PATH = str(Path(PROJECT_ROOT) / "ui" / "app.py")
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Fixtures and canned data
@@ -293,6 +293,7 @@ def _restore_run_env(monkeypatch):
         else:
             monkeypatch.delenv(var, raising=False)
     monkeypatch.setattr(config, "WHISPER_DEVICE", config.WHISPER_DEVICE)
+    monkeypatch.setattr(config, "NOISE_FLOOR_MODE", config.NOISE_FLOOR_MODE)
     monkeypatch.setattr(
         config, "TRANSCRIPTION_PARALLELISM", config.TRANSCRIPTION_PARALLELISM
     )
@@ -512,6 +513,20 @@ class TestRenderFileResults:
 
         markdown_blob = "\n".join(m.value for m in at.markdown)
         assert "Speaker Diarisation" not in markdown_blob
+
+    def test_diarisation_error_surfaces_as_a_warning(self, canned_results):
+        """A per-file diarisation failure must render a visible warning, not
+        just disappear the way a bare diarised_path=None does — otherwise a
+        failed diarisation and a file that never requested it look identical
+        to the user (this is what happened on real casework audio: torchcodec
+        couldn't decode the file, and the UI showed nothing at all)."""
+        results = {**canned_results, "diarisation_error": "torchcodec is not available"}
+        at = _render_results(results)
+        assert not at.exception
+
+        warnings = [w.value for w in at.warning]
+        assert any("torchcodec is not available" in w for w in warnings)
+        assert any("diarisation" in w.lower() for w in warnings)
 
     def test_diarisation_section_renders_speaker_table(self, canned_results, tmp_path):
         """With diarisation data present, the speaker-name table, transcript
