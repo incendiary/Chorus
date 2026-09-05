@@ -32,7 +32,7 @@ torchcodec==0.16.0
 spacy==3.8.16
 weasyprint==69.0
 python-docx==1.2.0
-Markdown==3.10.2
+Markdown==3.10.3
 
 # ── Utilities ────────────────────────────────────────────────────────────────
 tqdm==4.69.0
