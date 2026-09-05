@@ -409,4 +409,49 @@ roughly 6 of 22 flags).
 
 ---
 
+## Planned — post-v4.2.0 cleanup (from the Coventry Case fix list)
+
+Consolidated from a working notes file kept during the Coventry Case production run;
+everything below was still open once the run's fixes (single-run lock, diarisation-error
+surfacing) shipped.
+
+- [ ] **Paired boolean flags mislabel their provenance source** — `_resolve_cli_settings()`
+  labels `--word-timestamps`/`--no-word-timestamps` (and the same pattern for
+  `--keep-variant-wavs`/`--no-keep-variant-wavs`) using the argparse `dest` name, so the
+  settings table always prints the *positive* flag regardless of which was actually
+  passed. The printed value is correct; only the provenance string is wrong. (Effort: S)
+- [ ] **Four CLI settings have no Web UI equivalent** — word-level timestamps, WAV
+  retention, Ollama base URL, and Ollama request timeout are `.env`-only with no sidebar
+  control. Build as four independent PRs, per repo convention. Still undecided: whether
+  the Web UI needs a "proceed with stub anyway" escape hatch equivalent to
+  `--allow-diarisation-stub` (leaning no — a UI user can just click Retry after fixing
+  access — but flag explicitly rather than deciding silently). (Effort: S–M)
+- [ ] **Comprehensive CLI/Web UI flag reference** — README documents roughly 6 of 22
+  flags in passing; `docs/CONFIGURATION.md` documents settings conceptually but not the
+  flag surface itself. Needs a `docs/CLI_REFERENCE.md` (or expanded `CONFIGURATION.md`)
+  covering every flag: what it does, when to use it, a concrete example, its Web UI
+  equivalent (or why it has none), and its default/precedence. Do this after the UI-parity
+  item above, so the Web UI column is accurate. Also the first place to document that
+  `--nlp` and `--llm` are not mutually exclusive — both run if both are set, spaCy first,
+  Ollama only touching whatever spaCy left LOW — which is undocumented anywhere today.
+  (Effort: M)
+- [ ] **Unexplained process death, 2026-08-23/24** — a batch process died silently
+  between files with no error, no OOM signal captured, screen session still attached.
+  Not diagnosed and nothing to fix yet; if it recurs, capture `log show`, Diagnostic
+  Reports, and memory-pressure history before restarting rather than guessing a cause.
+- [ ] **One-file `large`-vs-`large+medium` consensus comparison** (optional) — untested
+  hypothesis that adding a second, weaker model to the vote pool won't change transcript
+  words but will dilute the reported HIGH percentage. Needs a "reconstruct only, don't
+  re-transcribe" entry point that may not exist yet — scope that before committing to
+  building it. Curiosity-driven, not blocking. (Effort: S if a re-run entry point exists)
+- [ ] **Shell-level test coverage for `survey-ollama-env.sh`** — no automated tests
+  exist for the script itself (only `tests/test_hardware_survey.py`, covering the Python
+  UI module). Needs `bats` or an equivalent shell-test harness, not yet present in this
+  repo.
+- [ ] **Test pollution** — some tests write real artefacts into `outputs/consensus/`
+  instead of an isolated `tmp_path`. Confirmed directly: stray `test_*.md`/`audio_*.md`
+  files from earlier pytest runs found sitting in the real output directory.
+
+---
+
 *Last updated: 5 September 2026*
