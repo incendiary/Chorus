@@ -31,10 +31,12 @@ pip install -e ".[dev]"  # Install with dev tools
 
 ```bash
 pre-commit install
+pre-commit install --hook-type pre-push
 pre-commit run --all-files  # Run checks on all files
 ```
 
-This ensures code quality and secret detection before commits.
+This ensures code quality and secret detection before commits, and runs the full test
+suite before a push.
 
 ---
 
