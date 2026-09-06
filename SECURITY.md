@@ -52,6 +52,21 @@ If you cannot use GitHub's private reporting for any reason, open a regular issu
   [Lightning-AI/pytorch-lightning#21832](https://github.com/Lightning-AI/pytorch-lightning/pull/21832)
   for release status before assuming a new dependency audit failure is this one.
 
+- **`nltk` — `PYSEC-2026-3740`** (file sandbox bypass: several model-persistence
+  APIs, including `TransitionParser.train`, `AveragedPerceptron.save`, and
+  `PerceptronTagger.save_to_json`, use built-in `open()` on caller-controlled paths
+  instead of the `pathsec`-aware helpers, so they read and write outside the
+  configured allowed roots). No upstream fix exists: `3.10.3` is the latest release
+  and is the version the advisory names, with no patched version published. Chorus
+  does not depend on `nltk`. It is absent from `requirements.txt` and
+  `pyproject.toml`'s runtime dependencies, and reaches an installed environment only
+  through the `safety` development and CI tool, and through `torchmetrics`' opt-in
+  `text`, `all`, and `dev` extras, none of which Chorus requests. No shipped Chorus
+  code path imports `nltk` or calls the affected APIs, so the sandbox bypass is not
+  reachable from the application. Tracked in
+  [#244](https://github.com/incendiary/Chorus/issues/244) so that a future dependency
+  audit failure naming `nltk` is recognised as this accepted risk rather than a new one.
+
 ## Scope
 
 This policy covers the Chorus Engine codebase in this repository — the audio
