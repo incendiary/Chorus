@@ -102,15 +102,15 @@ on every tagged release — no local build step required.
 **CPU:**
 
 ```bash
-docker pull ghcr.io/incendiary/chorus:v4.1.0
-docker run --rm -p 8501:8501 ghcr.io/incendiary/chorus:v4.1.0
+docker pull ghcr.io/incendiary/chorus:v5.0.0
+docker run --rm -p 8501:8501 ghcr.io/incendiary/chorus:v5.0.0
 ```
 
 **GPU (NVIDIA CUDA):**
 
 ```bash
-docker pull ghcr.io/incendiary/chorus:v4.1.0-gpu
-docker run --rm -p 8501:8501 --gpus all ghcr.io/incendiary/chorus:v4.1.0-gpu
+docker pull ghcr.io/incendiary/chorus:v5.0.0-gpu
+docker run --rm -p 8501:8501 --gpus all ghcr.io/incendiary/chorus:v5.0.0-gpu
 ```
 
 Access the UI at [http://localhost:8501](http://localhost:8501).
