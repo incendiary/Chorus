@@ -21,7 +21,11 @@ happens to match a name the implementation was written to expect.
 
 from __future__ import annotations
 
+import sys
+import types
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 from diarisation.diariser import _load_pipeline, check_diarisation_ready
 
@@ -287,3 +291,78 @@ class TestDiarizeOutputCompatibility:
         segments = diarise(audio)
 
         assert [s.speaker for s in segments] == ["SPEAKER_00", "SPEAKER_01"]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Silent-stub refusal
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class TestStubRequiresOptIn:
+    """A failed pipeline load must not quietly become a fabricated speaker.
+
+    ``_load_pipeline`` returning ``None`` used to make ``diarise`` return a
+    single synthetic ``SPEAKER_00`` covering the whole recording, with no error
+    recorded anywhere. That is indistinguishable from a genuine single-speaker
+    file, so the run reported success while asserting something untrue about
+    the audio.
+    """
+
+    def _silent_wav(self, tmp_path):
+        import numpy as np
+        import soundfile as sf
+
+        path = tmp_path / "sample.wav"
+        sf.write(path, np.zeros(16000, dtype="float32"), 16000)
+        return path
+
+    def test_diarise_raises_rather_than_stubbing(self, tmp_path, monkeypatch):
+        from diarisation import diariser
+
+        monkeypatch.setattr(diariser, "_load_pipeline", lambda: None)
+        audio = self._silent_wav(tmp_path)
+
+        with pytest.raises(diariser.DiarisationUnavailableError):
+            diariser.diarise(audio)
+
+    def test_pipeline_records_the_failure_and_writes_no_stub(
+        self, tmp_path, monkeypatch
+    ):
+        from diarisation import diariser
+
+        monkeypatch.setattr(diariser, "_load_pipeline", lambda: None)
+        audio = self._silent_wav(tmp_path)
+
+        with pytest.raises(diariser.DiarisationUnavailableError):
+            diariser.diarise(audio)
+
+        # The stub itself still exists for the opt-in path, but reaching it now
+        # requires calling it deliberately.
+        segments = diariser.stub_diarisation(audio)
+        assert [seg.speaker for seg in segments] == ["SPEAKER_00"]
+
+    def test_type_error_is_reported_not_raised(self, monkeypatch):
+        """A renamed pyannote kwarg raises TypeError, which must not escape.
+
+        ``ui/sidebar.py`` calls ``check_diarisation_ready()`` with no
+        try/except, so an uncaught exception crashes the sidebar instead of
+        showing the setup dialog.
+        """
+        from diarisation import diariser
+
+        def _boom(*args, **kwargs):
+            raise TypeError("from_pretrained() got an unexpected keyword argument")
+
+        monkeypatch.setattr(diariser, "_get_hf_token", lambda: "token")
+        monkeypatch.setitem(
+            sys.modules,
+            "pyannote.audio",
+            types.SimpleNamespace(
+                Pipeline=types.SimpleNamespace(from_pretrained=_boom)
+            ),
+        )
+
+        ready, reason = diariser.check_diarisation_ready()
+
+        assert ready is False
+        assert reason

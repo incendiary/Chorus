@@ -113,6 +113,7 @@ def run_pipeline(
     enable_llm: bool = False,
     ollama_model: str | None = None,
     enable_diarisation: bool = False,
+    allow_diarisation_stub: bool = False,
     alignment_strategy: str | None = None,
     consensus_threshold: float | None = None,
     similarity_threshold: float | None = None,
@@ -141,6 +142,11 @@ def run_pipeline(
         If True, run local LLM reconstruction (Ollama) on LOW-confidence tokens.
     enable_diarisation : bool
         If True, run pyannote speaker diarisation.
+    allow_diarisation_stub : bool
+        If True, accept a single-speaker placeholder when the diarisation
+        pipeline cannot be loaded, rather than reporting the failure. The
+        substitution is always recorded in ``diarisation_error``, because a
+        stub is indistinguishable from a genuine single-speaker recording.
     progress_callback : callable, optional
         Called as ``progress_callback(stage_label, fraction_complete)``
         at key milestones.  Fraction is in [0.0, 1.0].
@@ -440,14 +446,30 @@ def run_pipeline(
         _progress("Running speaker diarisation…", 0.97, stage="diarisation")
         try:
             from diarisation.diariser import (
+                DiarisationUnavailableError,
                 diarise,
                 get_unique_speakers,
                 label_transcript,
                 load_speaker_names,
                 render_diarised_md,
+                stub_diarisation,
             )
 
-            speaker_segs = diarise(variant_paths["original"])
+            try:
+                speaker_segs = diarise(variant_paths["original"])
+            except DiarisationUnavailableError as exc:
+                # A stub claims the recording has exactly one speaker, which
+                # reads identically to a genuine single-speaker file. Only
+                # substitute it when the caller has explicitly accepted that,
+                # and record it either way so no stub is mistaken for a result.
+                if not allow_diarisation_stub:
+                    raise
+                diarisation_error = (
+                    "Speaker diarisation was unavailable, so a single-speaker "
+                    f"placeholder was used at your request: {exc}"
+                )
+                logger.warning("%s", diarisation_error)
+                speaker_segs = stub_diarisation(Path(variant_paths["original"]))
             labelled = label_transcript(speaker_segs, transcripts["original"])
             speaker_labels = get_unique_speakers(labelled)
 
