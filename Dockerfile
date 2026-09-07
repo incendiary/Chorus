@@ -35,14 +35,6 @@ RUN pip install --upgrade pip wheel setuptools
 COPY requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir -r /tmp/requirements.txt
 
-# Pre-download NLTK data packages required by the consensus merger
-RUN python -c "\
-import nltk; \
-nltk.download('punkt', quiet=True); \
-nltk.download('punkt_tab', quiet=True); \
-nltk.download('stopwords', quiet=True)"
-
-
 # ── Stage 2: Runtime ─────────────────────────────────────────────────────────
 FROM python:3.11-slim-bookworm AS runtime
 
@@ -71,10 +63,6 @@ RUN useradd -m -r -s /bin/false chorus
 
 # Copy application source
 COPY . /app/
-
-# Copy NLTK data to a shared location
-COPY --from=builder /root/nltk_data /app/.nltk_data
-ENV NLTK_DATA=/app/.nltk_data
 
 # Create output directories and set ownership
 RUN mkdir -p /app/outputs/variants \

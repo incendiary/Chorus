@@ -79,6 +79,7 @@ recommended for a personal tool; noted, not actioned.
 | 13 | Maintainability | `TypeError` absent from `_try_load_pipeline`'s except tuple; `ui/sidebar.py:504` calls the checker unguarded | **2** | `diarisation/diariser.py:150-180` |
 | 14 | Maintainability | Stale duplicate package tree at `build/lib/consensus_merger/`; `_score_pair` is dead code | **1** | `build/lib/`, `consensus_merger/sequence_alignment.py:53` |
 | 15 | Dependency | No lockfile or hashes; `lightning` and `torch` float transitively | **2** | `requirements.txt` |
+| 16 | Reliability | Both Docker images fail to build: a stale NLTK pre-download step survives although `nltk` is neither a declared dependency nor imported anywhere | **4** | `Dockerfile:38-43`, `:75-77`; `Dockerfile.gpu:47-52`, `:85-87` |
 
 ### Null findings (checked, nothing wrong)
 
@@ -288,6 +289,33 @@ today. The action-tag risk is low-probability, high-impact.
 
 **Full fix.** Additionally SHA-pin every third-party action, per the repo's own
 reference-pinning rule.
+
+---
+
+### PF-10: The v5.0.0 release publishes no image because the build fails (Risk 16, score 4) — CONFIRMED
+
+**What happens.** `docker build -f Dockerfile .` fails at the NLTK pre-download step with
+`ModuleNotFoundError: No module named 'nltk'`. `nltk` is not a declared dependency and no
+code imports it: `consensus_merger/alignment.py:90-92` documents inlining the Levenshtein
+routine specifically to avoid pulling NLTK in. The dependency was removed but both
+`Dockerfile` and `Dockerfile.gpu` kept the download step, the
+`COPY --from=builder /root/nltk_data`, and the `NLTK_DATA` environment variable.
+
+**Trigger condition.** Any image build. It is already broken; the only reason it has gone
+unnoticed is that `release.yml:60` publishes images only on a `.0.0` tag, and the last one
+was `v4.0.0`. `docs/DOCKER.md` has meanwhile been advertising `v4.1.0` images that this
+workflow never built.
+
+**Estimated timeline.** Immediately, on the `v5.0.0` tag. The GHCR publish would have
+failed in public, after the tag was already pushed and therefore not cleanly retractable.
+
+**Minimum fix.** Delete the NLTK steps from both Dockerfiles and rebuild to confirm.
+
+**Full fix.** As above, plus a CI job that builds the image on pull requests touching a
+Dockerfile, so image rot is caught without waiting for a major release.
+
+**Note.** This also removes the only route by which `nltk` would have entered a shipped
+artefact, which independently strengthens PF-4's reachability conclusion.
 
 ---
 

@@ -434,6 +434,12 @@ release blockers and are fixed; the rest are deferred below.
   `PYSEC-2026-3740` had been appearing in the permanently-red dependency audit
   undocumented. No upstream fix exists; `nltk` reaches the environment only via the
   `safety` dev tool and `torchmetrics` opt-in extras, so it never ships. Tracked in #244.
+- [x] **RD-13 — Drop the stale NLTK steps from both Docker images** (v5.0.0) — both
+  `Dockerfile` and `Dockerfile.gpu` failed to build at a `nltk.download(...)` step, though
+  `nltk` is neither a declared dependency nor imported anywhere (`alignment.py` inlines
+  Levenshtein precisely to avoid it). Undetected because images publish only on a `.0.0`
+  tag and the last was v4.0.0, so tagging v5.0.0 would have fired a GHCR publish that
+  failed in public. Caught by building locally before tagging.
 
 ---
 
@@ -546,6 +552,14 @@ is written to be executable without reading the review.
   this is unconverted rather than undecided. Sites: `tests/test_exporter.py` lines 78, 82,
   86, 101, 113, 117, 122, and 140; `tests/test_merger.py` lines 59, 70, and 80. Verify a
   full suite run on a clean checkout leaves no `test_*` files in `outputs/consensus/`.
+  (Effort: S)
+- [ ] **RD-14 — Build the Docker images in CI on any Dockerfile change** — the images are
+  published only on a `.0.0` tag, so both silently rotted for months and were only found
+  unbuildable while preparing v5.0.0 (see RD-13). `docs/DOCKER.md` had meanwhile been
+  advertising `v4.1.0` images that the workflow never built. Add a job that builds both
+  `Dockerfile` and `Dockerfile.gpu` on pull requests touching either file or
+  `requirements.txt`, without pushing. Verify by deliberately breaking a Dockerfile in a
+  scratch branch and confirming the job fails. Files: `.github/workflows/ci.yml`.
   (Effort: S)
 - [ ] **RD-12 — Tidy dead and duplicated code** — `build/lib/consensus_merger/` is a stale
   duplicate of the live package left by an old build, and `_score_pair` in
