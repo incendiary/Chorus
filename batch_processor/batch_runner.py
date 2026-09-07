@@ -469,6 +469,7 @@ def run_batch(
     recursive: bool = False,
     alignment_strategy: str | None = None,
     enable_diarisation: bool = False,
+    allow_diarisation_stub: bool = False,
     enable_nlp: bool = False,
     enable_llm: bool = False,
     ollama_model: str | None = None,
@@ -498,6 +499,9 @@ def run_batch(
         Consensus alignment strategy: "sequence" or "positional".
     enable_diarisation : bool
         Run speaker diarisation on each file.
+    allow_diarisation_stub : bool
+        Accept a single-speaker placeholder when the diarisation pipeline
+        cannot be loaded, rather than reporting the failure for that file.
     enable_nlp : bool
         Run spaCy NLP reconstruction on LOW-confidence tokens.
     enable_llm : bool
@@ -556,6 +560,7 @@ def run_batch(
                 enable_llm=enable_llm,
                 ollama_model=ollama_model,
                 enable_diarisation=enable_diarisation,
+                allow_diarisation_stub=allow_diarisation_stub,
                 output_dir=file_output_dir,
                 consensus_threshold=consensus_threshold,
                 similarity_threshold=similarity_threshold,
@@ -893,6 +898,7 @@ def main(argv: list[str] | None = None) -> int:
             recursive=args.recursive,
             alignment_strategy=settings["alignment"][0],
             enable_diarisation=args.diarise,
+            allow_diarisation_stub=args.allow_diarisation_stub,
             enable_nlp=args.nlp,
             enable_llm=args.llm,
             ollama_model=settings["Ollama model"][0],

@@ -151,7 +151,13 @@ def _try_load_pipeline() -> tuple[object | None, str | None]:
         return None, (
             "pyannote.audio is not installed. Install with: pip install pyannote.audio"
         )
-    except (RuntimeError, OSError, ValueError) as exc:
+    except (RuntimeError, OSError, TypeError, ValueError) as exc:
+        # TypeError belongs here because a pyannote signature change (a renamed
+        # credential kwarg, for one) raises it. Without it, check_diarisation_
+        # ready() raises instead of returning a reason, and ui/sidebar.py calls
+        # that with no try/except, so the sidebar would crash rather than show
+        # the setup dialog.
+        #
         # This is the failure that went unnoticed on real casework audio.
         # Do not enumerate the pipeline's dependencies here by name — that
         # was tried twice and was wrong both times within the same evening:
@@ -299,19 +305,31 @@ def _load_pipeline():
 
     Returns the pipeline object or ``None`` if unavailable. Logs the same
     reason ``check_diarisation_ready`` would report, at WARNING level, so a
-    caller that skips the pre-flight check still sees why it fell back.
+    caller that skips the pre-flight check still sees why it failed.
     """
     pipeline, reason = _try_load_pipeline()
     if pipeline is None:
-        logger.warning("%s Using stub diarisation.", reason)
+        logger.warning("%s", reason)
     return pipeline
 
 
-def _stub_diarisation(audio_path: Path) -> list[SpeakerSegment]:
+class DiarisationUnavailableError(RuntimeError):
+    """The pyannote pipeline could not be loaded, so no real diarisation ran.
+
+    Raised instead of quietly substituting :func:`stub_diarisation`. A stub
+    result claims the recording has exactly one speaker, which is
+    indistinguishable from a genuine single-speaker file, so a caller has to
+    opt into it rather than receive it by default.
+    """
+
+
+def stub_diarisation(audio_path: Path) -> list[SpeakerSegment]:
     """
     Fallback stub that assigns the entire audio to a single speaker.
 
-    Used when pyannote.audio is unavailable or unconfigured.
+    This is a placeholder, not a result: it fabricates a single speaker
+    regardless of the audio. Call it only when the caller has explicitly
+    accepted a stub in place of real diarisation.
     """
     import soundfile as sf
 
@@ -333,6 +351,16 @@ def diarise(audio_path: str | Path) -> list[SpeakerSegment]:
     -------
     list[SpeakerSegment]
         Chronologically ordered list of speaker turns.
+
+    Raises
+    ------
+    FileNotFoundError
+        If *audio_path* does not exist.
+    DiarisationUnavailableError
+        If the pyannote pipeline cannot be loaded. Callers that would rather
+        have a single-speaker placeholder must catch this and call
+        :func:`stub_diarisation` themselves, so the substitution is always a
+        deliberate choice recorded by the caller.
     """
     audio_path = Path(audio_path)
     if not audio_path.exists():
@@ -341,7 +369,11 @@ def diarise(audio_path: str | Path) -> list[SpeakerSegment]:
     pipeline = _load_pipeline()
 
     if pipeline is None:
-        return _stub_diarisation(audio_path)
+        raise DiarisationUnavailableError(
+            "The speaker diarisation pipeline could not be loaded, so no real "
+            "speaker separation is possible for this file. See the warning "
+            "above for the underlying reason."
+        )
 
     logger.info("Running diarisation on: %s", audio_path.name)
     diarization = pipeline(str(audio_path))
