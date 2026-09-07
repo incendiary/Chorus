@@ -276,12 +276,50 @@ def _align_positional(
 # ─────────────────────────────────────────────────────────────────────────────
 
 
+def _drop_degenerate(
+    transcripts: dict[str, str],
+    degenerate_keys: set[str] | None,
+) -> dict[str, str]:
+    """Remove repetition-looped variants from the vote pool.
+
+    A looped transcript is not merely a dissenting voice: its repeated phrase
+    is far longer than the healthy variants, so alignment splices the whole
+    loop into the consensus document as LOW-tier insertions. Excluding it
+    removes that padding without changing how the remaining variants are
+    tiered. The pool is left untouched when every variant is flagged, so
+    legitimately repetitive audio still produces a transcript.
+    """
+    if not degenerate_keys:
+        return transcripts
+
+    healthy = {
+        key: text for key, text in transcripts.items() if key not in degenerate_keys
+    }
+    if not healthy:
+        logger.warning(
+            "Every variant looks degenerate; keeping all %d in the vote pool "
+            "rather than producing no transcript. Treat the output as unreliable.",
+            len(transcripts),
+        )
+        return transcripts
+
+    dropped = sorted(set(transcripts) - set(healthy))
+    logger.warning(
+        "Excluding degenerate variant(s) %s from consensus: their output is a "
+        "repetition loop. Consensus now rests on %d variant(s).",
+        ", ".join(dropped),
+        len(healthy),
+    )
+    return healthy
+
+
 def align_transcripts(
     transcripts: dict[str, str],
     strategy: str | None = None,
     *,
     consensus_threshold: float | None = None,
     similarity_threshold: float | None = None,
+    degenerate_keys: set[str] | None = None,
 ) -> list[WordVote]:
     """
     Align multiple transcript strings and produce a word-level vote sequence.
@@ -302,6 +340,9 @@ def align_transcripts(
     similarity_threshold : float, optional
         Normalised similarity at or above which two word forms count as the
         same word. Defaults to ``config.SIMILARITY_THRESHOLD``.
+    degenerate_keys : set[str], optional
+        Variant keys whose transcription collapsed into a repetition loop.
+        Excluded from the vote pool, provided at least one variant is healthy.
 
     Returns
     -------
@@ -309,6 +350,7 @@ def align_transcripts(
         Ordered list of WordVote objects representing the consensus sequence.
     """
     strategy = (strategy or ALIGNMENT_STRATEGY).strip().lower()
+    transcripts = _drop_degenerate(transcripts, degenerate_keys)
 
     if strategy == "sequence":
         from consensus_merger.sequence_alignment import align_transcripts_sequence

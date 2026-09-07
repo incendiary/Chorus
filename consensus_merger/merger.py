@@ -51,6 +51,7 @@ def merge_transcripts_with_votes(
     source_filename: str | None = None,
     consensus_threshold: float | None = None,
     similarity_threshold: float | None = None,
+    degenerate_keys: set[str] | None = None,
 ) -> tuple[Path, list[WordVote]]:
     """Run consensus alignment/render and return both output path and votes."""
     non_empty = _extract_non_empty_text_map(transcripts)
@@ -62,6 +63,7 @@ def merge_transcripts_with_votes(
         strategy=strategy,
         consensus_threshold=consensus_threshold,
         similarity_threshold=similarity_threshold,
+        degenerate_keys=degenerate_keys,
     )
 
     if enable_nlp:
