@@ -44,14 +44,6 @@ RUN pip install --no-cache-dir \
 COPY requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir -r /tmp/requirements.txt
 
-# Pre-download NLTK data
-RUN python3 -c "\
-import nltk; \
-nltk.download('punkt', quiet=True); \
-nltk.download('punkt_tab', quiet=True); \
-nltk.download('stopwords', quiet=True)"
-
-
 # ── Stage 2: Runtime ─────────────────────────────────────────────────────────
 FROM nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu22.04 AS runtime-gpu
 
@@ -81,10 +73,6 @@ WORKDIR /app
 RUN useradd -m -r -s /bin/false chorus
 
 COPY . /app/
-
-# Copy NLTK data to a shared location
-COPY --from=builder-gpu /root/nltk_data /app/.nltk_data
-ENV NLTK_DATA=/app/.nltk_data
 
 RUN mkdir -p /app/outputs/variants \
              /app/outputs/transcripts \
