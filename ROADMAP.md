@@ -293,63 +293,63 @@ Follow-up evidence and dependency work is tracked in issues #219 and #220.
 
 ---
 
-## Completed — v4.2.0 Diarisation correctness and CLI/UI parity
+## Completed — v5.0.0 Diarisation correctness, CLI/UI parity, and release hardening
 
 Prompted by a real, multi-day production run on real casework audio (see Validation
 below), which surfaced two distinct diarisation failures that every prior test suite had
 missed — both fixed here, together with the pre-flight tooling that should have caught
 them sooner.
 
-- [x] **Diarisation refuses to run when it can't actually work** (v4.2.0) (#229) — `--diarise`
+- [x] **Diarisation refuses to run when it can't actually work** (v5.0.0) (#229) — `--diarise`
   now calls `check_diarisation_ready()` (a real pipeline load, not a metadata check)
   before processing any file, and refuses to start rather than silently completing every
   file with a single-speaker stub. `--allow-diarisation-stub` opts back into the old
   silent behaviour explicitly. The Streamlit UI got the same check as a setup dialog
   (#233).
-- [x] **The pre-flight check's guidance stopped hardcoding which repos matter** (v4.2.0) (#230, #231) — an early version named specific gated Hugging Face repos in its error message;
+- [x] **The pre-flight check's guidance stopped hardcoding which repos matter** (v5.0.0) (#230, #231) — an early version named specific gated Hugging Face repos in its error message;
   within the same evening the installed `pyannote.audio` version turned out to route
   through a different set of repos than its own Hub `config.yaml` implied. The message
   now only ever relays the real error from the attempted load, which is correct on any
   version.
-- [x] **A full checklist of known diarisation dependencies, checked by real file access** (v4.2.0)
+- [x] **A full checklist of known diarisation dependencies, checked by real file access** (v5.0.0)
   (#234) — `diarisation_repo_status()` checks every known candidate repo via an
   authenticated HEAD request to an actual weight file, not `HfApi.model_info()`'s gating
   field (which reported every repo accessible while one of them still hard-403'd for
   hours) and not "the first file returned" (which is `.gitattributes` for some repos —
   always public even in a fully gated repo).
-- [x] **Fixed the actual diarisation crash** (v4.2.0) (#235) — `pyannote.audio` 4.x's default
+- [x] **Fixed the actual diarisation crash** (v5.0.0) (#235) — `pyannote.audio` 4.x's default
   pipeline wraps its result in a `DiarizeOutput` dataclass instead of returning the bare
   `Annotation` older versions returned. `diarise()` called `.itertracks()` on whatever it
   got back, unconditionally. On real audio this meant diarisation could run for over an
   hour of correct, fully-licensed compute and then crash at the final parsing step,
   caught by a broad `except` in `pipeline_runner.py` — the file "succeeded" with no
   `diarised.md` at all. Now detects the result shape and unwraps it.
-- [x] **`--check-diarisation`** (v4.2.0) (#232) — a standalone readiness check. Before this, the
+- [x] **`--check-diarisation`** (v5.0.0) (#232) — a standalone readiness check. Before this, the
   only way to answer "is diarisation ready?" was to start a real batch and watch it
   refuse — a debug workaround, not a documented operation.
-- [x] **Batch CLI runs persist a log file** (v4.2.0) (#228) — previously the only record of an
+- [x] **Batch CLI runs persist a log file** (v5.0.0) (#228) — previously the only record of an
   unattended batch was console output, which is exactly as durable as a terminal's
   scrollback (100 lines by default in `screen`) — already lost by the time a multi-hour
   slowdown needed investigating on this same production run.
-- [x] **`survey-ollama-env.sh` recommends and can write `WHISPER_DEVICE`** (v4.2.0) (#227) — the
+- [x] **`survey-ollama-env.sh` recommends and can write `WHISPER_DEVICE`** (v5.0.0) (#227) — the
   script always detected GPU type correctly but never turned it into a device
   recommendation, so running it (even choosing "apply all") could never fix a
   device pinned to `cpu`.
-- [x] **Batch CLI configuration parity with the Web UI** (v4.2.0) (#226) — per-run overrides for
+- [x] **Batch CLI configuration parity with the Web UI** (v5.0.0) (#226) — per-run overrides for
   model, device, parallelism, hardware presets, alignment, thresholds, noise floor,
   word timestamps, and WAV retention, with every effective setting and its source
   (`CLI` / `hardware preset` / `.env` / `default`) printed before processing starts.
-- [x] **Full output archives include the machine-readable bundle and parsing guide** (v4.2.0)
+- [x] **Full output archives include the machine-readable bundle and parsing guide** (v5.0.0)
   (#225) — `Download Full Output Archive` previously omitted `{stem}_bundle.json` and
   `HOW_TO_PARSE_CHORUS_OUTPUT.md`.
-- [x] **Single-run lock scoped per `--output-dir`** (v4.2.0) (#238) — two overlapping
+- [x] **Single-run lock scoped per `--output-dir`** (v5.0.0) (#238) — two overlapping
   `batch_runner` invocations against the same output directory previously collided: both
   processed the same file within seconds of each other, and one's variant-WAV cleanup
   deleted a file the other still needed for diarisation, deadlocking for over ten hours on
   real casework audio before being killed manually. `main()` now refuses to start if a
   live PID already holds the lock for that directory; a stale PID (dead process) is
   treated as no lock at all.
-- [x] **Per-file diarisation failures are surfaced, not silently dropped** (v4.2.0) (#239) —
+- [x] **Per-file diarisation failures are surfaced, not silently dropped** (v5.0.0) (#239) —
   a second real-world diarisation failure mode, distinct from the ones above: the
   pre-flight check only verifies repo/model access, not that the installed
   `torchcodec`/`ffmpeg` combination can actually decode audio at runtime. When it
@@ -358,13 +358,13 @@ them sooner.
   genuinely single-speaker recording, with the batch still reporting "1/1 succeeded".
   `run_pipeline()` now returns the failure as `diarisation_error`, surfaced in the batch
   report's status column, the console summary, and a warning in the Web UI's results view.
-- [x] **Real pre-commit and pre-push git hooks installed** (v4.2.0) (#241) — the hook
+- [x] **Real pre-commit and pre-push git hooks installed** (v5.0.0) (#241) — the hook
   actually present in `.git/hooks/pre-commit` was an unrelated stub from a different tool
   that referenced a missing script and was designed to never block; none of GitLeaks,
   Ruff, isort, or the file-hygiene checks in `.pre-commit-config.yaml` were being enforced
   locally. Installed the real framework hooks for both stages, plus a local `pytest` hook
   scoped to `pre-push`.
-- [x] **Documented the unpatched `lightning` CVE as an accepted risk** (v4.2.0) (#240) —
+- [x] **Documented the unpatched `lightning` CVE as an accepted risk** (v5.0.0) (#240) —
   `pip-audit` flags `CVE-2026-58659`/`PYSEC-2026-3624` (an RCE in `lightning`, pulled in
   transitively by `pyannote-audio`) on every CI run, with no fixed release available yet.
   Chorus never calls the affected `load_from_checkpoint` path or loads untrusted
@@ -407,9 +407,37 @@ settings still without a Web UI equivalent (word timestamps, WAV retention, Olla
 URL/timeout), and a comprehensive CLI/Web UI flag reference (current documentation covers
 roughly 6 of 22 flags).
 
+### From the 6 September 2026 holistic review (RD series)
+
+Full findings in [REVIEW-RD.md](REVIEW-RD.md). The four items below were treated as
+release blockers and are fixed; the rest are deferred below.
+
+- [x] **RD-1 — Exclude repetition-looped variants from the consensus vote pool** (v5.0.0)
+  — the degeneracy guard in `whisper_engine.py` only logged, so a looped transcript still
+  voted. Because a loop is far longer than the healthy variants, alignment spliced the
+  whole loop into the consensus document: a 13-word transcript measured 45 words, 32 of
+  them the repeated phrase. Barring it from anchoring the alignment proved insufficient
+  (byte-identical output, since it re-enters through the insertion path), so it now leaves
+  the pool entirely, with the pool kept intact when every variant is flagged.
+- [x] **RD-2 — Diarisation stub now needs an explicit opt-in** (v5.0.0)
+  — a failed pipeline load returned a single synthetic `SPEAKER_00` with
+  `diarisation_error` unset, so the run reported success while asserting the audio had one
+  speaker. `diarise()` now raises, and `--allow-diarisation-stub` governs the fallback
+  itself rather than only the pre-flight check. `TypeError` was also added to
+  `_try_load_pipeline`'s caught exceptions, which would otherwise crash the Streamlit
+  sidebar.
+- [x] **RD-3 — Stop the test suite deleting live UI run state** (v5.0.0) — an autouse
+  fixture unlinked the real `outputs/active_run.json` before and after every test,
+  destroying an in-flight run's state. Since the pre-push hook runs the full suite, this
+  fired on any push during a run.
+- [x] **RD-4 — Record the nltk advisory as an accepted, unreachable risk** (v5.0.0) —
+  `PYSEC-2026-3740` had been appearing in the permanently-red dependency audit
+  undocumented. No upstream fix exists; `nltk` reaches the environment only via the
+  `safety` dev tool and `torchmetrics` opt-in extras, so it never ships. Tracked in #244.
+
 ---
 
-## Planned — post-v4.2.0 cleanup (from the Coventry Case fix list)
+## Planned — post-v5.0.0 cleanup (from the Coventry Case fix list)
 
 Consolidated from a working notes file kept during the Coventry Case production run;
 everything below was still open once the run's fixes (single-run lock, diarisation-error
@@ -450,8 +478,81 @@ surfacing) shipped.
   repo.
 - [ ] **Test pollution** — some tests write real artefacts into `outputs/consensus/`
   instead of an isolated `tmp_path`. Confirmed directly: stray `test_*.md`/`audio_*.md`
-  files from earlier pytest runs found sitting in the real output directory.
+  files from earlier pytest runs found sitting in the real output directory. Eleven exact
+  call sites are listed as RD-11 below. (Effort: S)
 
 ---
 
-*Last updated: 5 September 2026*
+## Planned — deferred from the 6 September 2026 holistic review
+
+Full context and predictive failure scenarios in [REVIEW-RD.md](REVIEW-RD.md). Each item
+is written to be executable without reading the review.
+
+- [ ] **RD-5 — Restore signal to the dependency audit** — the audit fails on every run
+  because of the accepted `lightning` advisory, so a red result conveys nothing, which is
+  exactly how RD-4's `nltk` advisory went unnoticed. Pass an explicit ignore list of
+  accepted advisory IDs and fail the job on anything outside it. Prove the gate is live by
+  confirming the result flips when an ID is added or removed. Keep the accepted advisories
+  visible in the log rather than suppressed. Files: `.github/workflows/ci.yml`,
+  `.github/workflows/security.yml`. (Effort: S)
+- [ ] **RD-6 — Make the batch lock atomic** — `batch_runner.py` calls `check_batch_lock()`
+  then `acquire_batch_lock()` as two unsynchronised steps, and `acquire` unconditionally
+  overwrites, so two processes started close together can both proceed. A malformed or
+  empty lock file is treated as safe to proceed, so the failure mode is fail-open. Replace
+  with a single atomic `O_CREAT|O_EXCL` create or `fcntl.flock`, refuse on a malformed
+  file, and record hostname and process start time so a recycled PID is not mistaken for
+  the owner. Tests: second acquisition refused while held; refusal on a truncated file;
+  acquisition succeeds when the recorded PID is genuinely dead. Files:
+  `batch_processor/batch_runner.py`, `tests/test_batch_runner.py`. (Effort: M)
+- [ ] **RD-7 — Give the diarisation pre-flight a real smoke test** — this is the
+  structural finding behind three diarisation failures in three weeks.
+  `check_diarisation_ready()` verifies imports, token, and `Pipeline.from_pretrained`
+  succeeding, but never runs inference, so it could not have caught either the
+  `DiarizeOutput` result-shape failure or the torchcodec decode failure. Run the loaded
+  pipeline over a short synthetic silent WAV generated at runtime and parse the result
+  through the same path `diarise()` uses, reporting which of the two failed. No fixture
+  audio in the repo, and a few seconds' runtime. Files: `diarisation/diariser.py`,
+  `tests/test_diariser_preflight.py`. (Effort: M)
+- [ ] **RD-8 — Fix the confidence denominator** — `sequence_alignment.py` computes
+  `n_transcripts` *before* empty transcripts are filtered out, so a variant that produced
+  nothing permanently depresses every column's confidence. In a four-variant run with one
+  empty variant, unanimity among the remaining three scores 0.75, exactly on the HIGH
+  boundary. Move the computation after the filter. Test: four variants, one empty,
+  asserting unanimous agreement among the other three is tiered HIGH, demonstrated failing
+  first. Files: `consensus_merger/sequence_alignment.py`,
+  `tests/test_sequence_alignment.py`. (Effort: S)
+- [ ] **RD-9 — Replace assertions that cannot fail** — several alignment tests would pass
+  against broken logic: length-only assertions in `TestDispatcher`, a vacuous
+  `0 <= confidence <= 1` check, an either-way `tier in ("HIGH","MEDIUM")` chain, and a
+  statistical gate tolerating 20% mis-tiering. Assert exact expected token sequences and
+  tiers per position instead. Verify each rewritten test fails when a deliberate
+  off-by-one is introduced into `_build_multi_alignment`, then passes once reverted. Also
+  tighten `TestSequencePerformance`'s 30-second budget for 500 words. Files:
+  `tests/test_sequence_alignment.py`, `tests/test_alignment.py`. (Effort: M)
+- [ ] **RD-10 — Pin CI actions and stop overriding pinned dependencies** — no third-party
+  action is SHA-pinned; all float on mutable tags, which contradicts this repo's own
+  reference-pinning rule. Replace each `uses: owner/repo@vN` with a 40-character commit
+  SHA plus the version in a trailing comment, resolvable via
+  `gh api repos/<owner>/<repo>/commits/<tag> --jq .sha`. Separately, `ci.yml` and
+  `release.yml` both run a bare `pip install librosa soundfile scipy numpy openai-whisper`
+  that overrides every pin in `requirements.txt`, so the release's own test job validates
+  versions other than those shipped: delete those lines, since the preceding
+  `pip install -e ".[dev]"` already supplies the pinned set. Files:
+  `.github/workflows/{ci,security,release}.yml`. (Effort: M)
+- [ ] **RD-11 — Stop tests writing into the real outputs directory** — `export_srt`,
+  `export_vtt`, and `merge_transcripts` default `output_dir` to the global `CONSENSUS_DIR`,
+  and eleven call sites omit it, so artefacts land in the real `outputs/consensus/` on
+  every run. The same files get it right elsewhere by passing `output_dir=tmp_path`, so
+  this is unconverted rather than undecided. Sites: `tests/test_exporter.py` lines 78, 82,
+  86, 101, 113, 117, 122, and 140; `tests/test_merger.py` lines 59, 70, and 80. Verify a
+  full suite run on a clean checkout leaves no `test_*` files in `outputs/consensus/`.
+  (Effort: S)
+- [ ] **RD-12 — Tidy dead and duplicated code** — `build/lib/consensus_merger/` is a stale
+  duplicate of the live package left by an old build, and `_score_pair` in
+  `consensus_merger/sequence_alignment.py` has no callers. Remove `build/` from the working
+  tree, confirm `.gitignore` covers it and that no import resolves to it, and delete
+  `_score_pair`. (Effort: XS)
+
+---
+
+*Last updated: 7 September 2026*
