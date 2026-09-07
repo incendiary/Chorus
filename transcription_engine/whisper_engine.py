@@ -97,6 +97,11 @@ def _get_model(
             raise
 
 
+# Fraction of 3-grams taken by a single phrase above which a transcript counts
+# as a repetition loop rather than usable output.
+DEGENERACY_RATIO_THRESHOLD = 0.2
+
+
 def _repetition_ratio(text: str) -> float:
     """Fraction of 3-grams taken by the single most frequent 3-gram.
 
@@ -247,7 +252,8 @@ def transcribe(
     # recordings. Surface it loudly rather than let consensus quietly report
     # the resulting disagreement as low confidence.
     repetition = _repetition_ratio(result.get("text", ""))
-    if repetition > 0.2:
+    degenerate = repetition > DEGENERACY_RATIO_THRESHOLD
+    if degenerate:
         logger.warning(
             "Degenerate transcription for variant '%s' (%s): %.0f%% of the text "
             "is one repeated phrase. The transcript is unreliable — try a "
@@ -261,6 +267,8 @@ def transcribe(
     result["variant"] = variant_key
     result["model"] = active_model
     result["device"] = active_device
+    result["repetition_ratio"] = repetition
+    result["degenerate"] = degenerate
 
     # Persist to transcripts_dir/<stem>_<variant>.json
     out_dir = transcripts_dir if transcripts_dir is not None else TRANSCRIPTS_DIR

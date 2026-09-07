@@ -210,3 +210,83 @@ class TestConfigurableThresholds:
         )
         implicit = align_transcripts(self.VARIANTS)
         assert [v.tier for v in explicit] == [v.tier for v in implicit]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Degenerate-variant exclusion
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class TestDegenerateVariantExclusion:
+    """A repetition-looped variant must not pad the consensus transcript.
+
+    Whisper can collapse into a repetition loop. The looped variant is far
+    longer than the healthy ones, so alignment splices the entire loop into the
+    consensus document as LOW-tier insertions. Barring it from anchoring the
+    alignment is not enough, because the loop still enters through the
+    insertion path: it has to leave the vote pool.
+    """
+
+    HEALTHY_A = "the quick brown fox jumps over the lazy dog and runs away fast"
+    HEALTHY_B = "the quick brown fox jumped over the lazy dog and ran away fast"
+    HEALTHY_C = "the quick brown fox jumps over a lazy dog and runs away fast"
+    LOOP = " ".join(["um yeah so"] * 15)
+
+    def _transcripts(self) -> dict[str, str]:
+        return {
+            "original": self.HEALTHY_A,
+            "highpass": self.HEALTHY_B,
+            "denoised": self.HEALTHY_C,
+            "normalised": self.LOOP,
+        }
+
+    def _healthy_only(self) -> dict[str, str]:
+        return {
+            "original": self.HEALTHY_A,
+            "highpass": self.HEALTHY_B,
+            "denoised": self.HEALTHY_C,
+        }
+
+    def test_loop_pads_the_transcript_when_unguarded(self):
+        """Documents the defect, so the contrast below cannot stop testing."""
+        words = [vote.word for vote in align_transcripts(self._transcripts())]
+
+        assert "um" in words
+        assert len(words) > len(align_transcripts(self._healthy_only()))
+
+    def test_loop_tokens_are_excluded_from_the_transcript(self):
+        expected = [vote.word for vote in align_transcripts(self._healthy_only())]
+
+        result = align_transcripts(self._transcripts(), degenerate_keys={"normalised"})
+        words = [vote.word for vote in result]
+
+        assert words == expected, (
+            "the degenerate variant's tokens leaked into the consensus "
+            f"transcript: {' '.join(words)}"
+        )
+        assert "um" not in words
+
+    def test_healthy_variants_keep_their_tiers(self):
+        baseline = {
+            vote.word: vote.tier for vote in align_transcripts(self._healthy_only())
+        }
+
+        result = align_transcripts(self._transcripts(), degenerate_keys={"normalised"})
+
+        assert {vote.word: vote.tier for vote in result} == baseline
+
+    def test_pool_is_kept_when_every_variant_is_degenerate(self):
+        transcripts = self._transcripts()
+
+        result = align_transcripts(transcripts, degenerate_keys=set(transcripts))
+
+        assert result, "dropping every variant left no transcript at all"
+
+    def test_positional_strategy_honours_the_exclusion(self):
+        result = align_transcripts(
+            self._transcripts(),
+            strategy="positional",
+            degenerate_keys={"normalised"},
+        )
+
+        assert "um" not in [vote.word for vote in result]

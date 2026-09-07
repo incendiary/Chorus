@@ -368,6 +368,12 @@ def run_pipeline(
             detail=ollama_model or "Ollama LLM",
         )
 
+    degenerate_keys = {
+        key
+        for key, result in transcripts.items()
+        if isinstance(result, dict) and result.get("degenerate")
+    }
+
     consensus_path, votes = merge_transcripts_with_votes(
         transcripts=transcripts,
         stem=stem,
@@ -379,6 +385,7 @@ def run_pipeline(
         source_filename=source_filename,
         consensus_threshold=consensus_threshold,
         similarity_threshold=similarity_threshold,
+        degenerate_keys=degenerate_keys,
     )
     _progress("Consensus document generated.", 0.95, stage="consensus")
 
