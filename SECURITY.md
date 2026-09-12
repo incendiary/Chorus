@@ -42,9 +42,12 @@ If you cannot use GitHub's private reporting for any reason, open a regular issu
   via the `_instantiator` hyperparameter in `LightningModule.load_from_checkpoint`,
   bypassing `torch.load(weights_only=True)`). `lightning` is a transitive
   dependency pulled in by `pyannote-audio` for speaker diarisation. The fix
-  merged upstream on 2026-07-14 but has not shipped in a `lightning` release —
-  the latest available version (`2.6.5`) predates the fix and is the version
-  named as vulnerable. Chorus does not call `LightningModule.load_from_checkpoint`
+  merged upstream on 2026-07-14 but has not shipped in a `lightning` release. A
+  newer release, `2.6.6` (2026-09-10), was checked directly against the fix commit
+  and confirmed to diverge from it rather than include it — it was cut from an
+  older maintenance branch point, not from `master` after the fix. Re-verify
+  against the fix PR before assuming any future point release includes it, rather
+  than trusting the version number alone. Chorus does not call `LightningModule.load_from_checkpoint`
   or load any user-supplied checkpoint; diarisation only loads pyannote's own
   pinned, first-party model weights from Hugging Face. `ci/security.yml`'s
   `pip-audit` step will keep flagging this until `lightning` cuts a release
