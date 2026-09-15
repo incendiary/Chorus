@@ -33,6 +33,9 @@ import inspect
 import json
 import logging
 import os
+import threading
+import time
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -338,6 +341,43 @@ def stub_diarisation(audio_path: Path) -> list[SpeakerSegment]:
     return [SpeakerSegment(speaker="SPEAKER_00", start=0.0, end=info.duration)]
 
 
+DIARISATION_HEARTBEAT_SECONDS = 60
+
+
+@contextmanager
+def _diarisation_heartbeat(audio_path: Path):
+    """Log elapsed time periodically while the pyannote pipeline call runs.
+
+    ``pipeline(audio)`` gives no output at all until it either finishes or
+    raises, and on real casework recordings that call has taken over two
+    hours. With nothing printed in that window, a genuinely running process
+    is indistinguishable from a hung one without inspecting CPU and memory
+    directly. This is a plain heartbeat, not a real progress bar: pyannote
+    exposes no sub-step hook stable enough to build one on, and coupling to
+    its internals has already broken twice in as many months (see the
+    ``DiarizeOutput`` comment below).
+    """
+    stop = threading.Event()
+    start = time.monotonic()
+
+    def _beat() -> None:
+        while not stop.wait(DIARISATION_HEARTBEAT_SECONDS):
+            elapsed = time.monotonic() - start
+            logger.info(
+                "Diarisation still running on %s: %.0f s elapsed.",
+                audio_path.name,
+                elapsed,
+            )
+
+    thread = threading.Thread(target=_beat, daemon=True)
+    thread.start()
+    try:
+        yield
+    finally:
+        stop.set()
+        thread.join(timeout=5)
+
+
 def diarise(audio_path: str | Path) -> list[SpeakerSegment]:
     """
     Run speaker diarisation on *audio_path*.
@@ -376,7 +416,8 @@ def diarise(audio_path: str | Path) -> list[SpeakerSegment]:
         )
 
     logger.info("Running diarisation on: %s", audio_path.name)
-    diarization = pipeline(str(audio_path))
+    with _diarisation_heartbeat(audio_path):
+        diarization = pipeline(str(audio_path))
 
     # pyannote.audio 4.x's default (non-legacy) pipeline returns a
     # DiarizeOutput wrapper (speaker_diarization / exclusive_speaker_

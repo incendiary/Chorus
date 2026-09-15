@@ -440,6 +440,16 @@ release blockers and are fixed; the rest are deferred below.
   Levenshtein precisely to avoid it). Undetected because images publish only on a `.0.0`
   tag and the last was v4.0.0, so tagging v5.0.0 would have fired a GHCR publish that
   failed in public. Caught by building locally before tagging.
+- [x] **RD-15 — Heartbeat logging during diarisation** (v5.0.0) — `diarise()` gave zero
+  output between "Running diarisation on: X" and "Diarisation complete", which on real
+  casework audio has meant 2-3 hours of total silence, indistinguishable from a hang
+  without checking process CPU/RSS directly (which is what prompted this item, mid the
+  Coventry Case batch run). `_diarisation_heartbeat()` is a context manager wrapping the
+  `pipeline()` call: a daemon thread logs elapsed time every
+  `DIARISATION_HEARTBEAT_SECONDS` (60s default) and is always stopped, including when the
+  call raises. Deliberately not pyannote's own `ProgressHook`: it would tie the fix to
+  pyannote's internal API surface, which has already changed shape twice in as many
+  months (see the `DiarizeOutput` comment in the same file).
 
 ---
 

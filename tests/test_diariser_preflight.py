@@ -22,7 +22,10 @@ happens to match a name the implementation was written to expect.
 from __future__ import annotations
 
 import sys
+import threading
+import time
 import types
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -366,3 +369,64 @@ class TestStubRequiresOptIn:
 
         assert ready is False
         assert reason
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Diarisation heartbeat
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class TestDiarisationHeartbeat:
+    """The pipeline() call gives no output at all until it finishes or raises.
+
+    On real casework audio that call has run silently for over two hours,
+    which is indistinguishable from a hang without inspecting the process
+    directly. _diarisation_heartbeat exists to log elapsed time periodically
+    for the duration of that call.
+    """
+
+    def test_heartbeat_logs_while_the_call_is_running(self, monkeypatch, caplog):
+        from diarisation import diariser
+
+        monkeypatch.setattr(diariser, "DIARISATION_HEARTBEAT_SECONDS", 0.05)
+
+        with caplog.at_level("INFO", logger="diarisation.diariser"):
+            with diariser._diarisation_heartbeat(Path("sample.wav")):
+                time.sleep(0.2)
+
+        heartbeats = [r for r in caplog.records if "still running" in r.message]
+        assert heartbeats, "no heartbeat was logged during the call"
+        assert "sample.wav" in heartbeats[0].message
+
+    def test_heartbeat_thread_stops_when_the_call_finishes(self, monkeypatch):
+        from diarisation import diariser
+
+        monkeypatch.setattr(diariser, "DIARISATION_HEARTBEAT_SECONDS", 0.05)
+
+        before = threading.active_count()
+        with diariser._diarisation_heartbeat(Path("sample.wav")):
+            time.sleep(0.1)
+            assert threading.active_count() == before + 1
+
+        # The context manager joins the thread before returning, so no
+        # extra thread should be left running by the time control reaches
+        # here.
+        assert threading.active_count() == before
+
+    def test_heartbeat_stops_even_when_the_call_raises(self, monkeypatch):
+        from diarisation import diariser
+
+        monkeypatch.setattr(diariser, "DIARISATION_HEARTBEAT_SECONDS", 0.05)
+
+        before = threading.active_count()
+
+        def _run_and_raise() -> None:
+            with diariser._diarisation_heartbeat(Path("sample.wav")):
+                time.sleep(0.1)
+                raise RuntimeError("pipeline blew up")
+
+        with pytest.raises(RuntimeError):
+            _run_and_raise()
+
+        time.sleep(0.1)
+        assert threading.active_count() == before
