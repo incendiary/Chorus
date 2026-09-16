@@ -713,6 +713,64 @@ review.
 
 ---
 
+---
+
+# Second pass — 16 September 2026
+
+The first pass (above) deliberately excluded `ui/`, `audio_processor/`, `export_engine/`,
+`reconstruction/`, and `benchmarks/`. This pass covers them, and re-verifies the release
+mechanics now that `VERSION` reads 5.0.0. Items RD-1 to RD-4, RD-13, and RD-15 shipped
+between the two passes; RD-5 to RD-12 and RD-14 remain open and were re-confirmed as
+still accurate.
+
+## Second-pass risk inventory
+
+| # | Category | Finding | Score | Location |
+|---|---|---|---|---|
+| 17 | Reliability | The Web UI loses `diarisation_error` on reload, re-opening the silent-failure mode RD-2 closed | **4** | `ui/run_worker.py:171`, `ui/pipeline_invocation.py:449-458` |
+| 18 | Reliability | `Dockerfile.gpu` pins `torch==2.2.0+cu121` while the project runs torch 2.12.0 and `numpy==2.4.6` | **4** | `Dockerfile.gpu:38-45` |
+| 19 | Reliability | A failed export is swallowed per format, and the batch still reports success | **4** | `export_engine/exporter.py:495-497`, `batch_processor/batch_runner.py` |
+| 20 | Reliability | Reconstruction silently returns votes unchanged when spaCy or Ollama is unavailable | **4** | `reconstruction/nlp.py:192-195`, `reconstruction/llm.py:58-59` |
+| 21 | Correctness | The `en_core_web_sm` fallback ships no vectors, so semantic scoring silently becomes 0.0 for every candidate | **3** | `reconstruction/nlp.py:57-88`, `:151` |
+| 22 | Correctness | spaCy tokens are indexed against vote positions, so contractions misalign part-of-speech lookups | **3** | `reconstruction/nlp.py:228-229` |
+| 23 | Reliability | The Web UI performs no input validation: a zero-byte or renamed file is spooled and fails generically | **3** | `ui/upload.py:17-26`, `ui/pipeline_invocation.py:86-103` |
+| 24 | Reliability | `audio_processor` has unguarded numerical edges: empty-array reductions, division by `sr`, zero `frame_len` | **3** | `audio_processor/filters.py:75`, `:117`, `:162-163`; `pipeline.py:50` |
+| 25 | Reliability | `RunManager._results` is mutated by the worker thread and read by the Streamlit thread with no lock | **2** | `ui/run_manager.py:73-75`, `:95-101` |
+| 26 | Maintainability | Interrupted runs leave spool directories under `RUNS_DIR` permanently | **2** | `ui/run_worker.py:181-182`, `ui/run_manager.py:95-101` |
+| 27 | Maintainability | A benchmark run writes to git-tracked `benchmarks/RESULTS.md`, dirtying the tree | **2** | `benchmarks/run_benchmark.py:357` |
+| 28 | Maintainability | `run_one_file` is dead production code kept alive only by tests, carrying its own copy of the `run_pipeline` kwargs | **1** | `ui/pipeline_invocation.py:40-83` |
+
+### Second-pass null findings
+
+- **The September casework run is genuinely complete. CONFIRMED.** All 9 output
+  directories carry all 5 export formats plus `_diarised.md`, and the log contains zero
+  `Export failed` lines. Risk 19 is latent, not triggered.
+- **Bundle provenance is real. CONFIRMED.** `_read_version()`'s `"unknown"` fallback fires
+  only on `OSError`; the casework bundles record `chorus_version: 5.0.0`.
+- **The CPU image builds and runs. CONFIRMED.** Built with CI's exact
+  `--target runtime --build-arg VERSION=5.0.0`; the pipeline, consensus, and diarisation
+  modules all import inside the container, and the image label reads `version: 5.0.0`.
+- **The GPU base image tag still resolves. CONFIRMED.**
+  `nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu22.04` is present on Docker Hub, so risk 18 is
+  about the Python pins, not a missing base.
+- **The state file is written atomically. CONFIRMED.** `ui/run_state.py:146-163` uses
+  `mkstemp` plus `os.replace`, so a reader never sees a torn file.
+- **Interrupted runs are detected across restarts. CONFIRMED.**
+  `mark_interrupted_if_stale` compares a process boot id and rewrites a stale `running`
+  state to `interrupted`.
+
+## Release mechanics
+
+`release.yml`'s `github-release` job declares `needs: [test, docker-publish]` and requires
+`docker-publish` to be `success` or `skipped`. A `.0.0` tag makes that job *run*, so a GPU
+build failure means **no GitHub release is created at all** and the tag stands alone. That
+is why risk 18 is release-blocking rather than cosmetic.
+
+The release body comes from `gh release create --generate-notes`, so notes are assembled
+from merged PR titles. That is safe with respect to §2 (it cannot invent an accuracy
+claim), but it also will not carry the calibrated-uncertainty framing, so a hand-written
+body is worth considering.
+
 ## What I deliberately did not review, and why
 
 - **The WER claim and the benchmark.** No new benchmark was run and no long-form ground
@@ -728,5 +786,11 @@ review.
   failure. Given this project's history of defects that survive both the test suite and
   the benchmark, that is a real limitation of this review.
 - **`reconstruction/`, `audio_processor/`, and `export_engine/` internals.** Read for the
-  architecture map only; no adversarial pass. They have no production-incident history.
-- **The Streamlit UI as a user.** The dashboard was not exercised in a browser.
+  architecture map only in the first pass; the second pass covers them.
+- **The Streamlit UI as a user.** The dashboard was not exercised in a browser in either
+  pass. Every UI finding is a code-read of the executing path, not an observed failure.
+  Given that this project's two worst defects were both found by running the software
+  rather than reading it, that remains the largest gap in this review.
+- **The GPU image at runtime.** No CUDA host is available here, so even once the image
+  builds, that it genuinely provides GPU acceleration is unverified. Risk 18's specific
+  danger is an image that builds cleanly while silently carrying a CPU-only torch.
