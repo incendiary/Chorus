@@ -554,3 +554,64 @@ class TestRenderFileResults:
 
         ids_labels = _download_button_ids_and_labels(at)
         assert any(el_id.endswith("-dl_diar_sample") for el_id, _ in ids_labels)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# D. Disk rehydration after a server restart
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class TestRehydrateResultsFromDisk:
+    """A run's results are rebuilt from disk when the in-memory registry is gone.
+
+    ``pipeline_runner`` reports a failed diarisation through
+    ``diarisation_error``, and ``ui/results.py`` renders it, but only from the
+    live results dict. The rehydrated dict has to carry the same key or the
+    warning silently disappears on the first page reload, leaving a transcript
+    with no speaker labels and no explanation.
+    """
+
+    def _file_state(self, consensus_path: Path, **extra) -> dict:
+        state = {
+            "name": "sample.m4a",
+            "status": "done",
+            "elapsed": 12.5,
+            "output_paths": {"consensus_path": str(consensus_path)},
+        }
+        state.update(extra)
+        return state
+
+    def _patch_transcripts(self, monkeypatch):
+        monkeypatch.setattr(
+            "ui.pipeline_invocation.load_transcripts_from_disk",
+            lambda stem, **kwargs: {"original": {"text": "hello world"}},
+        )
+
+    def test_diarisation_error_survives_rehydration(self, tmp_path, monkeypatch):
+        from ui.pipeline_invocation import _rehydrate_results_from_disk
+
+        self._patch_transcripts(monkeypatch)
+        consensus = tmp_path / "sample_consensus.md"
+        consensus.write_text("# consensus", encoding="utf-8")
+
+        results = _rehydrate_results_from_disk(
+            "sample",
+            self._file_state(
+                consensus, diarisation_error="torchcodec failed to decode"
+            ),
+        )
+
+        assert results is not None
+        assert results.get("diarisation_error") == "torchcodec failed to decode"
+
+    def test_absent_diarisation_error_rehydrates_as_none(self, tmp_path, monkeypatch):
+        from ui.pipeline_invocation import _rehydrate_results_from_disk
+
+        self._patch_transcripts(monkeypatch)
+        consensus = tmp_path / "sample_consensus.md"
+        consensus.write_text("# consensus", encoding="utf-8")
+
+        results = _rehydrate_results_from_disk("sample", self._file_state(consensus))
+
+        assert results is not None
+        assert results.get("diarisation_error") is None

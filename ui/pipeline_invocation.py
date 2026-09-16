@@ -455,4 +455,7 @@ def _rehydrate_results_from_disk(stem: str, file_state: dict) -> dict | None:
         "diarised_path": _opt_path("diarised_path"),
         "speaker_labels": [],
         "elapsed_seconds": file_state.get("elapsed", 0),
+        # Without this, a diarisation failure vanishes on the first reload and
+        # the run reads as a clean success with no speaker labels.
+        "diarisation_error": file_state.get("diarisation_error"),
     }
