@@ -588,7 +588,7 @@ review.
 
 ### Release-blocking
 
-- [ ] **RD-16 — The Web UI loses `diarisation_error` after a reload** — `pipeline_runner`
+- [x] **RD-16 — The Web UI loses `diarisation_error` after a reload** (v5.0.0) — `pipeline_runner`
   returns `diarisation_error`, and `ui/results.py:459` renders it, but only from the live
   in-memory results dict. `ui/run_worker.py:171` writes the value into the run state file
   and **nothing ever reads it back**, and `_rehydrate_results_from_disk`
@@ -597,10 +597,10 @@ review.
   with no speaker labels and no explanation. This re-opens the silent-failure mode RD-2
   was written to close; the batch CLI handles it correctly and only the UI path is
   affected. Read `diarisation_error` back from the state file and include it in the
-  rehydrated dict. Success criteria: a test that writes a state file carrying a
-  `diarisation_error`, rehydrates, and asserts the warning is rendered — demonstrated
-  failing first. Files: `ui/pipeline_invocation.py`, `ui/run_worker.py`,
-  `tests/test_ui_run_loop.py`. (Effort: S)
+  rehydrated dict. Fixed in #258: `_rehydrate_results_from_disk` now carries the key
+  through, covered by `TestRehydrateResultsFromDisk`, which was demonstrated failing on
+  the real assertion first. That class is also the first module-level coverage the
+  rehydration path has had.
 
 ### Silent-degradation class
 
