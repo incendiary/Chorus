@@ -579,4 +579,132 @@ is written to be executable without reading the review.
 
 ---
 
+## Planned — from the 16 September 2026 holistic review
+
+Second review pass, covering `ui/`, `audio_processor/`, `export_engine/`, `reconstruction/`,
+and `benchmarks/`, none of which had been adversarially reviewed before. Full context in
+[REVIEW-RD.md](REVIEW-RD.md). Each item is written to be executable without reading the
+review.
+
+### Release-blocking
+
+- [x] **RD-16 — The Web UI loses `diarisation_error` after a reload** (v5.0.0) — `pipeline_runner`
+  returns `diarisation_error`, and `ui/results.py:459` renders it, but only from the live
+  in-memory results dict. `ui/run_worker.py:171` writes the value into the run state file
+  and **nothing ever reads it back**, and `_rehydrate_results_from_disk`
+  (`ui/pipeline_invocation.py:449-458`) rebuilds the results dict without that key. So
+  after any page reload or Streamlit restart, a failed diarisation renders as a transcript
+  with no speaker labels and no explanation. This re-opens the silent-failure mode RD-2
+  was written to close; the batch CLI handles it correctly and only the UI path is
+  affected. Read `diarisation_error` back from the state file and include it in the
+  rehydrated dict. Fixed in #258: `_rehydrate_results_from_disk` now carries the key
+  through, covered by `TestRehydrateResultsFromDisk`, which was demonstrated failing on
+  the real assertion first. That class is also the first module-level coverage the
+  rehydration path has had.
+
+### Silent-degradation class
+
+These share a shape with the diarisation failures already fixed: a real failure produces a
+plausible-looking result and no signal to the caller.
+
+- [ ] **RD-18 — A failed export still reports success** — `export_engine/exporter.py:495-497`
+  catches every exception per format, logs, and sets `results[fmt] = None`.
+  `batch_processor/batch_runner.py` then sets `result.success = True` regardless, so a
+  WeasyPrint crash or a full disk appears in the batch report as `✅ OK` with the format
+  simply absent. Verified not to have fired on the September casework run (all 9 files
+  carry all 5 formats), so this is latent rather than active. Record per-format failures
+  on the result and surface them in the batch report and the UI the way
+  `diarisation_error` already is. Files: `export_engine/exporter.py`,
+  `batch_processor/batch_runner.py`, `ui/results.py`. (Effort: M)
+- [ ] **RD-19 — Reconstruction silently no-ops when its backend is missing** — with
+  `enable_nlp=True` and spaCy absent, `reconstruction/nlp.py:192-195` logs a warning and
+  returns the vote list unchanged; `consensus_merger/merger.py:72` just reassigns it. The
+  observable result is identical to "reconstruction ran and found nothing to fix". The
+  same holds for Ollama being unreachable (`reconstruction/llm.py:58-59`). Both modules
+  already have `probe_spacy_model()` and `probe_model()` that return proper reasons, but
+  neither is consulted on the `reconstruct` path. Surface the unavailability to the caller
+  so a run can report that reconstruction was requested but did not happen. Files:
+  `reconstruction/nlp.py`, `reconstruction/llm.py`, `reconstruction/__init__.py`,
+  `consensus_merger/merger.py`. (Effort: M)
+- [ ] **RD-20 — The spaCy `sm` fallback silently disables semantic scoring** —
+  `reconstruction/nlp.py:57-88` degrades `en_core_web_md` → `en_core_web_sm` → `None` with
+  only a log line. `en_core_web_sm` ships no word vectors, so `_semantic_similarity`
+  (`nlp.py:151`) returns 0.0 for every candidate and scoring silently reduces to
+  part-of-speech plus Levenshtein. Detect the missing vectors explicitly and either refuse
+  the fallback or record that scoring is degraded for the run. Files:
+  `reconstruction/nlp.py`. (Effort: S)
+
+### Correctness
+
+- [ ] **RD-21 — spaCy tokens are assumed to align 1:1 with vote indices** —
+  `reconstruction/nlp.py:228-229` rebuilds text with `" ".join(words)` and then indexes
+  spaCy's tokenisation against the original vote positions. spaCy splits contractions and
+  punctuation into separate tokens, so `required_pos` can be read off the wrong token
+  whenever a transcript contains `don't`, `it's`, or trailing punctuation. This is a
+  silent wrong-answer bug, not a crash. Align by token offset rather than index, and add a
+  test using a transcript containing contractions. Files: `reconstruction/nlp.py`,
+  `tests/` (new or existing reconstruction tests). (Effort: M)
+- [ ] **RD-22 — The Web UI validates no input** — `ui/upload.py:17-26` sets `type=` on the
+  uploader, which is a client-side filter only, and `spool_upload`
+  (`ui/pipeline_invocation.py:86-103`) writes `uf.read()` with no size or emptiness check.
+  A zero-byte file, or a non-audio file renamed to `.wav`, is spooled and fails later as a
+  generic per-file error. `CLAUDE.md`'s own testing standard requires the UI to handle
+  empty uploads. Add an explicit guard with a clear message. Files: `ui/upload.py`,
+  `ui/pipeline_invocation.py`, `tests/test_ui_app.py`. (Effort: S)
+- [ ] **RD-23 — `audio_processor` has unguarded numerical edges** — `filters.py:117` and
+  `:171-174` call `np.max`/`np.mean`/`np.median` on arrays that can be empty
+  (`ValueError`); `filters.py:75` divides by `nyquist = sr / 2.0`; `filters.py:162-163`
+  computes `len(audio) // frame_len` where a small sample rate makes `frame_len` zero; and
+  `pipeline.py:50` does `1 << (8 * segment.sample_width - 1)`, which raises on a
+  zero-width sample. Add guards that raise a clear `ValueError` naming the offending
+  input. Files: `audio_processor/filters.py`, `audio_processor/pipeline.py`,
+  `tests/test_audio_processor.py`. (Effort: S)
+
+### Maintainability
+
+- [ ] **RD-17 — `Dockerfile.gpu` installs a torch it immediately discards** — **not
+  release-blocking; verified empirically.** `Dockerfile.gpu:38-41` installs
+  `torch==2.2.0+cu121` and `torchaudio==2.2.0+cu121` from the CUDA index, then `:45`
+  installs `requirements.txt`, whose `pyannote-audio==4.0.7` and `torchcodec==0.16.0`
+  require a far newer torch. A local `--platform linux/amd64` build confirms the pinned
+  wheels are downloaded and then thrown away (`Successfully uninstalled
+  torch-2.2.0+cu121`), leaving `torch 2.14.0+cu130`. The image is genuinely CUDA-capable
+  (`torch.version.cuda == 13.0`, `cudnn 92400`, `is_built() == True`), so the feared
+  silent CPU-only outcome does not occur and the release is not at risk. What remains is
+  still worth fixing: roughly 2.5 GB is downloaded for nothing on every build, and the
+  resulting CUDA 13.0 / cuDNN 9.24 runtime sits on a `nvidia/cuda:12.1.1-cudnn8` base, so
+  the file header's "CUDA version: 12.1 | cuDNN: 8" is wrong and the real host driver
+  requirement is higher than documented. Drop the explicit torch install and let
+  `requirements.txt` govern, as the CPU image already does; correct the header and the
+  stale comment at `:43` naming `pyannote-audio==4.0.4`; and re-check the GPU guidance in
+  `docs/DOCKER.md` against a CUDA 13 runtime. Success criteria: the image still reports a
+  CUDA build, and the build no longer downloads a torch it discards. Files:
+  `Dockerfile.gpu`, `docs/DOCKER.md`. (Effort: S)
+- [ ] **RD-24 — UI run results are shared across threads without a lock** —
+  `RunManager._results` is created and mutated by the worker thread
+  (`ui/run_worker.py:100`, `:163`) and read from the Streamlit main thread via
+  `get_results` and `clear_finished` (`ui/run_manager.py:73-75`, `:95-101`) with no
+  locking; `is_running()` also reads `_active_thread` outside the class lock. Guard these
+  with the existing `_process_lock`. Also remove `self._thread` (`run_manager.py:34,64`),
+  which is assigned but never read. Files: `ui/run_manager.py`. (Effort: S)
+- [ ] **RD-25 — Interrupted runs leave spool files behind** — upload spool files are
+  unlinked only in the worker's `finally` (`ui/run_worker.py:181-182`), so a Streamlit
+  restart mid-run leaves `RUNS_DIR/<run_id>/` populated permanently. `clear_finished`
+  removes only `active_run.json`. Sweep stale run directories alongside the existing
+  `mark_interrupted_if_stale` check. Files: `ui/run_manager.py`. (Effort: S)
+- [ ] **RD-26 — A benchmark run dirties the working tree** —
+  `benchmarks/run_benchmark.py:357` defaults its output to `benchmarks/RESULTS.md`, which
+  is git-tracked, so running the benchmark leaves uncommitted changes. Write to a
+  gitignored path by default and require an explicit flag to update the tracked file.
+  Files: `benchmarks/run_benchmark.py`. (Effort: XS)
+- [ ] **RD-27 — `run_one_file` is dead production code kept alive by tests** —
+  `ui/pipeline_invocation.py:40-83` has no production caller; it is referenced only by
+  `tests/test_run_status_panel.py:170` and `tests/test_ui_run_loop.py`. It carries its own
+  copy of the `run_pipeline` keyword-argument list, which is the most likely thing to
+  drift out of step with the real call site unnoticed. Remove it and update the tests to
+  exercise the real path. Files: `ui/pipeline_invocation.py`, `tests/test_run_status_panel.py`,
+  `tests/test_ui_run_loop.py`. (Effort: S)
+
+---
+
 *Last updated: 7 September 2026*
