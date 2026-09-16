@@ -728,7 +728,7 @@ still accurate.
 | # | Category | Finding | Score | Location |
 |---|---|---|---|---|
 | 17 | Reliability | The Web UI loses `diarisation_error` on reload, re-opening the silent-failure mode RD-2 closed | **4** | `ui/run_worker.py:171`, `ui/pipeline_invocation.py:449-458` |
-| 18 | Reliability | `Dockerfile.gpu` pins `torch==2.2.0+cu121` while the project runs torch 2.12.0 and `numpy==2.4.6` | **4** | `Dockerfile.gpu:38-45` |
+| 18 | Maintainability | `Dockerfile.gpu` downloads `torch==2.2.0+cu121` and discards it moments later; the surviving CUDA 13 runtime contradicts the CUDA 12.1 base and the documented driver requirement | **2** | `Dockerfile.gpu:38-45` |
 | 19 | Reliability | A failed export is swallowed per format, and the batch still reports success | **4** | `export_engine/exporter.py:495-497`, `batch_processor/batch_runner.py` |
 | 20 | Reliability | Reconstruction silently returns votes unchanged when spaCy or Ollama is unavailable | **4** | `reconstruction/nlp.py:192-195`, `reconstruction/llm.py:58-59` |
 | 21 | Correctness | The `en_core_web_sm` fallback ships no vectors, so semantic scoring silently becomes 0.0 for every candidate | **3** | `reconstruction/nlp.py:57-88`, `:151` |
@@ -750,9 +750,13 @@ still accurate.
 - **The CPU image builds and runs. CONFIRMED.** Built with CI's exact
   `--target runtime --build-arg VERSION=5.0.0`; the pipeline, consensus, and diarisation
   modules all import inside the container, and the image label reads `version: 5.0.0`.
-- **The GPU base image tag still resolves. CONFIRMED.**
-  `nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu22.04` is present on Docker Hub, so risk 18 is
-  about the Python pins, not a missing base.
+- **The GPU image builds and is genuinely CUDA-capable. CONFIRMED.** Built locally with
+  `--platform linux/amd64` against CI's exact target. Inside the image,
+  `torch.__version__` is `2.14.0+cu130`, `torch.version.cuda` is `13.0`, cuDNN is
+  `92400`, and `torch.backends.cuda.is_built()` is `True`. The feared outcome — a GPU
+  image silently carrying a CPU-only torch — **does not occur**, so the release is not at
+  risk from this path. `nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu22.04` also still resolves
+  on Docker Hub. This downgraded risk 18 from a release blocker to a maintainability item.
 - **The state file is written atomically. CONFIRMED.** `ui/run_state.py:146-163` uses
   `mkstemp` plus `os.replace`, so a reader never sees a torn file.
 - **Interrupted runs are detected across restarts. CONFIRMED.**
@@ -762,9 +766,11 @@ still accurate.
 ## Release mechanics
 
 `release.yml`'s `github-release` job declares `needs: [test, docker-publish]` and requires
-`docker-publish` to be `success` or `skipped`. A `.0.0` tag makes that job *run*, so a GPU
-build failure means **no GitHub release is created at all** and the tag stands alone. That
-is why risk 18 is release-blocking rather than cosmetic.
+`docker-publish` to be `success` or `skipped`. A `.0.0` tag makes that job *run*, so a
+Docker build failure means **no GitHub release is created at all** and the tag stands
+alone. Both images were therefore built locally before tagging, and both succeed: risk 18
+turned out to be a wasted download rather than a broken image, and the only genuine
+release blocker from this pass is risk 17.
 
 The release body comes from `gh release create --generate-notes`, so notes are assembled
 from merged PR titles. That is safe with respect to §2 (it cannot invent an accuracy

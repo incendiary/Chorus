@@ -601,19 +601,6 @@ review.
   `diarisation_error`, rehydrates, and asserts the warning is rendered — demonstrated
   failing first. Files: `ui/pipeline_invocation.py`, `ui/run_worker.py`,
   `tests/test_ui_run_loop.py`. (Effort: S)
-- [ ] **RD-17 — `Dockerfile.gpu` pins a torch version the project no longer uses** —
-  `Dockerfile.gpu:38-41` installs `torch==2.2.0+cu121` and `torchaudio==2.2.0+cu121` from
-  the CUDA index, then `:45` installs `requirements.txt` on top, which pins
-  `numpy==2.4.6`, `pyannote-audio==4.0.7`, and `torchcodec==0.16.0`. The project runs
-  torch 2.12.0; torch 2.2.0 predates numpy 2.x support entirely. The install will either
-  fail to resolve or silently replace the CUDA build with a generic CPU wheel, producing a
-  GPU image with no GPU acceleration. This matters for the release because
-  `release.yml`'s `github-release` job requires `docker-publish` to succeed, so a GPU
-  build failure means no GitHub release is created at all. Also fix the stale comment at
-  `:43` naming `pyannote-audio==4.0.4`. Success criteria: `docker build -f Dockerfile.gpu
-  --target runtime-gpu .` completes, and `python -c "import torch; print(torch.__version__)"`
-  inside the image reports a CUDA build matching the pinned set. Files: `Dockerfile.gpu`.
-  (Effort: S-M)
 
 ### Silent-degradation class
 
@@ -675,6 +662,24 @@ plausible-looking result and no signal to the caller.
 
 ### Maintainability
 
+- [ ] **RD-17 — `Dockerfile.gpu` installs a torch it immediately discards** — **not
+  release-blocking; verified empirically.** `Dockerfile.gpu:38-41` installs
+  `torch==2.2.0+cu121` and `torchaudio==2.2.0+cu121` from the CUDA index, then `:45`
+  installs `requirements.txt`, whose `pyannote-audio==4.0.7` and `torchcodec==0.16.0`
+  require a far newer torch. A local `--platform linux/amd64` build confirms the pinned
+  wheels are downloaded and then thrown away (`Successfully uninstalled
+  torch-2.2.0+cu121`), leaving `torch 2.14.0+cu130`. The image is genuinely CUDA-capable
+  (`torch.version.cuda == 13.0`, `cudnn 92400`, `is_built() == True`), so the feared
+  silent CPU-only outcome does not occur and the release is not at risk. What remains is
+  still worth fixing: roughly 2.5 GB is downloaded for nothing on every build, and the
+  resulting CUDA 13.0 / cuDNN 9.24 runtime sits on a `nvidia/cuda:12.1.1-cudnn8` base, so
+  the file header's "CUDA version: 12.1 | cuDNN: 8" is wrong and the real host driver
+  requirement is higher than documented. Drop the explicit torch install and let
+  `requirements.txt` govern, as the CPU image already does; correct the header and the
+  stale comment at `:43` naming `pyannote-audio==4.0.4`; and re-check the GPU guidance in
+  `docs/DOCKER.md` against a CUDA 13 runtime. Success criteria: the image still reports a
+  CUDA build, and the build no longer downloads a torch it discards. Files:
+  `Dockerfile.gpu`, `docs/DOCKER.md`. (Effort: S)
 - [ ] **RD-24 — UI run results are shared across threads without a lock** —
   `RunManager._results` is created and mutated by the worker thread
   (`ui/run_worker.py:100`, `:163`) and read from the Streamlit main thread via
