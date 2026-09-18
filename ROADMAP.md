@@ -2,6 +2,13 @@
 
 Tracked improvements identified during the June 2026 repository assessment.
 
+> **v5.0.0 is the final release.** There is no release after it, so an item left open here
+> is not scheduled work: it is a limitation the shipped software carries permanently.
+> Sections below still titled *Planned* predate that decision and are being resolved into
+> fix-or-accept decisions; see [FINAL_RELEASE_TRIAGE.md](docs/FINAL_RELEASE_TRIAGE.md) for
+> the decision and rationale on every open item. Once that work lands, the remaining
+> entries are relabelled as accepted limitations rather than plans.
+
 ---
 
 ## Architecture & Code Quality

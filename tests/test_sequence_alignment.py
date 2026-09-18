@@ -354,3 +354,63 @@ class TestMultiAlignmentColumnIntegrity:
             f"only {len(high)}/{len(agreed)} agreed words reached HIGH: "
             f"{ {w: tiers[w] for w in agreed} }"
         )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Empty variants and the confidence denominator
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class TestEmptyVariantDenominator:
+    """A variant that transcribed nothing must not dilute the vote.
+
+    ``n_transcripts`` is the denominator for every column's confidence. A
+    variant that produced no text has no opinion to contribute, so counting it
+    as a voter penalises the variants that did produce output: unanimity among
+    three of four drops to 0.75, landing exactly on the default HIGH boundary
+    and falling below any raised threshold.
+    """
+
+    TEXT = "the quick brown fox jumps over the lazy dog"
+
+    def test_empty_variant_does_not_reduce_unanimous_confidence(self):
+        without_empty = align_transcripts_sequence(
+            {"a": self.TEXT, "b": self.TEXT, "c": self.TEXT}
+        )
+        with_empty = align_transcripts_sequence(
+            {"a": self.TEXT, "b": self.TEXT, "c": self.TEXT, "d": ""}
+        )
+
+        assert [v.confidence for v in with_empty] == [
+            v.confidence for v in without_empty
+        ]
+        assert all(v.confidence == 1.0 for v in with_empty)
+        assert all(v.total == 3 for v in with_empty)
+
+    def test_empty_variant_does_not_downgrade_tiers_at_a_raised_threshold(self):
+        """At the default 0.75 the dilution lands exactly on the boundary, so
+        the tier survives by luck. A raised threshold, which the Web UI exposes
+        as a slider, makes the same dilution flip every word to MEDIUM."""
+        with_empty = align_transcripts_sequence(
+            {"a": self.TEXT, "b": self.TEXT, "c": self.TEXT, "d": ""},
+            consensus_threshold=0.8,
+        )
+
+        assert all(v.tier == "HIGH" for v in with_empty), (
+            "unanimous agreement was downgraded because a fourth variant "
+            "produced no output"
+        )
+
+    def test_a_dissenting_variant_still_counts(self):
+        """Only absent variants are excluded. A variant that produced
+        different words is a genuine dissenting voice and must still vote."""
+        result = align_transcripts_sequence(
+            {
+                "a": self.TEXT,
+                "b": self.TEXT,
+                "c": self.TEXT,
+                "d": "completely different words entirely",
+            }
+        )
+
+        assert all(v.total == 4 for v in result)

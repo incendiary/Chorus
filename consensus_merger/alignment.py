@@ -237,6 +237,13 @@ def _align_positional(
         return []
 
     token_lists = {key: _tokenise(text) for key, text in transcripts.items()}
+
+    # Drop variants that transcribed nothing before counting voters, so an
+    # absent variant cannot dilute the confidence of the variants that did
+    # produce output. Matches the sequence strategy.
+    token_lists = {key: tl for key, tl in token_lists.items() if tl}
+    if not token_lists:
+        return []
     n_transcripts = len(token_lists)
 
     # Pad all token lists to the same length

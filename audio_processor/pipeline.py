@@ -40,10 +40,21 @@ def _decode_with_ffmpeg(input_path: Path) -> tuple[np.ndarray, int]:
     importantly MP4/AAC (``.m4a``, the Apple Voice Memos format) — using the
     ffmpeg binary that is already a documented installation prerequisite.
     Returns a mono float32 signal and its native sample rate.
+
+    Raises
+    ------
+    ValueError
+        If the audio segment has zero or negative sample width.
     """
     from pydub import AudioSegment
 
     segment = AudioSegment.from_file(str(input_path))
+    if segment.sample_width <= 0:
+        raise ValueError(
+            f"audio file has invalid sample_width {segment.sample_width}; "
+            "the file may be corrupt or in an unsupported format"
+        )
+
     samples = np.array(segment.get_array_of_samples(), dtype=np.float32)
     if segment.channels > 1:
         samples = samples.reshape(-1, segment.channels).mean(axis=1)
