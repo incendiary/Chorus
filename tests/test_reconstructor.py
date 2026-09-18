@@ -382,3 +382,61 @@ class TestProbeSpacyModel:
 
         assert ok is True
         assert reason == ""
+
+
+class TestSpacyTokenAlignment:
+    """spaCy tokens must line up 1:1 with vote positions.
+
+    The reconstructor reads an expected part-of-speech for a LOW token by
+    indexing spaCy's tokenisation with the vote's own index. spaCy splits
+    contractions, so ``don't`` becomes ``do`` plus ``n't`` and every token
+    after it shifts by one. The part-of-speech filter then rejects correct
+    candidates and accepts wrong ones, silently, for the whole remainder of
+    the transcript.
+    """
+
+    WORDS = ["i", "don't", "know", "the", "answer", "here"]
+
+    def _nlp_or_skip(self):
+        from reconstruction.nlp import _get_nlp
+
+        nlp = _get_nlp()
+        if nlp is None:
+            pytest.skip("spaCy model unavailable in this environment")
+        return nlp
+
+    def test_contraction_does_not_shift_token_positions(self):
+        from reconstruction.nlp import _build_aligned_doc
+
+        nlp = self._nlp_or_skip()
+        doc = _build_aligned_doc(nlp, self.WORDS)
+
+        assert [token.text for token in doc] == self.WORDS
+
+    def test_part_of_speech_matches_the_word_at_each_index(self):
+        """The real damage: a shifted index reads another word's tag."""
+        from reconstruction.nlp import _build_aligned_doc
+
+        nlp = self._nlp_or_skip()
+        doc = _build_aligned_doc(nlp, self.WORDS)
+        tags = {token.text: token.pos_ for token in doc}
+
+        assert tags["the"] == "DET"
+        assert tags["answer"] == "NOUN"
+
+    def test_alignment_holds_without_contractions(self):
+        from reconstruction.nlp import _build_aligned_doc
+
+        nlp = self._nlp_or_skip()
+        plain = ["the", "quick", "brown", "fox"]
+        doc = _build_aligned_doc(nlp, plain)
+
+        assert [token.text for token in doc] == plain
+
+    def test_naive_join_is_what_misaligns(self):
+        """Pins the defect itself, so the fix cannot silently regress."""
+        nlp = self._nlp_or_skip()
+        naive = [token.text for token in nlp(" ".join(self.WORDS))]
+
+        assert naive != self.WORDS
+        assert len(naive) > len(self.WORDS)
