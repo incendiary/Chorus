@@ -5,11 +5,32 @@ from __future__ import annotations
 import logging
 
 from consensus_merger.alignment import WordVote
-from reconstruction.ollama_client import suggest_token
+from reconstruction.ollama_client import probe_model, suggest_token
 
 logger = logging.getLogger(__name__)
 
 CONTEXT_WINDOW = 4
+
+
+def get_reconstruction_status(model: str | None = None) -> dict[str, str]:
+    """Check the status of LLM reconstruction readiness.
+
+    Parameters
+    ----------
+    model : str, optional
+        Ollama model name to probe. If None, uses the default from config.
+
+    Returns
+    -------
+    dict[str, str]
+        Status dictionary with keys:
+          - "status": one of "complete" or "unavailable".
+          - "reason": human-readable explanation (empty string when complete).
+    """
+    ok, reason = probe_model(model)
+    if not ok:
+        return {"status": "unavailable", "reason": reason}
+    return {"status": "complete", "reason": ""}
 
 
 def reconstruct_low_tokens_llm(
