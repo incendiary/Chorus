@@ -276,12 +276,19 @@ def align_transcripts_sequence(
         return []
 
     token_lists = {key: _tokenise(text) for key, text in transcripts.items()}
-    n_transcripts = len(token_lists)
 
     # Filter out empty token lists
     token_lists = {k: v for k, v in token_lists.items() if v}
     if not token_lists:
         return []
+
+    # Count voters after the filter, not before. A variant that transcribed
+    # nothing has no opinion to contribute, so counting it in the denominator
+    # penalises the variants that did: unanimity among three of four scored
+    # 0.75, landing exactly on the default HIGH boundary and dropping below any
+    # raised threshold. A variant that produced *different* words is a genuine
+    # dissenting voice and is still counted.
+    n_transcripts = len(token_lists)
 
     # Build multi-alignment
     columns = _build_multi_alignment(token_lists, similarity_threshold)

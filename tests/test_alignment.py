@@ -290,3 +290,26 @@ class TestDegenerateVariantExclusion:
         )
 
         assert "um" not in [vote.word for vote in result]
+
+
+class TestPositionalEmptyVariantDenominator:
+    """The positional strategy must exclude absent variants too.
+
+    Both strategies are reachable: the Web UI exposes an alignment selector,
+    so fixing only the sequence path would leave the same dilution live for
+    anyone who switches.
+    """
+
+    TEXT = "the quick brown fox"
+
+    def test_empty_variant_does_not_dilute_confidence(self):
+        result = align_transcripts(
+            {"a": self.TEXT, "b": self.TEXT, "c": self.TEXT, "d": ""},
+            strategy="positional",
+        )
+
+        assert all(v.total == 3 for v in result)
+        assert all(v.confidence == 1.0 for v in result)
+
+    def test_all_empty_returns_no_votes(self):
+        assert align_transcripts({"a": "", "b": ""}, strategy="positional") == []
