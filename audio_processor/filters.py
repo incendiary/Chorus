@@ -70,7 +70,15 @@ def high_pass_focus(audio: np.ndarray, sr: int = TARGET_SAMPLE_RATE) -> np.ndarr
     -------
     np.ndarray
         High-pass filtered audio, float32.
+
+    Raises
+    ------
+    ValueError
+        If sample rate is zero or negative.
     """
+    if sr <= 0:
+        raise ValueError(f"sample rate must be positive, got {sr}")
+
     audio = _to_float32(audio)
     nyquist = sr / 2.0
     cutoff_norm = HIGH_PASS_CUTOFF_HZ / nyquist
@@ -110,7 +118,15 @@ def dynamic_range_norm(audio: np.ndarray, sr: int = TARGET_SAMPLE_RATE) -> np.nd
     -------
     np.ndarray
         Dynamically normalised audio, float32.
+
+    Raises
+    ------
+    ValueError
+        If audio array is empty.
     """
+    if len(audio) == 0:
+        raise ValueError("audio array is empty")
+
     audio = _to_float32(audio)
 
     # Stage 1: Peak normalisation
@@ -158,8 +174,19 @@ def _find_silence_window_vad(
     -------
     np.ndarray
         The audio segment identified as noise/silence.
+
+    Raises
+    ------
+    ValueError
+        If sample rate is so low that frame length becomes zero.
     """
     frame_len = int(sr * frame_ms / 1000)
+    if frame_len <= 0:
+        raise ValueError(
+            f"sample rate {sr} Hz is too low to create a valid frame "
+            f"(frame_len = {frame_len})"
+        )
+
     n_frames = len(audio) // frame_len
 
     if n_frames < 2:

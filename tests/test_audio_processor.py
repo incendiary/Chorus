@@ -381,3 +381,49 @@ class TestPipeline:
         assert sr == TARGET_SAMPLE_RATE
         assert audio.dtype == np.float32
         assert audio.ndim == 1
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Input validation guards
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class TestInputValidationGuards:
+    """Test that invalid inputs raise clear ValueError messages."""
+
+    def test_empty_audio_array_raises_value_error(self):
+        """Empty audio array should raise ValueError with helpful message."""
+        empty_audio = np.array([], dtype=np.float32)
+        with pytest.raises(ValueError, match="empty"):
+            dynamic_range_norm(empty_audio, SR)
+
+    def test_zero_sample_rate_raises_value_error(self):
+        """Zero sample rate should raise ValueError naming the sample rate."""
+        sine_audio = np.linspace(-0.5, 0.5, 100, dtype=np.float32)
+        with pytest.raises(ValueError, match="sample rate must be positive"):
+            high_pass_focus(sine_audio, 0)
+
+    def test_tiny_sample_rate_raises_value_error(self):
+        """Very small sample rate causing zero frame_len should raise ValueError."""
+        sine_audio = np.linspace(-0.5, 0.5, 100, dtype=np.float32)
+        with pytest.raises(ValueError, match="too low to create a valid frame"):
+            denoise_filter(sine_audio, 1)
+
+    def test_zero_sample_width_raises_value_error(self, tmp_path):
+        """Zero sample_width in pydub segment should raise ValueError."""
+        from unittest.mock import MagicMock, patch
+
+        from audio_processor.pipeline import _decode_with_ffmpeg
+
+        mock_segment = MagicMock()
+        mock_segment.channels = 1
+        mock_segment.sample_width = 0
+        mock_segment.get_array_of_samples.return_value = [100, 200, 300]
+        mock_segment.frame_rate = 16000
+
+        test_path = tmp_path / "test.m4a"
+        test_path.write_bytes(b"dummy")
+
+        with patch("pydub.AudioSegment.from_file", return_value=mock_segment):
+            with pytest.raises(ValueError, match="invalid sample_width 0"):
+                _decode_with_ffmpeg(test_path)
