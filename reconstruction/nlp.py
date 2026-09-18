@@ -122,6 +122,24 @@ def probe_spacy_model() -> tuple[bool, str]:
     return True, ""
 
 
+def _build_aligned_doc(nlp, words: list[str]):
+    """Parse *words* into a Doc whose tokens correspond 1:1 with *words*.
+
+    The reconstructor reads a token's expected part of speech by indexing the
+    parse with the vote's own position, so the two must not drift. Joining the
+    words into a string and re-parsing lets spaCy retokenise: it splits
+    ``don't`` into ``do`` and ``n't``, shifting every later token by one, after
+    which the part-of-speech filter reads another word's tag and silently
+    rejects correct candidates for the rest of the transcript.
+
+    Handing spaCy the word boundaries directly removes the drift by
+    construction rather than trying to correct for it afterwards.
+    """
+    from spacy.tokens import Doc
+
+    return nlp(Doc(nlp.vocab, words=list(words)))
+
+
 def _has_word_vectors(nlp) -> bool:
     """Check whether the spaCy model has word vectors loaded."""
     try:
@@ -244,12 +262,10 @@ def reconstruct_low_tokens(votes: list[WordVote]) -> list[WordVote]:
 
     logger.info("Reconstructing %d LOW-confidence token(s)…", len(low_indices))
 
-    # Build a plain-text sentence for spaCy analysis
-    # Replace LOW tokens with a placeholder for context parsing
     words = [v.word for v in votes]
-    doc = nlp(" ".join(words))
+    doc = _build_aligned_doc(nlp, words)
 
-    # Build a token → spaCy token map by index
+    # Index-for-index with *votes*, guaranteed by _build_aligned_doc.
     spacy_tokens = list(doc)
 
     updated = list(votes)
