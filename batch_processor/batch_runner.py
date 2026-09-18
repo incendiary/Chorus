@@ -35,6 +35,7 @@ import argparse
 import contextlib
 import logging
 import os
+import socket
 import sys
 import time
 from collections.abc import Callable
@@ -241,6 +242,44 @@ def _pid_is_alive(pid: int) -> bool:
     return True
 
 
+def _process_start_time(pid: int) -> float | None:
+    """Return *pid*'s start time, or None when it cannot be determined."""
+    try:
+        import psutil
+
+        return psutil.Process(pid).create_time()
+    except Exception:  # noqa: BLE001 - identity check must never fail a run
+        return None
+
+
+def _lock_identity() -> tuple[int, str, float]:
+    """Identify this process well enough to survive PID reuse."""
+    pid = os.getpid()
+    return pid, socket.gethostname(), _process_start_time(pid) or 0.0
+
+
+def _lock_owner_is_alive(pid: int, host: str, started: float) -> bool:
+    """Decide whether the process that wrote a lock is still running.
+
+    A PID on its own is not an identity. It is recycled, so a lock left by a
+    crashed run can name a number that now belongs to an unrelated live
+    process, which would block every later batch indefinitely. Recording the
+    host and the owner's start time makes the check specific: a lock written
+    on another machine (a shared network output directory) or by a process
+    that has since been replaced is correctly treated as stale.
+    """
+    if host != socket.gethostname():
+        # Written elsewhere. Cannot inspect it, so assume it is still live
+        # rather than trample another machine's run.
+        return True
+    if not _pid_is_alive(pid):
+        return False
+    current_start = _process_start_time(pid)
+    if current_start is None or not started:
+        return True
+    return abs(current_start - started) < 1.0
+
+
 def check_batch_lock(output_dir: Path | None) -> tuple[bool, str]:
     """Check whether another batch is already running against this output
     directory.
@@ -262,20 +301,21 @@ def check_batch_lock(output_dir: Path | None) -> tuple[bool, str]:
     lock_path = _lock_path(output_dir)
     if not lock_path.exists():
         return True, ""
-    try:
-        existing_pid = int(
-            lock_path.read_text(encoding="utf-8").strip().splitlines()[0]
+    existing = _read_lock(lock_path)
+    if existing is None:
+        return False, (
+            f"The batch lock at {lock_path} exists but could not be read, so it "
+            "is not safe to assume no other run is active. Confirm no other "
+            "batch is running against this output directory, then delete that "
+            "file, or use a different --output-dir."
         )
-    except (ValueError, IndexError, OSError):
-        # Unreadable or malformed — can't trust it as a real lock.
-        return True, ""
-    if _pid_is_alive(existing_pid):
+    if _lock_owner_is_alive(*existing):
         return False, (
             f"Another batch is already running against this output directory "
-            f"(PID {existing_pid}).\n\n"
+            f"(PID {existing[0]} on {existing[1] or 'this host'}).\n\n"
             "Two overlapping batches against the same output directory "
-            "previously collided — both processing the same file at the same "
-            "time — and deadlocked for over ten hours on real casework audio "
+            "previously collided, both processing the same file at the same "
+            "time, and deadlocked for over ten hours on real casework audio "
             "before being killed manually. Wait for the other run to finish, "
             "confirm it has actually stopped and remove "
             f"{lock_path} if it hasn't, or use a different --output-dir."
@@ -283,17 +323,81 @@ def check_batch_lock(output_dir: Path | None) -> tuple[bool, str]:
     return True, ""
 
 
-def acquire_batch_lock(output_dir: Path | None) -> Path:
-    """Write this process's PID as the lock for *output_dir*.
+def _read_lock(lock_path: Path) -> tuple[int, str, float] | None:
+    """Parse an existing lock file, or None when it cannot be understood."""
+    try:
+        lines = lock_path.read_text(encoding="utf-8").strip().splitlines()
+        pid = int(lines[0])
+        host = lines[1] if len(lines) > 1 else ""
+        started = float(lines[2]) if len(lines) > 2 else 0.0
+    except (ValueError, IndexError, OSError):
+        return None
+    return pid, host, started
 
-    Call only after ``check_batch_lock`` has confirmed it's safe — this
-    unconditionally overwrites whatever lock (live or stale) was there,
-    which is exactly how a stale lock left by a crashed run gets reclaimed.
+
+def acquire_batch_lock(output_dir: Path | None) -> tuple[Path | None, str]:
+    """Atomically claim the batch lock for *output_dir*.
+
+    Returns ``(lock_path, "")`` when the lock is ours, or ``(None, reason)``
+    when another run holds it.
+
+    Acquisition is a single ``O_CREAT | O_EXCL`` create, so two batches
+    starting at the same moment cannot both succeed: exactly one create wins
+    and the other raises. The previous scheme checked and then wrote as two
+    separate steps, with the write unconditionally overwriting whatever was
+    there, so both processes could see an empty directory and proceed. That
+    collision deadlocked a real casework run for over ten hours.
+
+    A lock that cannot be parsed is refused rather than ignored. Treating an
+    unreadable lock as safe meant a truncated file silently permitted the very
+    collision this exists to prevent; refusing is recoverable, because the
+    message names the file to delete.
     """
     lock_path = _lock_path(output_dir)
     lock_path.parent.mkdir(parents=True, exist_ok=True)
-    lock_path.write_text(str(os.getpid()), encoding="utf-8")
-    return lock_path
+    pid, host, started = _lock_identity()
+    payload = f"{pid}\n{host}\n{started}\n"
+
+    for attempt in range(2):
+        try:
+            handle = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
+        except FileExistsError:
+            existing = _read_lock(lock_path)
+            if existing is None:
+                return None, (
+                    f"The batch lock at {lock_path} exists but could not be read, "
+                    "so it is not safe to assume no other run is active.\n\n"
+                    "Confirm no other batch is running against this output "
+                    "directory, then delete that file, or use a different "
+                    "--output-dir."
+                )
+            if _lock_owner_is_alive(*existing):
+                return None, (
+                    f"Another batch is already running against this output "
+                    f"directory (PID {existing[0]} on {existing[1] or 'this host'}).\n\n"
+                    "Two overlapping batches against the same output directory "
+                    "previously collided, both processing the same file at the "
+                    "same time, and deadlocked for over ten hours on real "
+                    "casework audio before being killed manually. Wait for the "
+                    "other run to finish, confirm it has actually stopped and "
+                    f"remove {lock_path} if it hasn't, or use a different "
+                    "--output-dir."
+                )
+            if attempt == 0:
+                # Stale: the recorded owner is gone. Reclaim and retry once.
+                with contextlib.suppress(FileNotFoundError):
+                    lock_path.unlink()
+                continue
+            return None, (
+                f"Could not claim the batch lock at {lock_path}: it is being "
+                "reclaimed by another process. Retry in a moment."
+            )
+        else:
+            with os.fdopen(handle, "w", encoding="utf-8") as fh:
+                fh.write(payload)
+            return lock_path, ""
+
+    return None, f"Could not claim the batch lock at {lock_path}."
 
 
 def release_batch_lock(lock_path: Path) -> None:
@@ -882,10 +986,9 @@ def main(argv: list[str] | None = None) -> int:
     output_dir = settings["output directory"][0]
     consensus_models = settings["models"][0]
 
-    lock_ready, lock_reason = check_batch_lock(output_dir)
-    if not lock_ready:
+    lock_path, lock_reason = acquire_batch_lock(output_dir)
+    if lock_path is None:
         parser.error(lock_reason)
-    lock_path = acquire_batch_lock(output_dir)
 
     handler, log_path, previous_root_level = _attach_file_logging(output_dir)
     print(f"  log file               {log_path}")
