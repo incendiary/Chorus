@@ -18,6 +18,7 @@ test, following the same mocking style used in ``tests/test_integration.py``.
 from __future__ import annotations
 
 import os
+import socket
 import struct
 import wave
 from pathlib import Path
@@ -29,6 +30,7 @@ from batch_processor.batch_runner import (
     BatchResult,
     _build_parser,
     _display_settings,
+    _process_start_time,
     _resolve_cli_settings,
     _write_batch_report,
     acquire_batch_lock,
@@ -738,7 +740,11 @@ class TestBatchLock:
 
     def test_live_pid_blocks_a_second_run(self, tmp_path) -> None:
         lock_path = tmp_path / ".chorus-batch.lock"
-        lock_path.write_text(str(os.getpid()), encoding="utf-8")
+        lock_path.write_text(
+            f"{os.getpid()}\n{socket.gethostname()}\n"
+            f"{_process_start_time(os.getpid()) or 0.0}\n",
+            encoding="utf-8",
+        )
         ready, reason = check_batch_lock(tmp_path)
         assert ready is False
         assert str(os.getpid()) in reason
@@ -747,7 +753,9 @@ class TestBatchLock:
     def test_stale_pid_does_not_block(self, tmp_path) -> None:
         lock_path = tmp_path / ".chorus-batch.lock"
         # PIDs this large are never actually assigned by the OS.
-        lock_path.write_text("999999999", encoding="utf-8")
+        lock_path.write_text(
+            "999999999\n" + socket.gethostname() + "\n0.0\n", encoding="utf-8"
+        )
         ready, reason = check_batch_lock(tmp_path)
         assert ready is True
         assert reason == ""
@@ -757,13 +765,16 @@ class TestBatchLock:
         assert ready is True
         assert reason == ""
 
-    def test_acquire_writes_this_process_pid(self, tmp_path) -> None:
-        lock_path = acquire_batch_lock(tmp_path)
-        assert lock_path.read_text(encoding="utf-8").strip() == str(os.getpid())
+    def test_acquire_writes_this_process_identity(self, tmp_path) -> None:
+        lock_path, reason = acquire_batch_lock(tmp_path)
+        assert reason == ""
+        recorded = lock_path.read_text(encoding="utf-8").strip().splitlines()
+        assert recorded[0] == str(os.getpid())
+        assert recorded[1] == socket.gethostname()
         release_batch_lock(lock_path)
 
     def test_release_removes_the_lock_file(self, tmp_path) -> None:
-        lock_path = acquire_batch_lock(tmp_path)
+        lock_path, _ = acquire_batch_lock(tmp_path)
         assert lock_path.exists()
         release_batch_lock(lock_path)
         assert not lock_path.exists()
@@ -814,3 +825,87 @@ class TestBatchLock:
         ):
             main([str(audio), "--output-dir", str(out_dir)])
         assert not lock_path.exists()
+
+
+class TestBatchLockIsAtomic:
+    """Acquisition must be a single atomic step, and must fail closed.
+
+    The previous scheme called check_batch_lock() and then, as a separate
+    unsynchronised step, acquire_batch_lock(), which unconditionally
+    overwrote whatever was there. Two batches started close together could
+    both see no lock and both proceed. The collision this guards against
+    deadlocked a real casework run for over ten hours.
+    """
+
+    def test_second_acquisition_is_refused_while_the_first_is_held(self, tmp_path):
+        first, reason = acquire_batch_lock(tmp_path)
+
+        assert first is not None
+        assert reason == ""
+
+        second, second_reason = acquire_batch_lock(tmp_path)
+
+        assert second is None
+        assert "already running" in second_reason
+
+        release_batch_lock(first)
+
+    def test_a_released_lock_can_be_reacquired(self, tmp_path):
+        first, _ = acquire_batch_lock(tmp_path)
+        release_batch_lock(first)
+
+        second, reason = acquire_batch_lock(tmp_path)
+
+        assert second is not None
+        assert reason == ""
+        release_batch_lock(second)
+
+    def test_a_malformed_lock_refuses_rather_than_proceeding(self, tmp_path):
+        """Fail closed. Treating an unreadable lock as safe meant a corrupt
+        file silently permitted the very collision the lock exists to stop."""
+        lock_path = tmp_path / ".chorus-batch.lock"
+        lock_path.write_text("not-a-pid", encoding="utf-8")
+
+        acquired, reason = acquire_batch_lock(tmp_path)
+
+        assert acquired is None
+        assert "could not be read" in reason
+
+    def test_a_lock_from_a_dead_process_is_reclaimed(self, tmp_path, monkeypatch):
+        lock_path = tmp_path / ".chorus-batch.lock"
+        lock_path.write_text("999999\nsome-host\n1.0\n", encoding="utf-8")
+
+        monkeypatch.setattr(
+            "batch_processor.batch_runner._lock_owner_is_alive",
+            lambda pid, host, started: False,
+        )
+
+        acquired, reason = acquire_batch_lock(tmp_path)
+
+        assert acquired is not None
+        assert reason == ""
+        release_batch_lock(acquired)
+
+    def test_a_recycled_pid_on_this_host_is_detected_as_stale(self):
+        """A PID alone is not identity: the OS recycles them, so a lock left
+        by a crashed run can name a number now belonging to an unrelated live
+        process, blocking every later batch forever. The recorded start time
+        distinguishes the two."""
+        from batch_processor.batch_runner import _lock_owner_is_alive
+
+        this_host = socket.gethostname()
+
+        # Our own live PID with a start time that is not ours: a recycled number.
+        assert not _lock_owner_is_alive(os.getpid(), this_host, 1.0)
+
+        # Our own PID with our own start time: genuinely the owner.
+        assert _lock_owner_is_alive(
+            os.getpid(), this_host, _process_start_time(os.getpid()) or 0.0
+        )
+
+    def test_a_lock_from_another_host_is_left_alone(self):
+        """A shared network output directory must not have one machine
+        reclaim another's live lock."""
+        from batch_processor.batch_runner import _lock_owner_is_alive
+
+        assert _lock_owner_is_alive(os.getpid(), "a-different-host", 1.0)
