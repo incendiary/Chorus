@@ -145,3 +145,66 @@ class TestUnsupportedFormatMessage:
         upload.name = "fake.wav"
 
         assert validate_upload(upload) is None
+
+
+class TestValidateThenSpoolWritesTheRealBytes:
+    """Guards the composition, not just each half of it.
+
+    validate_upload and spool_upload were each defensible alone: one measured
+    a size, the other wrote a file. Together they were broken, because the
+    first consumed the stream the second then read, so every accepted upload
+    landed on disk as zero bytes. Testing either in isolation misses that
+    entirely, and a MagicMock hides it completely since its read() returns the
+    same value on every call.
+
+    This exercises the real sequence the Web UI performs, with a real
+    file-like object, and checks the bytes that actually reach disk.
+    """
+
+    def _upload(self, name: str, payload: bytes):
+        import io
+
+        stream = io.BytesIO(payload)
+        stream.name = name
+        return stream
+
+    def test_the_spooled_file_matches_the_upload_byte_for_byte(self, tmp_path):
+        from ui.pipeline_invocation import spool_upload
+
+        payload = b"RIFF" + bytes(range(256)) * 8
+        upload = self._upload("recording.wav", payload)
+
+        assert validate_upload(upload) is None
+        spooled, _ = spool_upload(upload, tmp_path)
+
+        assert spooled.read_bytes() == payload
+
+    def test_every_file_in_a_batch_is_spooled_intact(self, tmp_path):
+        """The original defect emptied every file, so one is not enough."""
+        from ui.pipeline_invocation import spool_upload
+
+        payloads = {
+            "one.wav": b"first payload" * 16,
+            "two.mp3": b"second payload" * 16,
+            "three.m4a": b"third payload" * 16,
+        }
+
+        for name, payload in payloads.items():
+            upload = self._upload(name, payload)
+            assert validate_upload(upload) is None
+            spooled, _ = spool_upload(upload, tmp_path)
+            assert spooled.read_bytes() == payload, f"{name} was spooled empty"
+
+    def test_a_rejected_file_is_never_spooled(self, tmp_path):
+        from ui.pipeline_invocation import spool_upload
+
+        upload = self._upload("empty.wav", b"")
+
+        assert validate_upload(upload) is not None
+        assert not list(tmp_path.iterdir())
+
+        # And the guard is meaningful: a valid file in the same directory does
+        # get written, so the assertion above is not passing by accident.
+        good = self._upload("good.wav", b"audio bytes")
+        spool_upload(good, tmp_path)
+        assert len(list(tmp_path.iterdir())) == 1
