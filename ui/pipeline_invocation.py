@@ -32,6 +32,7 @@ from ui.run_manager import RunManager, get_run_manager
 from ui.run_state import RUNS_DIR, FileEntry, RunJob
 from ui.run_status_panel import render_file_status_panel
 from ui.sidebar import SidebarConfig
+from ui.upload_validation import validate_upload
 from utils import sanitise_stem
 
 logger = logging.getLogger(__name__)
@@ -254,11 +255,30 @@ def _render_idle_state(
     run_id = uuid.uuid4().hex
     run_dir = RUNS_DIR / run_id
     files: list[FileEntry] = []
+    invalid_files: dict[str, str] = {}
+
     for uf in uploaded_files:
+        validation_error = validate_upload(uf)
+        if validation_error:
+            invalid_files[str(uf.name)] = validation_error
+            continue
+
         spool_path, stem = spool_upload(uf, run_dir)
         files.append(
             FileEntry(name=str(uf.name), stem=stem, spool_path=str(spool_path))
         )
+
+    # Report validation errors for rejected files
+    for _, error_msg in invalid_files.items():
+        st.error(error_msg, icon="❌")
+
+    if not files:
+        if invalid_files:
+            st.warning(
+                "All uploaded files were rejected. Please upload valid audio files and try again.",
+                icon="⚠️",
+            )
+        return
 
     job = RunJob(
         run_id=run_id,
