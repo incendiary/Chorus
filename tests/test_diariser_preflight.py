@@ -430,3 +430,73 @@ class TestDiarisationHeartbeat:
 
         time.sleep(0.1)
         assert threading.active_count() == before
+
+
+class TestPreflightRunsInference:
+    """The pre-flight has to exercise inference, not just the model load.
+
+    check_diarisation_ready() verified imports, the token, and
+    Pipeline.from_pretrained succeeding. It never called the pipeline on
+    audio, so it could not catch either of the two failures that actually
+    reached production: pyannote 4.x returning a DiarizeOutput wrapper the
+    parser could not read, and torchcodec failing to decode against the host
+    ffmpeg. Both passed the pre-flight and then failed hours into a real run.
+    """
+
+    def test_a_result_shape_it_cannot_parse_is_reported_not_raised(self, monkeypatch):
+        from diarisation import diariser
+
+        class _UnreadableResult:
+            """Neither an Annotation nor a DiarizeOutput."""
+
+        def _pipeline(_audio):
+            return _UnreadableResult()
+
+        monkeypatch.setattr(diariser, "_try_load_pipeline", lambda: (_pipeline, None))
+
+        ready, reason = diariser.check_diarisation_ready()
+
+        assert ready is False
+        assert "result" in reason
+
+    def test_a_decode_failure_is_reported_not_raised(self, monkeypatch):
+        from diarisation import diariser
+
+        def _pipeline(_audio):
+            raise RuntimeError("torchcodec is not available for this ffmpeg")
+
+        monkeypatch.setattr(diariser, "_try_load_pipeline", lambda: (_pipeline, None))
+
+        ready, reason = diariser.check_diarisation_ready()
+
+        assert ready is False
+        assert "torchcodec" in reason
+
+    def test_a_working_pipeline_still_reports_ready(self, monkeypatch):
+        from diarisation import diariser
+
+        class _Turn:
+            start = 0.0
+            end = 1.0
+
+        class _Annotation:
+            def itertracks(self, yield_label=False):
+                yield _Turn(), None, "SPEAKER_00"
+
+        monkeypatch.setattr(
+            diariser, "_try_load_pipeline", lambda: (lambda _audio: _Annotation(), None)
+        )
+
+        ready, reason = diariser.check_diarisation_ready()
+
+        assert ready is True
+        assert reason == ""
+
+    def test_the_probe_clip_is_generated_not_committed(self, tmp_path):
+        """No fixture audio in the repository: the clip is made at runtime."""
+        from diarisation.diariser import _write_probe_clip
+
+        path = _write_probe_clip(tmp_path)
+
+        assert path.exists()
+        assert path.stat().st_size > 0
