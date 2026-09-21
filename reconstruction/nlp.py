@@ -122,6 +122,49 @@ def probe_spacy_model() -> tuple[bool, str]:
     return True, ""
 
 
+def _has_word_vectors(nlp) -> bool:
+    """Check whether the spaCy model has word vectors loaded."""
+    try:
+        return nlp.vocab.vectors_length > 0
+    except (AttributeError, TypeError):
+        return False
+
+
+def get_reconstruction_status() -> dict[str, str]:
+    """Check the status of NLP reconstruction readiness.
+
+    Returns
+    -------
+    dict[str, str]
+        Status dictionary with keys:
+          - "status": one of "complete", "degraded", or "unavailable".
+          - "reason": human-readable explanation (empty string when complete).
+    """
+    ok, reason = probe_spacy_model()
+    if not ok:
+        return {"status": "unavailable", "reason": reason}
+
+    nlp = _get_nlp()
+    if nlp is None:
+        return {
+            "status": "unavailable",
+            "reason": "spaCy model could not be loaded.",
+        }
+
+    if not _has_word_vectors(nlp):
+        return {
+            "status": "degraded",
+            "reason": (
+                "spaCy model loaded but without word vectors. "
+                "Semantic similarity scoring is disabled. "
+                "Install en_core_web_md for full functionality: "
+                "python -m spacy download en_core_web_md"
+            ),
+        }
+
+    return {"status": "complete", "reason": ""}
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Scoring helpers
 # ─────────────────────────────────────────────────────────────────────────────

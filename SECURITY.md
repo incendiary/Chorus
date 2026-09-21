@@ -59,8 +59,17 @@ If you cannot use GitHub's private reporting for any reason, open a regular issu
   APIs, including `TransitionParser.train`, `AveragedPerceptron.save`, and
   `PerceptronTagger.save_to_json`, use built-in `open()` on caller-controlled paths
   instead of the `pathsec`-aware helpers, so they read and write outside the
-  configured allowed roots). No upstream fix exists: `3.10.3` is the latest release
-  and is the version the advisory names, with no patched version published. Chorus
+  configured allowed roots). **No upstream fix exists, and the advisory databases
+  disagree about that.** OSV records `PYSEC-2026-3740` as "fixed in 3.10.3", while
+  the copy `pip-audit` consults lists no patched version and keeps flagging
+  `3.10.3`. The tie was broken by reading the release rather than trusting either:
+  in `nltk` 3.10.3, `AveragedPerceptron.save` and `.load` still call the built-in
+  `open()` directly, `nltk/pathsec.py` is not imported by that module, and the
+  advisory's own remediation asks for exactly the opposite. OSV's fix version is
+  therefore wrong and the advisory stands. Re-read the source before accepting any
+  future claim that this is fixed, as issue
+  [#219](https://github.com/incendiary/Chorus/issues/219) already warns for
+  `lightning`: an inconsistent fix-version string is not evidence. Chorus
   does not depend on `nltk`. It is absent from `requirements.txt` and
   `pyproject.toml`'s runtime dependencies, and reaches an installed environment only
   through the `safety` development and CI tool, and through `torchmetrics`' opt-in
@@ -69,6 +78,37 @@ If you cannot use GitHub's private reporting for any reason, open a regular issu
   reachable from the application. Tracked in
   [#244](https://github.com/incendiary/Chorus/issues/244) so that a future dependency
   audit failure naming `nltk` is recognised as this accepted risk rather than a new one.
+
+- **`cuda-toolkit` — `CVE-2025-33228`** (command injection via unsanitised input).
+  Reported by the `safety` step in `security.yml`, which scans the whole installed
+  environment rather than the declared dependency set, so it appears only in CI.
+  No fixed version is published. Chorus does not depend on `cuda-toolkit`: it is
+  absent from `requirements.txt` and `pyproject.toml`, no Chorus code imports it or
+  invokes any CUDA toolkit executable, and it reaches the CI environment only as a
+  transitive of the CUDA-enabled PyTorch wheels. The vulnerable surface is the
+  toolkit's own command-line entry points, which Chorus never calls.
+
+`PYSEC-2026-3967` in `pytorch-lightning` was also found during this review. It is
+distinct from the `lightning` RCE above and genuinely fixed upstream in `2.6.6`, so it
+is **not** an accepted risk: `lightning` and `pytorch-lightning` are now pinned to
+`2.6.6` explicitly. Both had resolved transitively through `pyannote-audio` with no
+version constraint, so the installed version depended on when the environment happened
+to be built. Note that they are two separate distributions and `lightning` requires
+`pytorch-lightning` without a constraint, so pinning only one leaves the advisory live.
+
+### Why the dependency audit is expected to fail
+
+Two separate jobs scan dependencies, and they disagree by design:
+
+- `ci.yml`'s `pip-audit` step reads `requirements.txt`, which lists only Chorus's
+  16 direct pins. It reports `nltk`.
+- `security.yml`'s `safety` step scans the entire installed environment, so it also
+  reports transitive packages Chorus never declares, such as `cuda-toolkit`.
+
+A permanently red job carries no signal, which is precisely how the `nltk` advisory
+went unrecorded for weeks and how `CVE-2025-33228` was found only by reading a log
+line by line. Every advisory currently reported is listed above; anything that is
+not listed here is new and should be investigated rather than assumed accepted.
 
 ## Scope
 
