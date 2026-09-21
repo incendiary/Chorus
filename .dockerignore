@@ -29,3 +29,14 @@ node_modules
 outputs/
 .mypy_cache
 .ruff_cache
+
+# Benchmark corpus: run_benchmark downloads roughly 350 MB of LibriSpeech into
+# benchmarks/data, and outputs/ was already excluded while this was not, so
+# every image build copied the whole corpus in. The benchmark is a development
+# tool and is never run inside the image.
+benchmarks/data/
+
+# Local working directories that are not part of the application.
+recordings/
+.claude/
+.idea/
