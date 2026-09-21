@@ -455,6 +455,31 @@ def render_file_results(
                             key=f"dl_{fmt}_{original_stem}",
                         )
 
+    # Reconstruction backends. Reconstruction never fails a run, so without
+    # this a missing spaCy model or an unreachable Ollama server looks
+    # identical to reconstruction having run and found nothing to change.
+    for label, key in (
+        ("spaCy NLP", "reconstruction_status_nlp"),
+        ("Ollama LLM", "reconstruction_status_llm"),
+    ):
+        status = results.get(key)
+        if not status or status.get("status") == "complete":
+            continue
+        if status.get("status") == "degraded":
+            st.warning(
+                f"🔧 {label} reconstruction ran in a degraded mode, so "
+                "low-confidence words were repaired with weaker scoring than "
+                f"usual.\n\nReason: {status.get('reason', '')}",
+                icon="⚠️",
+            )
+        else:
+            st.warning(
+                f"🔧 {label} reconstruction was requested but unavailable, so "
+                "low-confidence words were left exactly as the consensus "
+                f"produced them.\n\nReason: {status.get('reason', '')}",
+                icon="⚠️",
+            )
+
     # Speaker diarisation
     if results.get("diarisation_error"):
         st.warning(

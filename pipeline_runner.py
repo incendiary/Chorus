@@ -350,15 +350,18 @@ def run_pipeline(
 
     from consensus_merger.merger import merge_transcripts_with_votes
 
-    if enable_nlp:
-        from reconstruction import probe_spacy_model
+    reconstruction_status_nlp: dict[str, str] | None = None
+    reconstruction_status_llm: dict[str, str] | None = None
 
-        _nlp_ok, _nlp_reason = probe_spacy_model()
-        if not _nlp_ok:
+    if enable_nlp:
+        from reconstruction import get_nlp_status
+
+        reconstruction_status_nlp = get_nlp_status()
+        if reconstruction_status_nlp["status"] != "complete":
             logger.warning(
                 "NLP reconstruction requested but unavailable: %s "
                 "LOW-confidence tokens will be left unreconstructed for this run.",
-                _nlp_reason,
+                reconstruction_status_nlp.get("reason", "unknown reason"),
             )
         _progress(
             "Running spaCy NLP reconstruction…",
@@ -367,6 +370,15 @@ def run_pipeline(
             detail="spaCy NLP",
         )
     if enable_llm:
+        from reconstruction import get_llm_status
+
+        reconstruction_status_llm = get_llm_status()
+        if reconstruction_status_llm["status"] != "complete":
+            logger.warning(
+                "LLM reconstruction requested but unavailable: %s "
+                "LOW-confidence tokens will be left unreconstructed for this run.",
+                reconstruction_status_llm.get("reason", "unknown reason"),
+            )
         _progress(
             "Running LLM reconstruction…",
             0.92,
@@ -537,6 +549,8 @@ def run_pipeline(
         "diarised_path": diarised_path,
         "speaker_labels": speaker_labels,
         "diarisation_error": diarisation_error,
+        "reconstruction_status_nlp": reconstruction_status_nlp,
+        "reconstruction_status_llm": reconstruction_status_llm,
         "elapsed_seconds": elapsed,
     }
 

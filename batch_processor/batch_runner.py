@@ -52,6 +52,27 @@ logger = logging.getLogger(__name__)
 AUDIO_EXTENSIONS = SUPPORTED_AUDIO_EXTENSIONS
 
 
+def _reconstruction_warning(pipeline_out: dict) -> str | None:
+    """Summarise any reconstruction backend that could not run properly.
+
+    Reconstruction is optional and never fails a run, so without this the only
+    trace of a missing spaCy model or an unreachable Ollama server is a log
+    line. A batch report reading a plain "OK" would otherwise be
+    indistinguishable from one where reconstruction genuinely ran.
+    """
+    problems = []
+    for label, key in (
+        ("NLP", "reconstruction_status_nlp"),
+        ("LLM", "reconstruction_status_llm"),
+    ):
+        status = pipeline_out.get(key)
+        if not status or status.get("status") == "complete":
+            continue
+        problems.append(f"{label} reconstruction {status.get('status', 'unavailable')}")
+
+    return ", ".join(problems) if problems else None
+
+
 def _unit_interval(value: str) -> float:
     parsed = float(value)
     if not 0.0 <= parsed <= 1.0:
@@ -486,12 +507,15 @@ class BatchResult:
         self.elapsed_seconds = 0.0
         self.error: str | None = None
         self.diarisation_error: str | None = None
+        self.reconstruction_warning: str | None = None
 
     def __repr__(self) -> str:
         if not self.success:
             status = f"FAIL: {self.error}"
         elif self.diarisation_error:
             status = f"OK (diarisation failed: {self.diarisation_error})"
+        elif self.reconstruction_warning:
+            status = f"OK ({self.reconstruction_warning})"
         else:
             status = "OK"
         return f"<BatchResult {self.path.name} [{status}]>"
@@ -674,6 +698,7 @@ def run_batch(
             result.consensus_path = pipeline_out["consensus_path"]
             result.export_paths = pipeline_out.get("export_paths", {})
             result.diarisation_error = pipeline_out.get("diarisation_error")
+            result.reconstruction_warning = _reconstruction_warning(pipeline_out)
 
             # ── Optional: Export additional formats ────────────────────────
             # (pipeline handles NLP, LLM, and diarisation; export_all used here
@@ -744,6 +769,8 @@ def _write_batch_report(results: list[BatchResult]) -> Path:
             status = f"❌ {r.error or 'Unknown error'}"
         elif r.diarisation_error:
             status = f"⚠️ OK — diarisation failed: {r.diarisation_error}"
+        elif r.reconstruction_warning:
+            status = f"⚠️ OK — {r.reconstruction_warning}"
         else:
             status = "✅ OK"
         cons_lnk = f"`{r.consensus_path.name}`" if r.consensus_path else "—"

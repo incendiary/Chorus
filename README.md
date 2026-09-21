@@ -403,9 +403,7 @@ python -m batch_processor.batch_runner recordings/ --recursive \
   --alignment-strategy sequence --consensus-threshold 0.78
 ```
 
-Run `python -m batch_processor.batch_runner --help` for all per-run overrides,
-including language, consensus models, noise-floor mode, thresholds, intermediate
-WAV retention, word timestamps, and Ollama connection settings.
+For a complete reference covering every command-line flag, their defaults, environment variable sources, and Web UI equivalents, see [docs/CLI_REFERENCE.md](docs/CLI_REFERENCE.md).
 
 For a temporary hardware-tuned model/device/parallelism choice, add
 `--hardware-preset max` or `--hardware-preset background`. The flag is the explicit
@@ -459,6 +457,7 @@ carried them.
 
 | Document | Description |
 |---|---|
+| [docs/CLI_REFERENCE.md](docs/CLI_REFERENCE.md) | Complete reference for every command-line flag, their defaults, environment variable sources, and Web UI equivalents. Covers both the batch processor and pipeline runner entry points. |
 | [docs/CONFIGURATION.md](docs/CONFIGURATION.md) | Full reference for every configurable option — Whisper models, alignment strategy, noise mode, parallelism, LLM reconstruction, and more. |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Internal module design and data-flow walkthrough. |
 | [docs/DOCKER.md](docs/DOCKER.md) | Docker build, tagging, and publish workflow. |
