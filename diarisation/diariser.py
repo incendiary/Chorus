@@ -189,14 +189,83 @@ def _try_load_pipeline() -> tuple[object | None, str | None]:
         )
 
 
+def _write_probe_clip(directory: Path) -> Path:
+    """Write a one-second silent WAV for the pre-flight to run inference on.
+
+    Generated at runtime rather than committed, so there is no fixture audio
+    in the repository and nothing to keep in step with the decoder.
+    """
+    import numpy as np
+    import soundfile as sf
+
+    path = Path(directory) / "chorus_preflight_probe.wav"
+    sf.write(path, np.zeros(16_000, dtype="float32"), 16_000)
+    return path
+
+
+def _smoke_test_pipeline(pipeline) -> tuple[bool, str]:
+    """Run *pipeline* over a short clip and parse the result.
+
+    Loading the pipeline proves the weights are reachable and nothing more.
+    Two failures reached production past a pre-flight that stopped there: a
+    pyannote 4.x result shape the parser could not read, and torchcodec
+    failing to decode against the host's ffmpeg. Both surfaced only once real
+    inference ran, hours into a batch. This exercises load, decode, and result
+    parsing in about a second, so the same class of failure is caught before
+    any audio is processed rather than after.
+    """
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmp:
+        clip = _write_probe_clip(Path(tmp))
+        try:
+            result = pipeline(str(clip))
+        except Exception as exc:  # noqa: BLE001 - any failure here is a blocker
+            return False, (
+                f"The diarisation pipeline loaded but failed to run: {exc}\n\n"
+                "The models are reachable, so this is not an access problem. A "
+                "decode failure here usually means the installed torchcodec does "
+                "not support the host's ffmpeg version."
+            )
+
+        if not hasattr(result, "itertracks") and hasattr(result, "speaker_diarization"):
+            result = result.speaker_diarization
+
+        if not hasattr(result, "itertracks"):
+            return False, (
+                "The diarisation pipeline ran but returned a result this version "
+                f"of Chorus cannot read ({type(result).__name__}). pyannote.audio "
+                "has changed its result shape before, so this most likely means "
+                "the installed version is newer than Chorus expects."
+            )
+
+        try:
+            for _ in result.itertracks(yield_label=True):
+                break
+        except Exception as exc:  # noqa: BLE001 - parsing must not raise here
+            return False, (
+                f"The diarisation pipeline returned a result that could not be "
+                f"parsed: {exc}"
+            )
+
+    return True, ""
+
+
 def check_diarisation_ready() -> tuple[bool, str]:
     """
     Verify diarisation can actually run before a batch starts.
 
     Attempts the real pipeline load (not just a metadata/gating check), since
-    that is the only way to be sure every model it needs is accessible.
-    Returns ``(True, "")`` when ready, or ``(False, reason)`` with the
-    actionable message from ``_try_load_pipeline``.
+    that is the only way to be sure every model it needs is accessible, and
+    then runs it over a one-second generated clip. Returns ``(True, "")`` when
+    ready, or ``(False, reason)`` with an actionable message.
+
+    The inference step exists because loading proves only that the weights are
+    reachable. Two failures reached production past a load-only check: a
+    pyannote 4.x result shape the parser could not read, and torchcodec failing
+    to decode against the host's ffmpeg. Both passed this check and then failed
+    hours into a real batch. Exercising decode and result parsing costs about a
+    second and catches that whole class before any audio is processed.
 
     This is authoritative but incremental: pipeline construction stops at
     the first inaccessible model it hits, so one call can only ever report
@@ -210,7 +279,9 @@ def check_diarisation_ready() -> tuple[bool, str]:
     output-level marker that anything had degraded.
     """
     pipeline, reason = _try_load_pipeline()
-    return pipeline is not None, reason or ""
+    if pipeline is None:
+        return False, reason or ""
+    return _smoke_test_pipeline(pipeline)
 
 
 # Repos observed, by direct investigation, to matter to
