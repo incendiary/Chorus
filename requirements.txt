@@ -29,6 +29,13 @@ pyannote-audio==4.0.7
 # at all on a host with ffmpeg 9 installed, silently degrading diarisation to
 # no speaker labels. 0.16.0 fixed the decode failure.
 torchcodec==0.16.0
+# Pinned explicitly (otherwise resolved transitively via pyannote-audio):
+# pytorch-lightning 2.6.5 carries PYSEC-2026-3967, which 2.6.6 fixes. These are two
+# separate distributions, and `lightning` depends on `pytorch-lightning` with no
+# version constraint, so both must be pinned or the advisory stays live. Note that
+# 2.6.6 does NOT fix the separate checkpoint-loader RCE tracked in SECURITY.md.
+lightning==2.6.6
+pytorch-lightning==2.6.6
 spacy==3.8.16
 weasyprint==70.0
 python-docx==1.2.0
