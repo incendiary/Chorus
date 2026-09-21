@@ -471,13 +471,23 @@ surfacing) shipped.
   `--keep-variant-wavs`/`--no-keep-variant-wavs`) using the argparse `dest` name, so the
   settings table always prints the *positive* flag regardless of which was actually
   passed. The printed value is correct; only the provenance string is wrong. (Effort: S)
-- [ ] **Four CLI settings have no Web UI equivalent** — word-level timestamps, WAV
-  retention, Ollama base URL, and Ollama request timeout are `.env`-only with no sidebar
-  control. Build as four independent PRs, per repo convention. Still undecided: whether
-  the Web UI needs a "proceed with stub anyway" escape hatch equivalent to
-  `--allow-diarisation-stub` (leaning no — a UI user can just click Retry after fixing
-  access — but flag explicitly rather than deciding silently). (Effort: S–M)
-- [ ] **Comprehensive CLI/Web UI flag reference** — README documents roughly 6 of 22
+- [x] **Four CLI settings have no Web UI equivalent** (v5.0.0, documented not built) —
+  word-level timestamps, WAV retention, the Ollama base URL, and the Ollama request
+  timeout are `.env`-only with no sidebar control. Building four new UI controls
+  immediately before a final tag adds more risk than it removes, so this ships as a
+  documented limitation instead: [docs/CLI_REFERENCE.md](docs/CLI_REFERENCE.md) names
+  each one, states plainly that it has no Web UI equivalent, and gives the `.env` route,
+  because for these a user has no other option. Verified against `ui/sidebar.py`: all
+  four appear there zero times. The related open question, whether the Web UI wants a
+  "proceed with stub anyway" escape hatch matching `--allow-diarisation-stub`, is
+  answered no: a UI user can fix access and retry, which the pre-flight dialog already
+  prompts.
+- [x] **Comprehensive CLI/Web UI flag reference** (v5.0.0) — shipped as
+  [docs/CLI_REFERENCE.md](docs/CLI_REFERENCE.md), covering all 23 batch flags and both
+  entry points with defaults, precedence, examples, and Web UI equivalence. Supersedes
+  the description below, which is kept for context.
+
+  Original note: README documented roughly 6 of 22
   flags in passing; `docs/CONFIGURATION.md` documents settings conceptually but not the
   flag surface itself. Needs a `docs/CLI_REFERENCE.md` (or expanded `CONFIGURATION.md`)
   covering every flag: what it does, when to use it, a concrete example, its Web UI
@@ -486,10 +496,14 @@ surfacing) shipped.
   `--nlp` and `--llm` are not mutually exclusive — both run if both are set, spaCy first,
   Ollama only touching whatever spaCy left LOW — which is undocumented anywhere today.
   (Effort: M)
-- [ ] **Unexplained process death, 2026-08-23/24** — a batch process died silently
-  between files with no error, no OOM signal captured, screen session still attached.
-  Not diagnosed and nothing to fix yet; if it recurs, capture `log show`, Diagnostic
-  Reports, and memory-pressure history before restarting rather than guessing a cause.
+- [x] **Unexplained process death, 2026-08-23/24** (v5.0.0, recorded not diagnosed) —
+  a batch process died silently between files with no error, no OOM signal captured, and
+  the screen session still attached. It has not recurred since, and there is no evidence
+  to act on: diagnosing it would mean guessing at a cause, which this project has
+  explicitly been burned by before. Recorded as an unexplained single event rather than
+  left open implying an investigation is pending. Should it ever recur, capture
+  `log show`, the Diagnostic Reports directory, and memory-pressure history *before*
+  restarting, since restarting is what destroyed the evidence the first time.
 - [ ] **One-file `large`-vs-`large+medium` consensus comparison** (optional) — untested
   hypothesis that adding a second, weaker model to the vote pool won't change transcript
   words but will dilute the reported HIGH percentage. Needs a "reconstruct only, don't
