@@ -628,7 +628,7 @@ review.
 These share a shape with the diarisation failures already fixed: a real failure produces a
 plausible-looking result and no signal to the caller.
 
-- [ ] **RD-18 — A failed export still reports success** — `export_engine/exporter.py:495-497`
+- [x] **RD-18 — A failed export still reports success** (v5.0.0) — **fixed:** a failed format now sets `export_error` on the batch result, renders as `⚠️ OK — export failed: <formats>` in the batch report and the end-of-run summary, and shows a warning in the Web UI. The batch report also lists every warning on a file rather than the first, so a diarisation failure can no longer hide an export failure. Original finding: `export_engine/exporter.py:495-497`
   catches every exception per format, logs, and sets `results[fmt] = None`.
   `batch_processor/batch_runner.py` then sets `result.success = True` regardless, so a
   WeasyPrint crash or a full disk appears in the batch report as `✅ OK` with the format

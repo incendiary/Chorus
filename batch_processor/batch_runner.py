@@ -508,14 +508,25 @@ class BatchResult:
         self.error: str | None = None
         self.diarisation_error: str | None = None
         self.reconstruction_warning: str | None = None
+        self.export_error: str | None = None
+
+    def warnings(self) -> list[str]:
+        """Every degradation on a file that otherwise succeeded, so one
+        warning never hides another."""
+        found = []
+        if self.diarisation_error:
+            found.append(f"diarisation failed: {self.diarisation_error}")
+        if self.reconstruction_warning:
+            found.append(self.reconstruction_warning)
+        if self.export_error:
+            found.append(self.export_error)
+        return found
 
     def __repr__(self) -> str:
         if not self.success:
             status = f"FAIL: {self.error}"
-        elif self.diarisation_error:
-            status = f"OK (diarisation failed: {self.diarisation_error})"
-        elif self.reconstruction_warning:
-            status = f"OK ({self.reconstruction_warning})"
+        elif self.warnings():
+            status = f"OK ({'; '.join(self.warnings())})"
         else:
             status = "OK"
         return f"<BatchResult {self.path.name} [{status}]>"
@@ -718,6 +729,10 @@ def run_batch(
                     )
                     or {}
                 )
+                # export_all logs and returns None for a format that raised.
+                failed = [f for f in export_formats if not result.export_paths.get(f)]
+                if failed:
+                    result.export_error = f"export failed: {', '.join(failed)}"
 
             result.success = True
 
@@ -767,10 +782,8 @@ def _write_batch_report(results: list[BatchResult]) -> Path:
     for idx, r in enumerate(results, start=1):
         if not r.success:
             status = f"❌ {r.error or 'Unknown error'}"
-        elif r.diarisation_error:
-            status = f"⚠️ OK — diarisation failed: {r.diarisation_error}"
-        elif r.reconstruction_warning:
-            status = f"⚠️ OK — {r.reconstruction_warning}"
+        elif r.warnings():
+            status = f"⚠️ OK — {'; '.join(r.warnings())}"
         else:
             status = "✅ OK"
         cons_lnk = f"`{r.consensus_path.name}`" if r.consensus_path else "—"
@@ -1045,6 +1058,7 @@ def main(argv: list[str] | None = None) -> int:
         release_batch_lock(lock_path)
 
     diarisation_failures = sum(1 for r in batch_results if r.diarisation_error)
+    export_failures = sum(1 for r in batch_results if r.export_error)
 
     print(f"\n{'─'*60}")
     print(
@@ -1054,6 +1068,11 @@ def main(argv: list[str] | None = None) -> int:
         print(
             f"  ⚠️  Diarisation failed on {diarisation_failures}/{len(batch_results)} "
             "file(s) — see batch_report.md for details"
+        )
+    if export_failures:
+        print(
+            f"  ⚠️  A requested export failed on {export_failures}/{len(batch_results)} "
+            "file(s) — see batch_report.md and the log for details"
         )
     print(f"  Report: {CONSENSUS_DIR / 'batch_report.md'}")
     print(f"  Log:    {log_path}")
