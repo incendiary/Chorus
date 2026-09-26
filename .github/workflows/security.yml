@@ -27,6 +27,8 @@ jobs:
   dependency-check:
     name: Python Dependency Audit
     runs-on: ubuntu-latest
+    permissions:
+      issues: write
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -39,11 +41,47 @@ jobs:
           pip install --upgrade "setuptools>=83.0.0"
           pip install -r requirements.txt .[dev] safety pip-audit
 
+      # Exit 1 from safety/pip-audit means findings were reported, not that the
+      # scan crashed: `|| true` only masks that expected non-zero exit. The
+      # script below judges the report itself and fails if it is missing.
       - name: Run safety check (EOL/vulnerable deps)
-        run: safety check --json || true
+        run: safety check --json > safety.json || true
+
+      - name: Judge safety report
+        id: judge-safety
+        run: python scripts/dependency_audit.py safety safety.json
 
       - name: Run pip-audit
-        run: pip-audit --desc
+        run: pip-audit -f json -o pip-audit.json || true
+
+      - name: Judge pip-audit report
+        id: judge-pip-audit
+        run: python scripts/dependency_audit.py pip-audit pip-audit.json
+
+      - name: File or comment on new advisory issue
+        if: (steps.judge-safety.outputs.new == 'true' || steps.judge-pip-audit.outputs.new == 'true') && github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Match on a parenthesis-free phrase. GitHub's search parser treats
+          # "(s)" as syntax, so searching a title containing it can silently
+          # return nothing and let the guard below file a fresh duplicate
+          # every run (see the Ollama model tag check, which hit exactly this).
+          EXISTING=$(gh issue list \
+            --search '"New dependency advisory" in:title' \
+            --state open --json number --jq '.[0].number' || true)
+
+          BODY="A dependency scan on this run reported an advisory not yet recorded in .github/known-advisories.txt. See the job summary and log for $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID for details, then add it to the known list with a tracking issue or fix it."
+
+          if [ -z "$EXISTING" ]; then
+            gh issue create \
+              --title "New dependency advisory" \
+              --body "$BODY" \
+              --label "security"
+          else
+            echo "Issue #${EXISTING} already open — adding a comment."
+            gh issue comment "$EXISTING" --body "$BODY"
+          fi
 
   bandit:
     name: Bandit — Python Security Analysis

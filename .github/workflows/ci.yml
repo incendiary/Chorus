@@ -119,11 +119,13 @@ jobs:
       - name: pip-audit
         run: |
           pip install pip-audit
-          # Lightning has no fixed release yet; exposure is reduced by the
-          # localhost default and the residual risk is tracked in issue #219.
-          pip-audit -r requirements.txt \
-            --ignore-vuln PYSEC-2022-42969 \
-            --ignore-vuln PYSEC-2026-3624
+          # Exit 1 means findings were reported, not that the scan crashed:
+          # `|| true` only masks that expected non-zero exit. The script below
+          # judges the report itself and fails if it is missing.
+          pip-audit -r requirements.txt -f json -o pip-audit.json || true
+
+      - name: Judge pip-audit report
+        run: python scripts/dependency_audit.py pip-audit pip-audit.json
 
   # ── Version-Tag Drift Check ─────────────────────────────────────────────────
   # Warns (via GitHub issue) if pyproject.toml version has no matching git tag.
