@@ -505,6 +505,20 @@ class TestRenderFileResults:
         assert "2 (25%)" in markdown_blob
         assert "1 (12%)" in markdown_blob
 
+    def test_failed_export_surfaces_as_a_warning(self, canned_results):
+        """export_all returns None for a format that raised. The UI used to
+        skip that format's download button and say nothing, so a failed PDF
+        looked the same as one that was never requested."""
+        with patch("ui.results.export_all", return_value={"pdf": None}):
+            at = _render_results(canned_results, formats=["pdf"])
+        assert not at.exception
+
+        warnings = "\n".join(w.value for w in at.warning)
+        assert "PDF" in warnings
+
+        labels = [lbl for _, lbl in _download_button_ids_and_labels(at)]
+        assert not any(".PDF" in lbl for lbl in labels)
+
     def test_no_diarisation_degrades_gracefully(self, canned_results):
         """diarised_path=None: no speaker section, no exception."""
         assert canned_results["diarised_path"] is None
