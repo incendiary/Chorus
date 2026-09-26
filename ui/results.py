@@ -454,6 +454,19 @@ def render_file_results(
                             mime="application/octet-stream",
                             key=f"dl_{fmt}_{original_stem}",
                         )
+        # export_all logs and returns None for a format that raised; without
+        # this a failed format simply has no button and nothing says why.
+        failed = [
+            fmt.upper()
+            for fmt in formats_to_export
+            if not (export_paths.get(fmt) and export_paths[fmt].exists())
+        ]
+        if failed:
+            st.warning(
+                f"Export failed for: {', '.join(failed)}. The other outputs "
+                "are unaffected; see the log for the cause.",
+                icon="⚠️",
+            )
 
     # Reconstruction backends. Reconstruction never fails a run, so without
     # this a missing spaCy model or an unreachable Ollama server looks

@@ -235,6 +235,48 @@ class TestRunBatch:
         assert results[0].success is True
         assert results[0].diarisation_error == "torchcodec is not available"
 
+    def test_failed_export_is_recorded_not_silently_dropped(
+        self, tmp_path: Path
+    ) -> None:
+        """export_all returns None for a format that raised. run_batch must
+        record that on the result: before this, a PDF that failed to render
+        simply vanished and the file still reported a clean success."""
+        _make_wav(tmp_path / "a.wav")
+
+        def _mock_pipeline(audio_path: Path, **kwargs) -> dict:
+            return _fake_pipeline_result(audio_path, kwargs.get("output_dir"))
+
+        with (
+            patch("pipeline_runner.run_pipeline", side_effect=_mock_pipeline),
+            patch(
+                "export_engine.exporter.export_all",
+                return_value={"pdf": None, "srt": tmp_path / "a.srt"},
+            ),
+            patch("batch_processor.batch_runner._write_batch_report"),
+        ):
+            results = run_batch(inputs=[tmp_path], export_formats=["pdf", "srt"])
+
+        assert results[0].success is True
+        assert results[0].export_error == "export failed: pdf"
+
+    def test_successful_exports_leave_no_export_error(self, tmp_path: Path) -> None:
+        _make_wav(tmp_path / "a.wav")
+
+        def _mock_pipeline(audio_path: Path, **kwargs) -> dict:
+            return _fake_pipeline_result(audio_path, kwargs.get("output_dir"))
+
+        with (
+            patch("pipeline_runner.run_pipeline", side_effect=_mock_pipeline),
+            patch(
+                "export_engine.exporter.export_all",
+                return_value={"pdf": tmp_path / "a.pdf"},
+            ),
+            patch("batch_processor.batch_runner._write_batch_report"),
+        ):
+            results = run_batch(inputs=[tmp_path], export_formats=["pdf"])
+
+        assert results[0].export_error is None
+
     def test_per_file_output_isolation(self, tmp_path: Path) -> None:
         """When output_dir is given, each file must write into its own <stem>/ subdir."""
         _make_wav(tmp_path / "interview.wav")
@@ -507,6 +549,27 @@ class TestWriteBatchReport:
         assert "Failed:** 0" in text
         assert "diarisation failed" in text.lower()
         assert "torchcodec is not available" in text
+        assert "✅ OK |" not in text
+
+    def test_report_flags_a_failed_export_on_an_otherwise_ok_file(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """A requested format that failed to export must not render as a
+        bare '✅ OK'. The transcript is fine, so the file still counts as a
+        success, matching how a diarisation failure is reported."""
+        out_dir = tmp_path / "consensus"
+        out_dir.mkdir(parents=True)
+        monkeypatch.setattr("config.CONSENSUS_DIR", out_dir)
+        monkeypatch.setattr("batch_processor.batch_runner.CONSENSUS_DIR", out_dir)
+
+        r = BatchResult(Path("call.wav"))
+        r.success = True
+        r.export_error = "export failed: pdf, docx"
+
+        text = _write_batch_report([r]).read_text(encoding="utf-8")
+
+        assert "Succeeded:** 1" in text
+        assert "⚠️ OK — export failed: pdf, docx" in text
         assert "✅ OK |" not in text
 
 
