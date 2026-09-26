@@ -22,7 +22,9 @@ selection is deterministic: the first 15 utterances longer than 10 seconds,
 sorted by path. Noise is generated with a fixed seed, so the noisy condition
 is reproducible.
 
-Results are written to `benchmarks/RESULTS.md` (committed). The sanity gates
+Results are written to the gitignored `benchmarks/results/RESULTS.md`, so a run
+leaves the working tree clean. Pass `--update-tracked-results` to overwrite the
+committed `benchmarks/RESULTS.md` instead. The sanity gates
 for the helper functions live in `tests/test_benchmark.py` and run without
 downloading data or loading Whisper.
 
