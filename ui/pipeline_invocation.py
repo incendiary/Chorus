@@ -257,15 +257,32 @@ def _render_idle_state(
     files: list[FileEntry] = []
     invalid_files: dict[str, str] = {}
 
+    seen_names: dict[str, int] = {}
     for uf in uploaded_files:
         validation_error = validate_upload(uf)
         if validation_error:
             invalid_files[str(uf.name)] = validation_error
             continue
 
+        original_name = str(uf.name)
+        occurrence = seen_names.get(original_name, 0) + 1
+        seen_names[original_name] = occurrence
+
         spool_path, stem = spool_upload(uf, run_dir)
+        if occurrence > 1:
+            # Duplicate upload filename in this batch: disambiguate the
+            # display name and stem so results, output files, and widget
+            # keys derived from them stay distinct (otherwise the second
+            # upload silently overwrites the first's results and Streamlit
+            # raises StreamlitDuplicateElementKey when rendering).
+            name_path = Path(original_name)
+            display_name = f"{name_path.stem}_{occurrence}{name_path.suffix}"
+            stem = f"{stem}_{occurrence}"
+        else:
+            display_name = original_name
+
         files.append(
-            FileEntry(name=str(uf.name), stem=stem, spool_path=str(spool_path))
+            FileEntry(name=display_name, stem=stem, spool_path=str(spool_path))
         )
 
     # Report validation errors for rejected files

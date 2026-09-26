@@ -425,6 +425,69 @@ class TestRenderRunSection:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Group B2 — duplicate upload filenames (severity 5, #run_worker._results keyed
+# by name / results_registry.get(name) collided, and render_file_results built
+# widget keys from the non-unique stem)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class TestDuplicateUploadNames:
+    def test_two_uploads_with_same_name_produce_distinct_results_and_render(
+        self, tmp_path, monkeypatch, _deterministic_hw
+    ):
+        """Two uploads both named 'recording.wav' must not collide: each
+        keeps its own results (the second must not overwrite the first in
+        the run's results registry) and the page must render both without
+        raising StreamlitDuplicateElementKey."""
+        out_dir = tmp_path / "consensus"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        monkeypatch.setattr("export_engine.exporter.CONSENSUS_DIR", out_dir)
+        monkeypatch.setattr("diarisation.diariser.CONSENSUS_DIR", out_dir)
+
+        def _fake_pipeline(**kwargs):
+            audio_bytes = Path(kwargs["audio_path"]).read_bytes()
+            tag = "first" if audio_bytes == b"a" * 16 else "second"
+            consensus_path = out_dir / f"{tag}_consensus.md"
+            consensus_path.write_text(CONSENSUS_MD, encoding="utf-8")
+            return {
+                "variant_paths": {},
+                "transcripts": _make_transcripts(),
+                "consensus_path": consensus_path,
+                "ai_context_path": None,
+                "bundle_path": None,
+                "best_guess_path": out_dir / f"{tag}_best_guess.txt",
+                "diarised_path": None,
+                "speaker_labels": [],
+                "elapsed_seconds": 1.0 if tag == "first" else 2.0,
+            }
+
+        mock_pipeline = MagicMock(side_effect=_fake_pipeline)
+        with patch("ui.pipeline_invocation.run_pipeline", mock_pipeline):
+            at = _upload_and_run(
+                [
+                    ("recording.wav", b"a" * 16, "audio/wav"),
+                    ("recording.wav", b"b" * 16, "audio/wav"),
+                ],
+                mode=None,
+            )
+
+        assert not at.exception
+        assert mock_pipeline.call_count == 2
+
+        # Both files rendered under distinct, disambiguated labels — no
+        # StreamlitDuplicateElementKey from two identical-stem widget keys.
+        expander_labels = [e.label for e in at.expander]
+        assert any("📄 recording.wav" == lbl for lbl in expander_labels)
+        assert any("📄 recording_2.wav" == lbl for lbl in expander_labels)
+
+        # Each upload's own elapsed time rendered — the second run's results
+        # did not overwrite the first's in the results registry.
+        success_values = [s.value for s in at.success]
+        assert any("1.0" in v for v in success_values)
+        assert any("2.0" in v for v in success_values)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Group C — render_file_results rendering
 # ─────────────────────────────────────────────────────────────────────────────
 
