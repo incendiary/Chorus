@@ -50,9 +50,11 @@ class RunManager:
         it is gone (server restart) — that is exactly the "stale" case
         ``mark_interrupted_if_stale`` handles separately.
         """
-        with self._results_lock:
-            thread = type(self)._active_thread
-            return thread is not None and thread.is_alive()
+        # No lock here: this is a single reference read, and ``start`` already
+        # serialises its check-then-set under ``_process_lock``, which it holds
+        # while calling this method, so taking that lock here would deadlock.
+        thread = type(self)._active_thread
+        return thread is not None and thread.is_alive()
 
     def start(self, job: RunJob) -> bool:
         """Start executing *job*. Returns False if a run is already active."""
