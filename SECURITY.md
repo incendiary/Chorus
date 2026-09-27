@@ -38,7 +38,7 @@ If you cannot use GitHub's private reporting for any reason, open a regular issu
 
 ## Known Accepted Risks
 
-- **`lightning` — `CVE-2026-58659` / `PYSEC-2026-3624`** (arbitrary code execution
+- **`lightning` — `CVE-2026-58659` / `PYSEC-2026-3624` / `SFTY-20260715-05023`** (arbitrary code execution
   via the `_instantiator` hyperparameter in `LightningModule.load_from_checkpoint`,
   bypassing `torch.load(weights_only=True)`). `lightning` is a transitive
   dependency pulled in by `pyannote-audio` for speaker diarisation. The fix
@@ -49,11 +49,14 @@ If you cannot use GitHub's private reporting for any reason, open a regular issu
   against the fix PR before assuming any future point release includes it, rather
   than trusting the version number alone. Chorus does not call `LightningModule.load_from_checkpoint`
   or load any user-supplied checkpoint; diarisation only loads pyannote's own
-  pinned, first-party model weights from Hugging Face. `ci/security.yml`'s
-  `pip-audit` step will keep flagging this until `lightning` cuts a release
-  containing the fix — treat that failure as expected and check
+  pinned, first-party model weights from Hugging Face. `security.yml`'s
+  `safety` step reports this as `SFTY-20260715-05023` and will keep doing so
+  until `lightning` cuts a release containing the fix. It is recorded in
+  `.github/known-advisories.txt`, tracked in issue
+  [#219](https://github.com/incendiary/Chorus/issues/219), and accepted by
+  `scripts/dependency_audit.py` rather than failing CI. Check
   [Lightning-AI/pytorch-lightning#21832](https://github.com/Lightning-AI/pytorch-lightning/pull/21832)
-  for release status before assuming a new dependency audit failure is this one.
+  for release status before assuming a new dependency audit finding is this one.
 
 - **`nltk` — `PYSEC-2026-3740`** (file sandbox bypass: several model-persistence
   APIs, including `TransitionParser.train`, `AveragedPerceptron.save`, and
@@ -79,14 +82,15 @@ If you cannot use GitHub's private reporting for any reason, open a regular issu
   [#244](https://github.com/incendiary/Chorus/issues/244) so that a future dependency
   audit failure naming `nltk` is recognised as this accepted risk rather than a new one.
 
-- **`cuda-toolkit` — `CVE-2025-33228`** (command injection via unsanitised input).
-  Reported by the `safety` step in `security.yml`, which scans the whole installed
-  environment rather than the declared dependency set, so it appears only in CI.
-  No fixed version is published. Chorus does not depend on `cuda-toolkit`: it is
-  absent from `requirements.txt` and `pyproject.toml`, no Chorus code imports it or
-  invokes any CUDA toolkit executable, and it reaches the CI environment only as a
-  transitive of the CUDA-enabled PyTorch wheels. The vulnerable surface is the
-  toolkit's own command-line entry points, which Chorus never calls.
+- **`cuda-toolkit` — `CVE-2025-33228` / `SFTY-20260120-40557`** (command injection
+  via unsanitised input). Reported by the `safety` step in `security.yml`, which
+  scans the whole installed environment rather than the declared dependency set,
+  so it appears only in CI. No fixed version is published. Chorus does not depend
+  on `cuda-toolkit`: it is absent from `requirements.txt` and `pyproject.toml`, no
+  Chorus code imports it or invokes any CUDA toolkit executable, and it reaches
+  the CI environment only as a transitive of the CUDA-enabled PyTorch wheels. The
+  vulnerable surface is the toolkit's own command-line entry points, which Chorus
+  never calls.
 
 `PYSEC-2026-3967` in `pytorch-lightning` was also found during this review. It is
 distinct from the `lightning` RCE above and genuinely fixed upstream in `2.6.6`, so it
@@ -96,19 +100,30 @@ version constraint, so the installed version depended on when the environment ha
 to be built. Note that they are two separate distributions and `lightning` requires
 `pytorch-lightning` without a constraint, so pinning only one leaves the advisory live.
 
-### Why the dependency audit is expected to fail
+### How the dependency audit handles known and new advisories
 
-Two separate jobs scan dependencies, and they disagree by design:
+Downstream advisories will keep appearing after this release, and a permanently
+red job carries no signal: that is precisely how the `nltk` advisory went
+unrecorded for weeks and how `CVE-2025-33228` was found only by reading a log
+line by line. Both `ci.yml`'s `pip-audit` step and `security.yml`'s `pip-audit`
+and `safety` steps now write their JSON report to a file and hand it to
+`scripts/dependency_audit.py`, which judges the result instead of the tool's own
+exit code:
 
-- `ci.yml`'s `pip-audit` step reads `requirements.txt`, which lists only Chorus's
-  16 direct pins. It reports `nltk`.
-- `security.yml`'s `safety` step scans the entire installed environment, so it also
-  reports transitive packages Chorus never declares, such as `cuda-toolkit`.
+- **Known advisories** (the ones documented above, listed by id, alias, and CVE
+  in `.github/known-advisories.txt`) are printed as accepted and never fail the
+  job.
+- **New advisories**, not in that list, are printed as a `::warning::`
+  annotation and added to the job's step summary. They do not fail the job
+  either, but `security.yml` files or comments on a single deduplicated
+  "New dependency advisory" issue so they are still raised visibly.
+- **A scanner that crashes or produces no report** (a missing, empty, or
+  unparsable file) makes `scripts/dependency_audit.py` exit non-zero, which
+  fails the job. A broken scanner must not pass silently.
 
-A permanently red job carries no signal, which is precisely how the `nltk` advisory
-went unrecorded for weeks and how `CVE-2025-33228` was found only by reading a log
-line by line. Every advisory currently reported is listed above; anything that is
-not listed here is new and should be investigated rather than assumed accepted.
+Every advisory currently reported by either tool is listed above in
+"Known Accepted Risks"; anything not listed there is new and should be
+investigated rather than assumed accepted.
 
 ## Scope
 

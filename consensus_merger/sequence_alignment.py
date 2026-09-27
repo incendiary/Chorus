@@ -50,15 +50,6 @@ _GAP_PENALTY = -1
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def _score_pair(a: str, b: str) -> int:
-    """Score a pair of tokens: match, fuzzy match, or mismatch."""
-    if a == b:
-        return _MATCH_SCORE
-    if _normalised_similarity(a, b) >= SIMILARITY_THRESHOLD:
-        return _MATCH_SCORE
-    return _MISMATCH_PENALTY
-
-
 def _needleman_wunsch(
     seq_a: list[str],
     seq_b: list[str],
