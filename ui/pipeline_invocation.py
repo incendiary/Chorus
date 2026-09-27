@@ -144,12 +144,11 @@ def _render_idle_state(
     st.divider()
     st.subheader("2 · Run Pipeline")
 
-    # ── Processing mode (only shown for multiple files) ───────────────────────
+    # ── Hardware recommendation (only shown for multiple files) ───────────────
     # Background runs always process files one at a time (RunManager enforces
-    # a single active run and run_worker.execute_run loops sequentially); this
-    # choice is kept for preflight/expectation-setting parity but no longer
-    # branches execution.
-    rec_mode, rec_reason = hw_recommendation()
+    # a single active run and run_worker.execute_run loops sequentially), so
+    # only the informational reason is shown; there is no mode to choose.
+    _, rec_reason = hw_recommendation()
 
     if len(uploaded_files) > 1:
         # Auto-switch to batch view for 3+ files
@@ -158,24 +157,6 @@ def _render_idle_state(
                 f"📁 **Batch mode** — {len(uploaded_files)} files detected. "
                 "All files will be processed before results are displayed.",
                 icon="📁",
-            )
-        else:
-            st.radio(
-                "Processing mode",
-                options=[
-                    "Sequential — results appear per file",
-                    "All at once — results shown at end",
-                ],
-                index=0 if rec_mode.startswith("Sequential") else 1,
-                horizontal=True,
-                help=(
-                    "**Sequential:** each file is fully processed and its results shown "
-                    "before the next file starts. Lower peak memory — best for longer "
-                    "recordings or machines with less RAM.\n\n"
-                    "**All at once:** all files are processed back-to-back before any "
-                    "results are displayed. Processing is still single-threaded; the only "
-                    "difference is when results appear."
-                ),
             )
         st.caption(rec_reason)
 

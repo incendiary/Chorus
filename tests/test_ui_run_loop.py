@@ -244,19 +244,13 @@ class TestRunOneFile:
 # Group B — render_run_section via AppTest
 # ─────────────────────────────────────────────────────────────────────────────
 
-_SEQUENTIAL = "Sequential — results appear per file"
-_ALL_AT_ONCE = "All at once — results shown at end"
 
-
-def _upload_and_run(files: list[tuple[str, bytes, str]], mode: str | None) -> AppTest:
-    """Upload files, optionally pick a processing mode, click Start Chorus."""
+def _upload_and_run(files: list[tuple[str, bytes, str]]) -> AppTest:
+    """Upload files and click Start Chorus."""
     at = AppTest.from_file(APP_PATH, default_timeout=60)
     at.run()
     at.file_uploader[0].set_value(files)
     at.run()
-    if mode is not None:
-        radio = next(r for r in at.radio if r.label == "Processing mode")
-        radio.set_value(mode)
     run_btn = next(b for b in at.button if "Start Chorus" in b.label)
     run_btn.set_value(True)
     at.run()
@@ -265,10 +259,10 @@ def _upload_and_run(files: list[tuple[str, bytes, str]], mode: str | None) -> Ap
 
 @pytest.fixture()
 def _deterministic_hw():
-    """Pin the hardware recommendation so the mode radio default is stable."""
+    """Pin the hardware recommendation so the caption text is stable."""
     with patch(
         "ui.pipeline_invocation.hw_recommendation",
-        return_value=(_SEQUENTIAL, "pinned for tests"),
+        return_value=("Sequential — results appear per file", "pinned for tests"),
     ):
         yield
 
@@ -303,8 +297,8 @@ class TestRenderRunSection:
     def test_sequential_two_files_renders_both_status_panels(
         self, canned_results, _deterministic_hw
     ):
-        """Two files, sequential mode: pipeline runs twice, a per-file panel
-        renders for each, and the forwarded progress callback works live."""
+        """Two files: pipeline runs twice, a per-file panel renders for each,
+        and the forwarded progress callback works live."""
 
         def _fake_pipeline(**kwargs):
             kwargs["progress_callback"]("Transcribing…", 0.4)
@@ -316,8 +310,7 @@ class TestRenderRunSection:
                 [
                     ("alpha.wav", b"a" * 16, "audio/wav"),
                     ("beta.wav", b"b" * 16, "audio/wav"),
-                ],
-                mode=_SEQUENTIAL,
+                ]
             )
 
         assert not at.exception
@@ -332,6 +325,27 @@ class TestRenderRunSection:
         failed = [m.value for m in at.metric if m.label == "Failed"]
         assert "2" in {str(v) for v in completed}
         assert {str(v) for v in failed} == {"0"}
+
+    def test_processing_mode_radio_is_not_rendered_for_two_files(
+        self, _deterministic_hw
+    ):
+        """The "Processing mode" radio was inert (its value was never read)
+        and its help text described per-file result display the
+        background-run design cannot do. With two files uploaded but not
+        yet started (the only case it used to appear for) it must not
+        render at all."""
+        at = AppTest.from_file(APP_PATH, default_timeout=60)
+        at.run()
+        at.file_uploader[0].set_value(
+            [
+                ("alpha.wav", b"a" * 16, "audio/wav"),
+                ("beta.wav", b"b" * 16, "audio/wav"),
+            ]
+        )
+        at.run()
+
+        assert not at.exception
+        assert not any(r.label == "Processing mode" for r in at.radio)
 
     def test_partial_failure_renders_error_and_other_results(
         self, canned_results, _deterministic_hw
@@ -351,8 +365,7 @@ class TestRenderRunSection:
                 [
                     ("bad.wav", b"x" * 16, "audio/wav"),
                     ("good.wav", b"y" * 16, "audio/wav"),
-                ],
-                mode=_SEQUENTIAL,
+                ]
             )
 
         assert not at.exception
@@ -377,9 +390,9 @@ class TestRenderRunSection:
     def test_all_at_once_three_files_runs_pipeline_three_times(
         self, canned_results, _deterministic_hw
     ):
-        """Three files auto-switch to batch (all-at-once) mode: the pipeline
-        runs once per file and results render after processing, with the
-        quick-navigation bar and results filter present."""
+        """Three files auto-switch to batch view: the pipeline runs once per
+        file and results render after processing, with the quick-navigation
+        bar and results filter present."""
         mock_pipeline = MagicMock(return_value=canned_results)
         with patch("ui.pipeline_invocation.run_pipeline", mock_pipeline):
             at = _upload_and_run(
@@ -387,8 +400,7 @@ class TestRenderRunSection:
                     ("one.wav", b"1" * 16, "audio/wav"),
                     ("two.wav", b"2" * 16, "audio/wav"),
                     ("three.wav", b"3" * 16, "audio/wav"),
-                ],
-                mode=None,  # 3+ files: mode radio is not shown, batch is forced
+                ]
             )
 
         assert not at.exception
@@ -404,24 +416,6 @@ class TestRenderRunSection:
 
         completed = {str(m.value) for m in at.metric if m.label == "Completed"}
         assert "3" in completed
-
-    def test_two_files_all_at_once_mode_toggle(self, canned_results, _deterministic_hw):
-        """With two files the mode radio is shown; choosing all-at-once still
-        executes the pipeline exactly twice and renders both results."""
-        mock_pipeline = MagicMock(return_value=canned_results)
-        with patch("ui.pipeline_invocation.run_pipeline", mock_pipeline):
-            at = _upload_and_run(
-                [
-                    ("alpha.wav", b"a" * 16, "audio/wav"),
-                    ("beta.wav", b"b" * 16, "audio/wav"),
-                ],
-                mode=_ALL_AT_ONCE,
-            )
-
-        assert not at.exception
-        assert mock_pipeline.call_count == 2
-        completed = {str(m.value) for m in at.metric if m.label == "Completed"}
-        assert "2" in completed
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -467,8 +461,7 @@ class TestDuplicateUploadNames:
                 [
                     ("recording.wav", b"a" * 16, "audio/wav"),
                     ("recording.wav", b"b" * 16, "audio/wav"),
-                ],
-                mode=None,
+                ]
             )
 
         assert not at.exception
