@@ -1,12 +1,15 @@
 """
 tests/test_ui_run_loop.py — Execution tests for the UI run loop and results rendering.
 
-Covers ui/pipeline_invocation.py (run_one_file, render_run_section) and
-ui/results.py (render_file_results and its helpers), which previously had
-13 %/12 % coverage and had never been executed under test (REVIEW.md PF-4).
+Covers ui/pipeline_invocation.py (render_run_section and its kwarg
+forwarding to run_pipeline) and ui/results.py (render_file_results and its
+helpers), which previously had 13 %/12 % coverage and had never been
+executed under test (REVIEW.md PF-4).
 
 Three groups:
-  A. run_one_file unit tests — plain function, mocked run_pipeline.
+  A. Config kwarg forwarding — real production path (RunManager.start ->
+     run_worker.execute_run -> pipeline_invocation.run_pipeline(**job.config)),
+     driven via AppTest with a stubbed sidebar config.
   B. render_run_section via AppTest — mocked pipeline, real Streamlit run loop.
   C. render_file_results via AppTest.from_function — canned results, real files.
 
@@ -130,51 +133,46 @@ def canned_results(tmp_path, monkeypatch) -> dict:
     }
 
 
-class _FakeUpload:
-    """Stand-in for a Streamlit UploadedFile (Group A only)."""
-
-    def __init__(self, name: str, content: bytes = b"RIFF-fake-audio"):
-        self.name = name
-        self._content = content
-
-    def read(self) -> bytes:
-        return self._content
-
-
 def _download_button_ids_and_labels(at: AppTest) -> list[tuple[str, str]]:
     """Return (element id, label) for every download button in the app."""
     return [(el.proto.id, el.proto.label) for el in at.get("download_button")]
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Group A — run_one_file unit tests
+# Group A — config kwarg forwarding via the real production path
+# (RunManager.start -> run_worker.execute_run ->
+# pipeline_invocation.run_pipeline(**job.config))
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-class TestRunOneFile:
-    def test_success_forwards_config_kwargs(self, canned_results):
-        """run_one_file must forward every SidebarConfig field that
-        run_pipeline accepts, with the exact expected values."""
-        from ui.pipeline_invocation import run_one_file
-
-        upload = _FakeUpload("My Interview.wav", b"fake-bytes")
+class TestConfigKwargForwarding:
+    def test_sidebar_config_is_forwarded_to_run_pipeline(self, canned_results):
+        """Every SidebarConfig field that run_pipeline accepts must reach it,
+        with the exact expected values, via the real background-run path —
+        not a re-implementation of the kwarg list."""
         config_obj = _make_config()
         seen_audio_bytes = {}
 
         def _fake_pipeline(**kwargs):
-            # The temp file must exist and contain the upload bytes at call time.
+            # Read now: run_worker deletes the spool file once processing ends.
             seen_audio_bytes["data"] = Path(kwargs["audio_path"]).read_bytes()
             return canned_results
 
-        mock_pipeline = MagicMock(side_effect=_fake_pipeline)
-        with patch("ui.pipeline_invocation.run_pipeline", mock_pipeline):
-            results, tmp_path, stem = run_one_file(
-                upload, MagicMock(), MagicMock(), [], MagicMock(), config_obj
-            )
+        with patch("ui.sidebar.render_sidebar", return_value=config_obj):
+            mock_pipeline = MagicMock(side_effect=_fake_pipeline)
+            with patch("ui.pipeline_invocation.run_pipeline", mock_pipeline):
+                at = AppTest.from_file(APP_PATH, default_timeout=60)
+                at.run()
+                at.file_uploader[0].set_value(
+                    [("My Interview.wav", b"fake-bytes", "audio/wav")]
+                )
+                at.run()
+                run_btn = next(b for b in at.button if "Start Chorus" in b.label)
+                run_btn.set_value(True)
+                at.run()
 
-        assert results is canned_results
-        assert stem == "My_Interview"
-        assert seen_audio_bytes["data"] == b"fake-bytes"
+        assert not at.exception
+        assert mock_pipeline.call_count == 1
 
         kwargs = mock_pipeline.call_args.kwargs
         assert kwargs["language"] == "en"
@@ -187,57 +185,8 @@ class TestRunOneFile:
         assert kwargs["consensus_threshold"] == 0.75
         assert kwargs["similarity_threshold"] == 0.80
         assert callable(kwargs["progress_callback"])
-        assert Path(kwargs["audio_path"]).suffix == ".wav"
-        assert Path(kwargs["audio_path"]).name.startswith("My_Interview_")
-
-        tmp_path.unlink(missing_ok=True)
-
-    def test_pipeline_error_propagates_to_caller(self):
-        """run_one_file itself does not swallow pipeline errors — per-file
-        capture is the caller's job (render_run_section)."""
-        from ui.pipeline_invocation import run_one_file
-
-        upload = _FakeUpload("bad.wav")
-        with patch(
-            "ui.pipeline_invocation.run_pipeline",
-            side_effect=RuntimeError("decoder exploded"),
-        ):
-            with pytest.raises(RuntimeError, match="decoder exploded"):
-                run_one_file(
-                    upload, MagicMock(), MagicMock(), [], MagicMock(), _make_config()
-                )
-
-    def test_progress_callback_drives_slots_and_log(self, canned_results):
-        """Calling the forwarded progress callback must update the progress
-        slot, the status slot, and the log-line buffer without crashing."""
-        from ui.pipeline_invocation import run_one_file
-
-        progress_slot = MagicMock()
-        status_slot = MagicMock()
-        log_expander = MagicMock()
-        log_lines: list[str] = []
-
-        def _fake_pipeline(**kwargs):
-            kwargs["progress_callback"]("Transcribing…", 0.5)
-            kwargs["progress_callback"]("Finalising…", 2.0)  # clamped to 1.0
-            return canned_results
-
-        with patch("ui.pipeline_invocation.run_pipeline", side_effect=_fake_pipeline):
-            _, tmp_path, _ = run_one_file(
-                _FakeUpload("clip.mp3"),
-                progress_slot,
-                status_slot,
-                log_lines,
-                log_expander,
-                _make_config(),
-            )
-
-        progress_slot.progress.assert_any_call(0.5, text="Transcribing…")
-        progress_slot.progress.assert_any_call(1.0, text="Finalising…")
-        status_slot.markdown.assert_any_call("**Status:** Transcribing…")
-        assert log_lines == ["`50%` — Transcribing…", "`200%` — Finalising…"]
-
-        tmp_path.unlink(missing_ok=True)
+        assert callable(kwargs["event_callback"])
+        assert seen_audio_bytes["data"] == b"fake-bytes"
 
 
 # ─────────────────────────────────────────────────────────────────────────────

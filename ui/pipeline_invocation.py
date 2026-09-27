@@ -13,7 +13,11 @@ import streamlit as st
 
 import config
 from config import WHISPER_DEVICE
-from pipeline_runner import run_pipeline
+
+# ui.run_worker calls run_pipeline via attribute access on this module
+# (pipeline_invocation.run_pipeline), which is also the patch target tests
+# use; nothing in this module calls it directly.
+from pipeline_runner import run_pipeline  # noqa: F401
 from transcription_engine.orchestrator import load_transcripts_from_disk
 from ui.results import (
     build_file_anchors,
@@ -38,59 +42,12 @@ from utils import sanitise_stem
 logger = logging.getLogger(__name__)
 
 
-def run_one_file(
-    uf: object,
-    progress_slot: object,
-    status_slot: object,
-    log_lines: list[str],
-    log_expander: object,
-    config_obj: SidebarConfig,
-) -> tuple[dict, Path, str]:
-    """Process a single uploaded file.
-
-    Returns (results, tmp_path, original_stem).
-    """
-    original_stem = sanitise_stem(Path(uf.name).stem, fallback="upload")
-    suffix = Path(uf.name).suffix.lower()
-    # Secure temp file: unique path, exclusive creation, no race condition
-    tmp_fd = tempfile.NamedTemporaryFile(
-        suffix=suffix, prefix=f"{original_stem}_", delete=False
-    )
-    tmp_path = Path(tmp_fd.name)
-    tmp_fd.write(uf.read())
-    tmp_fd.close()
-
-    def _progress(label: str, frac: float) -> None:
-        progress_slot.progress(min(frac, 1.0), text=label)
-        status_slot.markdown(f"**Status:** {label}")
-        log_lines.append(f"`{frac * 100:.0f}%` — {label}")
-        # O(1): render only the latest line, not the whole joined history
-        # (a 197-segment file used to re-render ~19k cumulative lines).
-        log_expander.markdown(log_lines[-1])
-
-    results = run_pipeline(
-        audio_path=tmp_path,
-        language=config_obj.language,
-        consensus_models=config_obj.consensus_models,
-        enable_nlp=config_obj.enable_nlp,
-        enable_llm=config_obj.enable_llm,
-        ollama_model=config_obj.ollama_model,
-        enable_diarisation=config_obj.enable_diarisation,
-        alignment_strategy=config_obj.alignment_choice,
-        consensus_threshold=config_obj.consensus_threshold,
-        similarity_threshold=config_obj.similarity_threshold,
-        progress_callback=_progress,
-    )
-    return results, tmp_path, original_stem
-
-
 def spool_upload(uf: object, dest_dir: Path) -> tuple[Path, str]:
     """Spool an uploaded file into *dest_dir*; return (path, sanitised stem).
 
-    Mirrors ``run_one_file``'s tempfile/sanitise logic, but writes into a
-    run-specific directory (rather than the system temp dir) so the file
-    survives on disk for the background thread to read after this script
-    run has ended.
+    Writes into a run-specific directory (rather than the system temp dir)
+    so the file survives on disk for the background thread to read after
+    this script run has ended.
     """
     dest_dir.mkdir(parents=True, exist_ok=True)
     stem = sanitise_stem(Path(uf.name).stem, fallback="upload")
