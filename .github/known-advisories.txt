@@ -1,0 +1,17 @@
+# Known dependency advisories accepted by the project.
+#
+# These are downstream advisories that are expected to keep appearing in
+# pip-audit and safety scans and must not fail CI. See SECURITY.md's
+# "Known Accepted Risks" section for the full justification of each one.
+# scripts/dependency_audit.py loads this file and treats any finding whose
+# id, alias, or CVE matches a line here as accepted rather than new.
+#
+# One advisory identifier per line. Blank lines and lines starting with
+# "#" are ignored. Trailing comments (after the id) are for humans only.
+
+PYSEC-2026-3624       # lightning, issue #219
+CVE-2026-58659         # lightning, issue #219
+SFTY-20260715-05023    # lightning, issue #219
+PYSEC-2026-3740        # nltk, issue #244
+CVE-2025-33228         # cuda-toolkit
+SFTY-20260120-40557    # cuda-toolkit
