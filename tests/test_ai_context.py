@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import pytest
 
+import config
 from consensus_merger.alignment import WordVote
 from export_engine.ai_context import generate_ai_context_pack
 
@@ -622,3 +623,81 @@ class TestParsingGuideWrittenPerRun:
             pipeline_runner.run_pipeline(audio_path=audio, language="en")
 
         assert (redirected / "HOW_TO_PARSE_CHORUS_OUTPUT.md").exists()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Actual compute device reporting
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class TestActualDeviceReporting:
+    """The processing config must report the device transcripts actually
+    used, not merely the configured device, and must read config values
+    at call time rather than at import time."""
+
+    def test_reports_actual_device_and_shows_fallback(
+        self, tmp_consensus_dir, sample_votes, sample_transcripts_meta, monkeypatch
+    ):
+        """A transcript set recorded on 'cpu' while config still says 'cuda'
+        must render the actual device and make the mismatch visible."""
+        monkeypatch.setattr(config, "WHISPER_DEVICE", "cuda")
+        meta = {
+            key: {**value, "device": "cpu"}
+            for key, value in sample_transcripts_meta.items()
+        }
+        path = generate_ai_context_pack(
+            votes=sample_votes, stem="test", transcripts_meta=meta
+        )
+        text = path.read_text(encoding="utf-8")
+        assert "cpu (configured: cuda)" in text
+        assert "| Compute device | `cpu (configured: cuda)` |" in text
+
+    def test_lists_mixed_devices(
+        self, tmp_consensus_dir, sample_votes, sample_transcripts_meta, monkeypatch
+    ):
+        """When variants ran on different devices (e.g. multi-GPU), all
+        distinct devices actually used must be listed."""
+        monkeypatch.setattr(config, "WHISPER_DEVICE", "cuda:0")
+        keys = list(sample_transcripts_meta.keys())
+        meta = {}
+        for idx, key in enumerate(keys):
+            device = "cuda:0" if idx % 2 == 0 else "cuda:1"
+            meta[key] = {**sample_transcripts_meta[key], "device": device}
+        path = generate_ai_context_pack(
+            votes=sample_votes, stem="test", transcripts_meta=meta
+        )
+        text = path.read_text(encoding="utf-8")
+        assert "cuda:0" in text
+        assert "cuda:1" in text
+
+    def test_config_change_after_import_is_reflected(
+        self, tmp_consensus_dir, sample_votes, sample_transcripts_meta, monkeypatch
+    ):
+        """export_engine.ai_context must read config.WHISPER_DEVICE at call
+        time, so a change made after module import (as the Streamlit UI does
+        between runs) is picked up rather than the value bound at import.
+        The override value is deliberately one no real machine auto-detects
+        by default, so this cannot pass by coincidence."""
+        monkeypatch.setattr(config, "WHISPER_DEVICE", "cuda:7")
+        # No transcript carries a "device" key, so the reported value falls
+        # back to the configured device read live from config.
+        meta = {
+            key: {k: v for k, v in value.items() if k != "device"}
+            for key, value in sample_transcripts_meta.items()
+        }
+        path = generate_ai_context_pack(
+            votes=sample_votes, stem="test", transcripts_meta=meta
+        )
+        text = path.read_text(encoding="utf-8")
+        assert "| Compute device | `cuda:7` |" in text
+
+    def test_config_noise_floor_mode_change_after_import_is_reflected(
+        self, tmp_consensus_dir, sample_votes, sample_transcripts_meta, monkeypatch
+    ):
+        """Same live-read requirement for config.NOISE_FLOOR_MODE."""
+        monkeypatch.setattr(config, "NOISE_FLOOR_MODE", "fixed")
+        path = generate_ai_context_pack(
+            votes=sample_votes, stem="test", transcripts_meta=sample_transcripts_meta
+        )
+        text = path.read_text(encoding="utf-8")
+        assert "| Noise floor mode | `fixed` |" in text
