@@ -613,7 +613,7 @@ python -m batch_processor.batch_runner /audio/ --diarise \
 Space-separated list of export formats to generate. Omit or leave empty to skip
 export.
 
-- **`pdf`**: PDF document (requires reportlab).
+- **`pdf`**: PDF document (requires weasyprint).
 - **`docx`**: Word document (requires python-docx).
 - **`srt`**: SRT subtitles with word-level timestamps.
 - **`vtt`**: WebVTT subtitles with word-level timestamps.
