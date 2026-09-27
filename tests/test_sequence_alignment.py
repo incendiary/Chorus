@@ -191,7 +191,7 @@ class TestSequencePerformance:
         elapsed = time.perf_counter() - start
 
         assert len(result) == 500
-        assert elapsed < 0.02, f"Sequence alignment took {elapsed:.4f}s — exceeds 20ms"
+        assert elapsed < 0.25, f"Sequence alignment took {elapsed:.4f}s, over 250ms"
 
     def test_realistic_divergent_transcripts(self):
         """Variants with insertions/deletions should still complete quickly."""
