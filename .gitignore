@@ -133,4 +133,5 @@ gh_init.sh
 
 # ── Benchmarks ────────────────────────────────────────────────────────────────
 benchmarks/data/
+benchmarks/results/
 .agents/

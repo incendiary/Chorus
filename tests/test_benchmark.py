@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import numpy as np
 
+from benchmarks import run_benchmark as rb
 from benchmarks.run_benchmark import calibration_table, snr_mix, wer
 
 REFERENCE = "The quick brown fox jumps over the lazy dog."
@@ -91,3 +92,23 @@ def test_calibration_table_ignores_punctuation_only_words():
 
     assert table["HIGH"] == {"count": 4, "precision": 1.0}
     assert "LOW" not in table
+
+
+def _run_main_capturing_path(monkeypatch, argv):
+    written = []
+    monkeypatch.setattr(rb, "run_benchmark", lambda n_files: {})
+    monkeypatch.setattr(
+        rb, "write_results_md", lambda results, path: written.append(path) or path
+    )
+    rb.main(argv)
+    return written[0]
+
+
+def test_default_run_does_not_write_the_tracked_results_file(monkeypatch):
+    path = _run_main_capturing_path(monkeypatch, ["--limit", "1"])
+    assert path == rb.BENCHMARKS_DIR / "results" / "RESULTS.md"
+
+
+def test_update_flag_writes_the_tracked_results_file(monkeypatch):
+    path = _run_main_capturing_path(monkeypatch, ["--update-tracked-results"])
+    assert path == rb.BENCHMARKS_DIR / "RESULTS.md"
