@@ -56,14 +56,16 @@ def load_report(path):
     if not text.strip():
         raise ValueError("report file is empty")
 
-    # Tolerate non-JSON preamble text (safety sometimes prints banner lines
-    # before its JSON output) by parsing from the first "{".
+    # Tolerate non-JSON text around the report: safety prints a deprecation
+    # banner both before and after its JSON, so parse from the first "{" and
+    # stop at the end of that object.
     start = text.find("{")
     if start == -1:
         raise ValueError("report file does not contain a JSON object")
 
     try:
-        return json.loads(text[start:])
+        report, _end = json.JSONDecoder().raw_decode(text[start:])
+        return report
     except json.JSONDecodeError as exc:
         raise ValueError(f"report file is not valid JSON: {exc}") from exc
 

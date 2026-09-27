@@ -39,13 +39,21 @@ jobs:
       - name: Install dependencies
         run: |
           pip install --upgrade "setuptools>=83.0.0"
-          pip install -r requirements.txt .[dev] safety pip-audit
+          pip install -r requirements.txt .[dev] pip-audit
 
-      # Exit 1 from safety/pip-audit means findings were reported, not that the
-      # scan crashed: `|| true` only masks that expected non-zero exit. The
+      # A non-zero exit from safety/pip-audit means findings were reported, not
+      # that the scan crashed: `|| true` only masks that expected exit. The
       # script below judges the report itself and fails if it is missing.
+      #
+      # safety runs from its own venv against a frozen list of the environment.
+      # Installed alongside the project it crashed on a clashing httpx, and the
+      # old `|| true` hid that, so the scan silently reported nothing.
       - name: Run safety check (EOL/vulnerable deps)
-        run: safety check --json > safety.json || true
+        run: |
+          pip freeze --exclude-editable > installed.txt
+          python -m venv "$RUNNER_TEMP/safety-venv"
+          "$RUNNER_TEMP/safety-venv/bin/pip" install --quiet safety==3.8.1
+          "$RUNNER_TEMP/safety-venv/bin/safety" check -r installed.txt --json > safety.json || true
 
       - name: Judge safety report
         id: judge-safety
@@ -77,7 +85,7 @@ jobs:
             gh issue create \
               --title "New dependency advisory" \
               --body "$BODY" \
-              --label "security"
+              --label "dependencies"
           else
             echo "Issue #${EXISTING} already open — adding a comment."
             gh issue comment "$EXISTING" --body "$BODY"

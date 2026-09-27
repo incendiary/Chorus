@@ -205,14 +205,15 @@ class TestMainReportFailureModes:
 
 
 class TestSafetyTextPreamble:
-    def test_tolerates_non_json_preamble_before_first_brace(
+    def test_tolerates_banner_text_before_and_after_the_report(
         self, tmp_path, monkeypatch
     ):
         report_path = tmp_path / "safety.json"
         report_path.write_text(
             "Safety v3.8.1 scanning your environment...\n"
             '{"vulnerabilities": [{"vulnerability_id": "SFTY-20260120-40557", '
-            '"package_name": "cuda-toolkit", "analyzed_version": "12.0", "CVE": "CVE-2025-33228"}]}',
+            '"package_name": "cuda-toolkit", "analyzed_version": "12.0", "CVE": "CVE-2025-33228"}]}'
+            "\n+=====+\nDEPRECATED: this command (`check`) has been DEPRECATED\n",
             encoding="utf-8",
         )
         output_path = tmp_path / "github_output"
