@@ -118,8 +118,13 @@ class TestAlignTranscriptsSequence:
             "d": "hello world foo bar",
         }
         result = align_transcripts_sequence(variants)
-        for vote in result:
-            assert 0.0 <= vote.confidence <= 1.0
+        assert [(v.word, v.count, v.confidence, v.tier) for v in result] == [
+            ("hello", 4, 1.0, "HIGH"),
+            ("beautiful", 1, 0.25, "LOW"),
+            ("world", 4, 1.0, "HIGH"),
+            ("foo", 2, 0.5, "MEDIUM"),
+            ("bar", 4, 1.0, "HIGH"),
+        ]
 
     def test_single_transcript(self):
         result = align_transcripts_sequence({"a": "hello world"})
@@ -137,20 +142,31 @@ class TestDispatcher:
         text = "hello world"
         variants = {"a": text, "b": text}
         result = align_transcripts(variants, strategy="positional")
-        assert len(result) == 2
+        assert [(v.word, v.count, v.total, v.confidence, v.tier) for v in result] == [
+            ("hello", 2, 2, 1.0, "HIGH"),
+            ("world", 2, 2, 1.0, "HIGH"),
+        ]
 
     def test_strategy_sequence(self):
         text = "hello world"
         variants = {"a": text, "b": text}
         result = align_transcripts(variants, strategy="sequence")
-        assert len(result) == 2
+        assert [(v.word, v.count, v.total, v.confidence, v.tier) for v in result] == [
+            ("hello", 2, 2, 1.0, "HIGH"),
+            ("world", 2, 2, 1.0, "HIGH"),
+        ]
 
     def test_default_strategy_works(self):
-        """Default (from config) should not crash."""
+        """Default (from config, "sequence") produces the expected votes."""
         text = "the quick brown fox"
         variants = {"a": text, "b": text, "c": text, "d": text}
         result = align_transcripts(variants)
-        assert len(result) == 4
+        assert [(v.word, v.count, v.total, v.confidence, v.tier) for v in result] == [
+            ("the", 4, 4, 1.0, "HIGH"),
+            ("quick", 4, 4, 1.0, "HIGH"),
+            ("brown", 4, 4, 1.0, "HIGH"),
+            ("fox", 4, 4, 1.0, "HIGH"),
+        ]
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -159,8 +175,14 @@ class TestDispatcher:
 
 
 class TestSequencePerformance:
-    def test_five_hundred_words_under_thirty_seconds(self):
-        """Sequence alignment on 500 identical words (fast path) should be quick."""
+    def test_five_hundred_words_under_reasonable_budget(self):
+        """Sequence alignment on 500 identical words (fast path) should be quick.
+
+        Measured at ~2.5 ms on the reference machine (the identical-sequence
+        fast path in ``_needleman_wunsch`` skips the O(n*m) matrix entirely).
+        The 30-second budget this replaced would pass even if the fast path
+        regressed to the full banded algorithm, so it caught nothing.
+        """
         words = " ".join(f"word{i}" for i in range(500))
         variants = {"a": words, "b": words, "c": words, "d": words}
 
@@ -169,7 +191,7 @@ class TestSequencePerformance:
         elapsed = time.perf_counter() - start
 
         assert len(result) == 500
-        assert elapsed < 30.0, f"Sequence alignment took {elapsed:.2f}s — exceeds 30s"
+        assert elapsed < 0.25, f"Sequence alignment took {elapsed:.4f}s, over 250ms"
 
     def test_realistic_divergent_transcripts(self):
         """Variants with insertions/deletions should still complete quickly."""
@@ -346,14 +368,25 @@ class TestMultiAlignmentColumnIntegrity:
             }
         )
 
-        tiers = {v.word: v.tier for v in result}
+        votes_by_word = {v.word: v for v in result}
         # Words the three non-reference variants agree on, past the insertions.
-        agreed = [w for w in _numbered(20)[6:] if w in tiers]
-        high = [w for w in agreed if tiers[w] == "HIGH"]
-        assert len(high) >= len(agreed) * 0.8, (
-            f"only {len(high)}/{len(agreed)} agreed words reached HIGH: "
-            f"{ {w: tiers[w] for w in agreed} }"
-        )
+        # The dissenter drops every third word (index % 3 == 0), so w6, w9,
+        # w12, w15 and w18 lose that fourth vote (3/4 = 0.75, still HIGH) while
+        # the rest keep all four (4/4 = 1.0, HIGH).
+        agreed = [w for w in _numbered(20)[6:] if w in votes_by_word]
+        dropped_by_dissenter = {"w6", "w9", "w12", "w15", "w18"}
+        expected = {
+            word: (3, 0.75) if word in dropped_by_dissenter else (4, 1.0)
+            for word in agreed
+        }
+        actual = {
+            word: (votes_by_word[word].count, votes_by_word[word].confidence)
+            for word in agreed
+        }
+        assert actual == expected
+        assert all(votes_by_word[word].tier == "HIGH" for word in agreed), {
+            word: votes_by_word[word].tier for word in agreed
+        }
 
 
 # ─────────────────────────────────────────────────────────────────────────────
