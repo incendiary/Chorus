@@ -2,12 +2,11 @@
 
 Tracked improvements identified during the June 2026 repository assessment.
 
-> **v5.0.0 is the final release.** There is no release after it, so an item left open here
-> is not scheduled work: it is a limitation the shipped software carries permanently.
-> Sections below still titled *Planned* predate that decision and are being resolved into
-> fix-or-accept decisions; see [FINAL_RELEASE_TRIAGE.md](docs/FINAL_RELEASE_TRIAGE.md) for
-> the decision and rationale on every open item. Once that work lands, the remaining
-> entries are relabelled as accepted limitations rather than plans.
+> **v5.0.0 is the final release.** There is no release after it. Every item below is
+> either shipped (ticked, with its version and pull request) or recorded as an
+> **accepted limitation** with the reason it was not fixed. Sections titled *Closed at
+> v5.0.0* were planning sections before the final-release decision. Rationale for every
+> decision: [FINAL_RELEASE_TRIAGE.md](docs/FINAL_RELEASE_TRIAGE.md).
 
 ---
 
@@ -39,11 +38,10 @@ Tracked improvements identified during the June 2026 repository assessment.
 
 - [x] **Audio filter property-based tests** (v2.0.6) — verify that filters produce expected acoustic characteristics (e.g., high-pass actually attenuates below cutoff, normalisation hits target dBFS). ✓ Added `TestFilterAcousticProperties`.
 
-- [ ] **Add shell-level test coverage for `devops-practices/survey-ollama-env.sh`** — the script has no automated tests; `tests/test_hardware_survey.py` covers only the Python UI module (`ui/hardware_survey.py`). Surfaced after fixing a real gap: the script always detected GPU type correctly but never turned that into a `WHISPER_DEVICE` recommendation or offered it at the apply step, so running the script (even selecting "apply all") could never update `WHISPER_DEVICE` — only manual `.env` edits could. Fixed by adding a `DEVICE_RECOMMENDED` block mirroring `ui/hardware_survey.py::_recommend_device`'s CUDA > MPS > CPU priority, wired into the recommendation display, the apply list, and the summary; verified end-to-end against a real `.env` (flip to `cpu`, run script, select the item, confirm it writes back `mps` and nothing else changes). No regression test exists for any of this — needs `bats` or an equivalent shell-test harness (none currently in the repo) covering: device recommendation matches the Python module for CUDA/MPS/CPU inputs, the apply step writes only the keys explicitly selected, and skipping leaves `.env` untouched.
 
 ---
 
-## Future Enhancements
+## Earlier enhancements (all shipped)
 
 - [x] **Parallel transcription for multi-GPU setups** (v2.0.7) — variants are now transcribed with configurable parallelism and device-aware assignment, including multi-CUDA-device round-robin scheduling.
 
@@ -246,23 +244,23 @@ in `REVIEW.md`; per-task execution plans (written for delegated agents) in
 
 ---
 
-## Planned — from the 28 July 2026 holistic review
+## Closed at v5.0.0 — from the 28 July 2026 holistic review
 
 Third review, run at v4.1.0 with the background-run feature live. Full findings in
 `REVIEW.md`. The two headline items were both found by *running* the software, not
 reading it.
 
-- [x] **RC-1: Reclaim intermediate variant WAVs** (fixed) — `outputs/variants/` had reached 21 GB across 232 files. The four WAVs per recording are Whisper inputs only and are deleted once every stage that reads them has finished, which must stay after diarisation because it re-opens the original variant. Opt out with `KEEP_VARIANT_WAVS=1`.
-- [x] **RC-2: Make device and parallelism settings take effect at run time** (fixed) — `orchestrator.py` now reads `config.WHISPER_DEVICE`/`config.TRANSCRIPTION_PARALLELISM` at call time, so the sidebar controls take effect. The three pre-existing tests that patched the module-local copy (and so asserted the bug) now patch `config`.
-- [x] **RC-7: Cap parallelism where Whisper workers would share a model** (fixed) — Whisper is not thread-safe (KV cache keyed by the model's own `Linear` modules), so CPU/MPS workers sharing one cached instance corrupt each other. Destroyed six files in the 28 July batch. Concurrency now capped to 1 unless multiple CUDA devices are present; multi-GPU unaffected.
-- [x] **RC-3: Silence Streamlit ScriptRunContext warnings in background runs** (fixed) — the worker quietens that logger for the run's duration and restores it afterwards; `run.log` was already unaffected.
-- [x] **RC-4: Correct the stale confidence-threshold caption** (fixed) — the caption now points at the Processing Strategy sliders and names `config.py` only as the source of defaults.
-- [x] **RC-5: Tighten the two remaining weak assertions** (fixed) — the near-tautological `or "1" in text` and the redundant case-insensitive `or` now assert one specific condition each.
-- [ ] **RC-6 (optional): Split `export_engine/exporter.py`** — 827 lines across six export formats. Low priority; well-tested and stable. (Effort: M)
-- [x] **RC-8: MPS device recommendation** (closed as obsolete) — the concern was that MPS could not do float64 word-timestamp alignment and so wasted a pass per variant. RC-10 turned word timestamps off by default, so the fallback no longer fires and MPS is correctly recommended. The documented "3-5x faster than CPU for base and small" was wrong in both magnitude and direction, and is replaced with measured figures: 1.05x for `base`, 1.7x for `small`, 2.7x for `medium`.
-- [x] **RC-9: Pass the credential pyannote 4.x accepts** (fixed) — `use_auth_token` was renamed to `token`, so diarisation failed silently on every file in the 28 July batch. The kwarg is now chosen by inspecting the installed signature.
-- [x] **RC-10: Stop forcing word timestamps** (fixed) — `word_timestamps=True` was hardcoded on every pass. On long-form audio that collapses Whisper into a repetition loop: 1,643 words with it off versus 137 with it on, same file and model. Now opt-in, with a degeneracy guard so a repetition loop can never again be reported as success.
-- [x] **RC-11: Stop the multi-alignment merge displacing later variants** (fixed) — `columns.insert()` shifted every column to its right while the next variant's counter still tracked raw reference positions, so each successive variant landed further out of place. On a real recording it held HIGH confidence at 4.6 % where the same data supports 43.6 %. Columns are now keyed by reference position, and insertions at the same gap are shared rather than split.
+- [x] **RC-1: Reclaim intermediate variant WAVs** (v4.1.1) (fixed) — `outputs/variants/` had reached 21 GB across 232 files. The four WAVs per recording are Whisper inputs only and are deleted once every stage that reads them has finished, which must stay after diarisation because it re-opens the original variant. Opt out with `KEEP_VARIANT_WAVS=1`.
+- [x] **RC-2: Make device and parallelism settings take effect at run time** (v4.1.1) (fixed) — `orchestrator.py` now reads `config.WHISPER_DEVICE`/`config.TRANSCRIPTION_PARALLELISM` at call time, so the sidebar controls take effect. The three pre-existing tests that patched the module-local copy (and so asserted the bug) now patch `config`.
+- [x] **RC-7: Cap parallelism where Whisper workers would share a model** (v4.1.1) (fixed) — Whisper is not thread-safe (KV cache keyed by the model's own `Linear` modules), so CPU/MPS workers sharing one cached instance corrupt each other. Destroyed six files in the 28 July batch. Concurrency now capped to 1 unless multiple CUDA devices are present; multi-GPU unaffected.
+- [x] **RC-3: Silence Streamlit ScriptRunContext warnings in background runs** (v4.1.1) (fixed) — the worker quietens that logger for the run's duration and restores it afterwards; `run.log` was already unaffected.
+- [x] **RC-4: Correct the stale confidence-threshold caption** (v4.1.1) (fixed) — the caption now points at the Processing Strategy sliders and names `config.py` only as the source of defaults.
+- [x] **RC-5: Tighten the two remaining weak assertions** (v4.1.1) (fixed) — the near-tautological `or "1" in text` and the redundant case-insensitive `or` now assert one specific condition each.
+- [ ] **RC-6 (optional): Split `export_engine/exporter.py`** — **Accepted limitation at v5.0.0:** Well tested and stable; a split is pure refactoring with no behaviour to gain. Original entry: — 827 lines across six export formats. Low priority; well-tested and stable. (Effort: M)
+- [x] **RC-8: MPS device recommendation** (v4.1.1) (closed as obsolete) — the concern was that MPS could not do float64 word-timestamp alignment and so wasted a pass per variant. RC-10 turned word timestamps off by default, so the fallback no longer fires and MPS is correctly recommended. The documented "3-5x faster than CPU for base and small" was wrong in both magnitude and direction, and is replaced with measured figures: 1.05x for `base`, 1.7x for `small`, 2.7x for `medium`.
+- [x] **RC-9: Pass the credential pyannote 4.x accepts** (v4.1.1) (fixed, #206) — `use_auth_token` was renamed to `token`, so diarisation failed silently on every file in the 28 July batch. The kwarg is now chosen by inspecting the installed signature.
+- [x] **RC-10: Stop forcing word timestamps** (v4.1.1) (fixed) — `word_timestamps=True` was hardcoded on every pass. On long-form audio that collapses Whisper into a repetition loop: 1,643 words with it off versus 137 with it on, same file and model. Now opt-in, with a degeneracy guard so a repetition loop can never again be reported as success.
+- [x] **RC-11: Stop the multi-alignment merge displacing later variants** (v4.1.1) (fixed) — `columns.insert()` shifted every column to its right while the next variant's counter still tracked raw reference positions, so each successive variant landed further out of place. On a real recording it held HIGH confidence at 4.6 % where the same data supports 43.6 %. Columns are now keyed by reference position, and insertions at the same gap are shared rather than split.
 
 ### What the two headline bugs mean together
 
@@ -297,6 +295,53 @@ agreement for review, not that it provides calibrated uncertainty or superior ac
   deliberate exposure is detected and displays a persistent upstream-security warning.
 
 Follow-up evidence and dependency work is tracked in issues #219 and #220.
+
+---
+
+## Completed — v5.0.0 final close-out (29 September 2026 review)
+
+A final review pass found these; all fixed before the tag unless marked accepted.
+
+- [x] **Per-job output folders** (v5.0.0) (#288) — runs now write to
+  `outputs/jobs/<stem>-<sha8>/<YYYYMMDD-HHMMSS>/`, where `sha8` is the start of the audio's
+  SHA-256, so the same recording always maps to one project folder and no re-run overwrites
+  another. Previously every run shared a flat `outputs/consensus/`, where re-runs replaced
+  some files and sat beside others. Speaker names persist per project. Past Jobs lists runs
+  by project and still shows pre-v5.0.0 flat outputs under *Legacy*. The test suite now
+  writes only to temporary directories.
+- [x] **A failed export reported success** (v5.0.0) (#275) — RD-18; see below.
+- [x] **Duplicate upload names crossed results and crashed the page** (v5.0.0) (#284) — two uploads sharing a sanitised stem overwrote each other's results, then raised
+  `StreamlitDuplicateElementKey`.
+- [x] **Inert "Processing mode" control removed** (v5.0.0) (#284) — its value was discarded
+  and its help text described behaviour the app cannot produce.
+- [x] **Log handler added on every UI rerun** (v5.0.0) (#284) — produced false "×N" repeat
+  counts on the Logs page.
+- [x] **AI context pack reported the configured device, not the one used** (v5.0.0) (#277)
+  — a silent GPU-to-CPU fallback now shows as `cpu (configured: cuda)`.
+- [x] **Batch report ignored `--output-dir`; `--export` used the raw stem** (v5.0.0) (#278).
+- [x] **Dependency audit never fails on known advisories** (v5.0.0) (#281) — known advisories live in `.github/known-advisories.txt` and must be
+  documented in `SECURITY.md`; new ones raise a warning and a GitHub issue. The change
+  exposed that `safety` had been crashing silently behind `|| true`; it now runs isolated.
+- [x] **CLI reference named the wrong PDF dependency** (v5.0.0) (#276).
+- [ ] **Multi-session UI setting race** — **Accepted limitation at v5.0.0:** the UI sets the
+  device, parallelism, and noise-floor mode on the shared `config` module, so two browser
+  sessions starting runs at the same moment on one server could swap settings. Chorus is a
+  single-user local tool; the recorded run settings are unaffected.
+
+### If this project is ever forked
+
+The accepted limitations above are the only known open work. Suggested model per item for
+agent delegation, applying the rule used throughout v5.0.0: a cheaper model where the change
+is tightly specified and a test catches a wrong answer, a stronger one where judgement is
+needed.
+
+| Item | Model | Why |
+|---|---|---|
+| RC-6 exporter split | sonnet | Mechanical move, but import cycles need care; the existing tests are the gate. |
+| RD-14 Docker build in CI | haiku | A single workflow file with a known shape. |
+| Multi-session setting race | sonnet | Threading run settings through `job.config` spans UI and pipeline. |
+| `large` vs `large+medium` comparison | opus | Experimental design and honest interpretation, not code. |
+| Holistic re-review of core modules | opus | Sonnet repeatedly hit safeguard false positives on this repository. |
 
 ---
 
@@ -460,18 +505,18 @@ release blockers and are fixed; the rest are deferred below.
 
 ---
 
-## Planned — post-v5.0.0 cleanup (from the Coventry Case fix list)
+## Closed at v5.0.0 — post-v5.0.0 cleanup (from the Coventry Case fix list)
 
 Consolidated from a working notes file kept during the Coventry Case production run;
 everything below was still open once the run's fixes (single-run lock, diarisation-error
 surfacing) shipped.
 
-- [ ] **Paired boolean flags mislabel their provenance source** — `_resolve_cli_settings()`
+- [x] **Paired boolean flags mislabel their provenance source** (v5.0.0) — **fixed (#278).** Original finding: — `_resolve_cli_settings()`
   labels `--word-timestamps`/`--no-word-timestamps` (and the same pattern for
   `--keep-variant-wavs`/`--no-keep-variant-wavs`) using the argparse `dest` name, so the
   settings table always prints the *positive* flag regardless of which was actually
   passed. The printed value is correct; only the provenance string is wrong. (Effort: S)
-- [x] **Four CLI settings have no Web UI equivalent** (v5.0.0, documented not built) —
+- [x] **Four CLI settings have no Web UI equivalent** (v5.0.0) (documented, not built) —
   word-level timestamps, WAV retention, the Ollama base URL, and the Ollama request
   timeout are `.env`-only with no sidebar control. Building four new UI controls
   immediately before a final tag adds more risk than it removes, so this ships as a
@@ -496,7 +541,7 @@ surfacing) shipped.
   `--nlp` and `--llm` are not mutually exclusive — both run if both are set, spaCy first,
   Ollama only touching whatever spaCy left LOW — which is undocumented anywhere today.
   (Effort: M)
-- [x] **Unexplained process death, 2026-08-23/24** (v5.0.0, recorded not diagnosed) —
+- [x] **Unexplained process death, 2026-08-23/24** (v5.0.0) (recorded, not diagnosed) —
   a batch process died silently between files with no error, no OOM signal captured, and
   the screen session still attached. It has not recurred since, and there is no evidence
   to act on: diagnosing it would mean guessing at a cause, which this project has
@@ -504,35 +549,35 @@ surfacing) shipped.
   left open implying an investigation is pending. Should it ever recur, capture
   `log show`, the Diagnostic Reports directory, and memory-pressure history *before*
   restarting, since restarting is what destroyed the evidence the first time.
-- [ ] **One-file `large`-vs-`large+medium` consensus comparison** (optional) — untested
+- [ ] **One-file `large`-vs-`large+medium` consensus comparison** — **Accepted limitation at v5.0.0:** An experiment, not a defect; no casework decision depends on it. Original entry: (optional) — untested
   hypothesis that adding a second, weaker model to the vote pool won't change transcript
   words but will dilute the reported HIGH percentage. Needs a "reconstruct only, don't
   re-transcribe" entry point that may not exist yet — scope that before committing to
   building it. Curiosity-driven, not blocking. (Effort: S if a re-run entry point exists)
-- [ ] **Shell-level test coverage for `survey-ollama-env.sh`** — no automated tests
+- [x] **Shell-level test coverage for `survey-ollama-env.sh`** (v5.0.0) — **fixed (#283).** Original finding: — no automated tests
   exist for the script itself (only `tests/test_hardware_survey.py`, covering the Python
   UI module). Needs `bats` or an equivalent shell-test harness, not yet present in this
   repo.
-- [ ] **Test pollution** — some tests write real artefacts into `outputs/consensus/`
+- [x] **Test pollution** (v5.0.0) — **fixed (#279, #288).** Original finding: — some tests write real artefacts into `outputs/consensus/`
   instead of an isolated `tmp_path`. Confirmed directly: stray `test_*.md`/`audio_*.md`
   files from earlier pytest runs found sitting in the real output directory. Eleven exact
   call sites are listed as RD-11 below. (Effort: S)
 
 ---
 
-## Planned — deferred from the 6 September 2026 holistic review
+## Closed at v5.0.0 — deferred from the 6 September 2026 holistic review
 
 Full context and predictive failure scenarios in [REVIEW-RD.md](REVIEW-RD.md). Each item
 is written to be executable without reading the review.
 
-- [ ] **RD-5 — Restore signal to the dependency audit** — the audit fails on every run
+- [x] **RD-5 — Restore signal to the dependency audit** (v5.0.0) — **fixed (#281).** Original finding: — the audit fails on every run
   because of the accepted `lightning` advisory, so a red result conveys nothing, which is
   exactly how RD-4's `nltk` advisory went unnoticed. Pass an explicit ignore list of
   accepted advisory IDs and fail the job on anything outside it. Prove the gate is live by
   confirming the result flips when an ID is added or removed. Keep the accepted advisories
   visible in the log rather than suppressed. Files: `.github/workflows/ci.yml`,
   `.github/workflows/security.yml`. (Effort: S)
-- [ ] **RD-6 — Make the batch lock atomic** — `batch_runner.py` calls `check_batch_lock()`
+- [x] **RD-6 — Make the batch lock atomic** (v5.0.0) — **fixed (#266).** Original finding: — `batch_runner.py` calls `check_batch_lock()`
   then `acquire_batch_lock()` as two unsynchronised steps, and `acquire` unconditionally
   overwrites, so two processes started close together can both proceed. A malformed or
   empty lock file is treated as safe to proceed, so the failure mode is fail-open. Replace
@@ -541,7 +586,7 @@ is written to be executable without reading the review.
   the owner. Tests: second acquisition refused while held; refusal on a truncated file;
   acquisition succeeds when the recorded PID is genuinely dead. Files:
   `batch_processor/batch_runner.py`, `tests/test_batch_runner.py`. (Effort: M)
-- [ ] **RD-7 — Give the diarisation pre-flight a real smoke test** — this is the
+- [x] **RD-7 — Give the diarisation pre-flight a real smoke test** (v5.0.0) — **fixed (#269).** Original finding: — this is the
   structural finding behind three diarisation failures in three weeks.
   `check_diarisation_ready()` verifies imports, token, and `Pipeline.from_pretrained`
   succeeding, but never runs inference, so it could not have caught either the
@@ -550,7 +595,7 @@ is written to be executable without reading the review.
   through the same path `diarise()` uses, reporting which of the two failed. No fixture
   audio in the repo, and a few seconds' runtime. Files: `diarisation/diariser.py`,
   `tests/test_diariser_preflight.py`. (Effort: M)
-- [ ] **RD-8 — Fix the confidence denominator** — `sequence_alignment.py` computes
+- [x] **RD-8 — Fix the confidence denominator** (v5.0.0) — **fixed (#260).** Original finding: — `sequence_alignment.py` computes
   `n_transcripts` *before* empty transcripts are filtered out, so a variant that produced
   nothing permanently depresses every column's confidence. In a four-variant run with one
   empty variant, unanimity among the remaining three scores 0.75, exactly on the HIGH
@@ -558,7 +603,7 @@ is written to be executable without reading the review.
   asserting unanimous agreement among the other three is tiered HIGH, demonstrated failing
   first. Files: `consensus_merger/sequence_alignment.py`,
   `tests/test_sequence_alignment.py`. (Effort: S)
-- [ ] **RD-9 — Replace assertions that cannot fail** — several alignment tests would pass
+- [x] **RD-9 — Replace assertions that cannot fail** (v5.0.0) — **fixed (#280).** Original finding: — several alignment tests would pass
   against broken logic: length-only assertions in `TestDispatcher`, a vacuous
   `0 <= confidence <= 1` check, an either-way `tier in ("HIGH","MEDIUM")` chain, and a
   statistical gate tolerating 20% mis-tiering. Assert exact expected token sequences and
@@ -566,7 +611,7 @@ is written to be executable without reading the review.
   off-by-one is introduced into `_build_multi_alignment`, then passes once reverted. Also
   tighten `TestSequencePerformance`'s 30-second budget for 500 words. Files:
   `tests/test_sequence_alignment.py`, `tests/test_alignment.py`. (Effort: M)
-- [ ] **RD-10 — Pin CI actions and stop overriding pinned dependencies** — no third-party
+- [x] **RD-10 — Pin CI actions and stop overriding pinned dependencies** (v5.0.0) — **fixed (#271, #285).** Original finding: — no third-party
   action is SHA-pinned; all float on mutable tags, which contradicts this repo's own
   reference-pinning rule. Replace each `uses: owner/repo@vN` with a 40-character commit
   SHA plus the version in a trailing comment, resolvable via
@@ -576,7 +621,7 @@ is written to be executable without reading the review.
   versions other than those shipped: delete those lines, since the preceding
   `pip install -e ".[dev]"` already supplies the pinned set. Files:
   `.github/workflows/{ci,security,release}.yml`. (Effort: M)
-- [ ] **RD-11 — Stop tests writing into the real outputs directory** — `export_srt`,
+- [x] **RD-11 — Stop tests writing into the real outputs directory** (v5.0.0) — **fixed (#279, #288).** Original finding: — `export_srt`,
   `export_vtt`, and `merge_transcripts` default `output_dir` to the global `CONSENSUS_DIR`,
   and eleven call sites omit it, so artefacts land in the real `outputs/consensus/` on
   every run. The same files get it right elsewhere by passing `output_dir=tmp_path`, so
@@ -584,7 +629,7 @@ is written to be executable without reading the review.
   86, 101, 113, 117, 122, and 140; `tests/test_merger.py` lines 59, 70, and 80. Verify a
   full suite run on a clean checkout leaves no `test_*` files in `outputs/consensus/`.
   (Effort: S)
-- [ ] **RD-14 — Build the Docker images in CI on any Dockerfile change** — the images are
+- [ ] **RD-14 — Build the Docker images in CI on any Dockerfile change** — **Accepted limitation at v5.0.0:** Guards future Dockerfile edits, and there are none after the final release. The release workflow builds and publishes both images at the tag. Original entry: — the images are
   published only on a `.0.0` tag, so both silently rotted for months and were only found
   unbuildable while preparing v5.0.0 (see RD-13). `docs/DOCKER.md` had meanwhile been
   advertising `v4.1.0` images that the workflow never built. Add a job that builds both
@@ -592,7 +637,7 @@ is written to be executable without reading the review.
   `requirements.txt`, without pushing. Verify by deliberately breaking a Dockerfile in a
   scratch branch and confirming the job fails. Files: `.github/workflows/ci.yml`.
   (Effort: S)
-- [ ] **RD-12 — Tidy dead and duplicated code** — `build/lib/consensus_merger/` is a stale
+- [x] **RD-12 — Tidy dead and duplicated code** (v5.0.0) — **fixed (#276).** Original finding: — `build/lib/consensus_merger/` is a stale
   duplicate of the live package left by an old build, and `_score_pair` in
   `consensus_merger/sequence_alignment.py` has no callers. Remove `build/` from the working
   tree, confirm `.gitignore` covers it and that no import resolves to it, and delete
@@ -600,7 +645,7 @@ is written to be executable without reading the review.
 
 ---
 
-## Planned — from the 16 September 2026 holistic review
+## Closed at v5.0.0 — from the 16 September 2026 holistic review
 
 Second review pass, covering `ui/`, `audio_processor/`, `export_engine/`, `reconstruction/`,
 and `benchmarks/`, none of which had been adversarially reviewed before. Full context in
@@ -637,7 +682,7 @@ plausible-looking result and no signal to the caller.
   on the result and surface them in the batch report and the UI the way
   `diarisation_error` already is. Files: `export_engine/exporter.py`,
   `batch_processor/batch_runner.py`, `ui/results.py`. (Effort: M)
-- [ ] **RD-19 — Reconstruction silently no-ops when its backend is missing** — with
+- [x] **RD-19 — Reconstruction silently no-ops when its backend is missing** (v5.0.0) — **fixed (#262).** Original finding: — with
   `enable_nlp=True` and spaCy absent, `reconstruction/nlp.py:192-195` logs a warning and
   returns the vote list unchanged; `consensus_merger/merger.py:72` just reassigns it. The
   observable result is identical to "reconstruction ran and found nothing to fix". The
@@ -647,7 +692,7 @@ plausible-looking result and no signal to the caller.
   so a run can report that reconstruction was requested but did not happen. Files:
   `reconstruction/nlp.py`, `reconstruction/llm.py`, `reconstruction/__init__.py`,
   `consensus_merger/merger.py`. (Effort: M)
-- [ ] **RD-20 — The spaCy `sm` fallback silently disables semantic scoring** —
+- [x] **RD-20 — The spaCy `sm` fallback silently disables semantic scoring** (v5.0.0) — **fixed (#262).** Original finding: —
   `reconstruction/nlp.py:57-88` degrades `en_core_web_md` → `en_core_web_sm` → `None` with
   only a log line. `en_core_web_sm` ships no word vectors, so `_semantic_similarity`
   (`nlp.py:151`) returns 0.0 for every candidate and scoring silently reduces to
@@ -657,7 +702,7 @@ plausible-looking result and no signal to the caller.
 
 ### Correctness
 
-- [ ] **RD-21 — spaCy tokens are assumed to align 1:1 with vote indices** —
+- [x] **RD-21 — spaCy tokens are assumed to align 1:1 with vote indices** (v5.0.0) — **fixed (#264).** Original finding: —
   `reconstruction/nlp.py:228-229` rebuilds text with `" ".join(words)` and then indexes
   spaCy's tokenisation against the original vote positions. spaCy splits contractions and
   punctuation into separate tokens, so `required_pos` can be read off the wrong token
@@ -665,14 +710,14 @@ plausible-looking result and no signal to the caller.
   silent wrong-answer bug, not a crash. Align by token offset rather than index, and add a
   test using a transcript containing contractions. Files: `reconstruction/nlp.py`,
   `tests/` (new or existing reconstruction tests). (Effort: M)
-- [ ] **RD-22 — The Web UI validates no input** — `ui/upload.py:17-26` sets `type=` on the
+- [x] **RD-22 — The Web UI validates no input** (v5.0.0) — **fixed (#263).** Original finding: — `ui/upload.py:17-26` sets `type=` on the
   uploader, which is a client-side filter only, and `spool_upload`
   (`ui/pipeline_invocation.py:86-103`) writes `uf.read()` with no size or emptiness check.
   A zero-byte file, or a non-audio file renamed to `.wav`, is spooled and fails later as a
   generic per-file error. `CLAUDE.md`'s own testing standard requires the UI to handle
   empty uploads. Add an explicit guard with a clear message. Files: `ui/upload.py`,
   `ui/pipeline_invocation.py`, `tests/test_ui_app.py`. (Effort: S)
-- [ ] **RD-23 — `audio_processor` has unguarded numerical edges** — `filters.py:117` and
+- [x] **RD-23 — `audio_processor` has unguarded numerical edges** (v5.0.0) — **fixed (#261).** Original finding: — `filters.py:117` and
   `:171-174` call `np.max`/`np.mean`/`np.median` on arrays that can be empty
   (`ValueError`); `filters.py:75` divides by `nyquist = sr / 2.0`; `filters.py:162-163`
   computes `len(audio) // frame_len` where a small sample rate makes `frame_len` zero; and
@@ -683,7 +728,7 @@ plausible-looking result and no signal to the caller.
 
 ### Maintainability
 
-- [ ] **RD-17 — `Dockerfile.gpu` installs a torch it immediately discards** — **not
+- [x] **RD-17 — `Dockerfile.gpu` installs a torch it immediately discards** (v5.0.0) — **fixed (#270).** Original finding: — **not
   release-blocking; verified empirically.** `Dockerfile.gpu:38-41` installs
   `torch==2.2.0+cu121` and `torchaudio==2.2.0+cu121` from the CUDA index, then `:45`
   installs `requirements.txt`, whose `pyannote-audio==4.0.7` and `torchcodec==0.16.0`
@@ -701,24 +746,24 @@ plausible-looking result and no signal to the caller.
   `docs/DOCKER.md` against a CUDA 13 runtime. Success criteria: the image still reports a
   CUDA build, and the build no longer downloads a torch it discards. Files:
   `Dockerfile.gpu`, `docs/DOCKER.md`. (Effort: S)
-- [ ] **RD-24 — UI run results are shared across threads without a lock** —
+- [x] **RD-24 — UI run results are shared across threads without a lock** (v5.0.0) — **fixed (#282, #287).** Original finding: —
   `RunManager._results` is created and mutated by the worker thread
   (`ui/run_worker.py:100`, `:163`) and read from the Streamlit main thread via
   `get_results` and `clear_finished` (`ui/run_manager.py:73-75`, `:95-101`) with no
   locking; `is_running()` also reads `_active_thread` outside the class lock. Guard these
   with the existing `_process_lock`. Also remove `self._thread` (`run_manager.py:34,64`),
   which is assigned but never read. Files: `ui/run_manager.py`. (Effort: S)
-- [ ] **RD-25 — Interrupted runs leave spool files behind** — upload spool files are
+- [x] **RD-25 — Interrupted runs leave spool files behind** (v5.0.0) — **fixed (#282).** Original finding: — upload spool files are
   unlinked only in the worker's `finally` (`ui/run_worker.py:181-182`), so a Streamlit
   restart mid-run leaves `RUNS_DIR/<run_id>/` populated permanently. `clear_finished`
   removes only `active_run.json`. Sweep stale run directories alongside the existing
   `mark_interrupted_if_stale` check. Files: `ui/run_manager.py`. (Effort: S)
-- [ ] **RD-26 — A benchmark run dirties the working tree** —
+- [x] **RD-26 — A benchmark run dirties the working tree** (v5.0.0) — **fixed (#279).** Original finding: —
   `benchmarks/run_benchmark.py:357` defaults its output to `benchmarks/RESULTS.md`, which
   is git-tracked, so running the benchmark leaves uncommitted changes. Write to a
   gitignored path by default and require an explicit flag to update the tracked file.
   Files: `benchmarks/run_benchmark.py`. (Effort: XS)
-- [ ] **RD-27 — `run_one_file` is dead production code kept alive by tests** —
+- [x] **RD-27 — `run_one_file` is dead production code kept alive by tests** (v5.0.0) — **fixed (#284).** Original finding: —
   `ui/pipeline_invocation.py:40-83` has no production caller; it is referenced only by
   `tests/test_run_status_panel.py:170` and `tests/test_ui_run_loop.py`. It carries its own
   copy of the `run_pipeline` keyword-argument list, which is the most likely thing to
@@ -728,4 +773,4 @@ plausible-looking result and no signal to the caller.
 
 ---
 
-*Last updated: 7 September 2026*
+*Last updated: 29 September 2026*
