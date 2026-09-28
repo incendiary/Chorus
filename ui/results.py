@@ -520,8 +520,9 @@ def render_file_results(
             # Speaker names persist at the project level (shared across
             # every run of this recording): diarised_path is
             # <project_dir>/<run>/consensus/{stem}_diarised.md, so its
-            # grandparent is the project directory.
-            project_dir = results["diarised_path"].parent.parent
+            # great-grandparent is the project directory, matching where
+            # pipeline_runner saves them (run_dir.parent).
+            project_dir = results["diarised_path"].parent.parent.parent
 
             # Load existing names (previously saved or empty)
             existing_names = load_speaker_names(original_stem, output_dir=project_dir)
