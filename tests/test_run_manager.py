@@ -228,6 +228,28 @@ def test_per_file_exception_captured_and_batch_continues(
     assert "a.wav" not in results
 
 
+def test_source_filename_forwarded_is_the_original_name_not_the_spool_name(
+    tmp_path, _sync_mode, monkeypatch
+):
+    """execute_run must pass the original FileEntry.name as source_filename,
+    not let run_pipeline default to the mangled spool_path filename — the
+    per-job output folder must be named after the recording, not the
+    random-suffixed temp file."""
+    captured: dict[str, str | None] = {}
+
+    def _fake(audio_path, progress_callback=None, event_callback=None, **kwargs):
+        captured["source_filename"] = kwargs.get("source_filename")
+        return {"consensus_path": Path("dummy_consensus.md"), "elapsed_seconds": 0.01}
+
+    monkeypatch.setattr("ui.pipeline_invocation.run_pipeline", _fake)
+
+    manager = RunManager()
+    job = _make_job(tmp_path, names=("Interview Recording.wav",))
+    assert manager.start(job) is True
+
+    assert captured["source_filename"] == "Interview Recording.wav"
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # RunManager — stale state marked interrupted
 # ─────────────────────────────────────────────────────────────────────────────

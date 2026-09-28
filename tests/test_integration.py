@@ -492,10 +492,14 @@ class TestExportIntegration:
         from pipeline_runner import run_pipeline
 
         results = run_pipeline(audio_path=synthetic_audio, language="en")
+        # run_pipeline now writes into its own per-job consensus dir rather
+        # than the (patched) global CONSENSUS_DIR, so point the zip at the
+        # actual sibling files' directory.
         zip_bytes = export_zip(
             results["consensus_path"],
             results["transcripts"]["original"],
             "test_recording",
+            output_dir=results["consensus_path"].parent,
         )
         assert len(zip_bytes) > 0
 

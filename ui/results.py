@@ -393,7 +393,12 @@ def render_file_results(
         use_container_width=True,
     )
 
-    plain_path = export_plain_text(consensus_path, original_stem, include_low=show_low)
+    plain_path = export_plain_text(
+        consensus_path,
+        original_stem,
+        include_low=show_low,
+        output_dir=consensus_path.parent,
+    )
     st.download_button(
         label="⬇️ Download Most Likely Transcript (.txt)",
         data=plain_path.read_text(encoding="utf-8"),
@@ -403,7 +408,9 @@ def render_file_results(
         use_container_width=True,
     )
 
-    best_guess_path = export_best_guess(consensus_path, original_stem)
+    best_guess_path = export_best_guess(
+        consensus_path, original_stem, output_dir=consensus_path.parent
+    )
     st.download_button(
         label="⬇️ Download Best-Guess Transcript (.txt)",
         data=best_guess_path.read_text(encoding="utf-8"),
@@ -420,7 +427,7 @@ def render_file_results(
             transcripts["original"],
             original_stem,
             include_formats=formats_to_export or None,
-            output_dir=None,
+            output_dir=consensus_path.parent,
         )
     st.download_button(
         label="⬇️ Download Full Output Archive (.zip)",
@@ -440,6 +447,7 @@ def render_file_results(
                 transcripts["original"],
                 original_stem,
                 formats_to_export,
+                output_dir=consensus_path.parent,
             )
         fmt_cols = st.columns(len(formats_to_export))
         for col, fmt in zip(fmt_cols, formats_to_export, strict=False):
@@ -509,8 +517,15 @@ def render_file_results(
         if speaker_labels:
             from diarisation.diariser import load_speaker_names, save_speaker_names
 
+            # Speaker names persist at the project level (shared across
+            # every run of this recording): diarised_path is
+            # <project_dir>/<run>/consensus/{stem}_diarised.md, so its
+            # great-grandparent is the project directory, matching where
+            # pipeline_runner saves them (run_dir.parent).
+            project_dir = results["diarised_path"].parent.parent.parent
+
             # Load existing names (previously saved or empty)
-            existing_names = load_speaker_names(original_stem)
+            existing_names = load_speaker_names(original_stem, output_dir=project_dir)
 
             st.markdown(
                 "**Speaker Names** — assign human-readable names to "
@@ -546,7 +561,7 @@ def render_file_results(
                 help="Saves names to a sidecar JSON file. They will be "
                 "automatically loaded next time you process this file.",
             ):
-                save_speaker_names(original_stem, updated_names)
+                save_speaker_names(original_stem, updated_names, output_dir=project_dir)
                 st.success(
                     f"Saved {len(updated_names)} speaker name(s) → "
                     f"`{original_stem}_speakers.json`"

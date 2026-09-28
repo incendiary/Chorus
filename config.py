@@ -60,6 +60,11 @@ VARIANTS_DIR = OUTPUTS_DIR / "variants"
 TRANSCRIPTS_DIR = OUTPUTS_DIR / "transcripts"
 CONSENSUS_DIR = OUTPUTS_DIR / "consensus"
 
+# Default root for per-job output folders (see utils.job_output_dir). Each
+# recording gets its own ``<stem>-<sha8>/<timestamp>/`` directory here, so
+# re-running the same file never overwrites a previous run's outputs.
+JOBS_DIR = OUTPUTS_DIR / "jobs"
+
 
 def ensure_output_dirs() -> None:
     """Create output directories if they do not already exist."""

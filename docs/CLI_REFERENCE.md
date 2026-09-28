@@ -641,21 +641,20 @@ python -m batch_processor.batch_runner /audio/ --export srt vtt
 
 #### `--output-dir {DIR}` / `-o {DIR}`
 
-Root output directory. When supplied, each input file's outputs are written to
-an isolated `<DIR>/<stem>/` subdirectory to prevent cross-job collisions.
+Root output directory, replacing the default `outputs/jobs`. Each input file
+gets its own never-overwritten job folder,
+`<DIR>/<stem>-<sha8>/<YYYYMMDD-HHMMSS>/`, so re-running the same recording
+never collides with a previous run's outputs. `<stem>` is the sanitised
+filename stem; `<sha8>` is the first 8 hex characters of the audio's SHA-256,
+so the same recording (even renamed) always lands in the same project
+folder, while two different files that happen to share a name never do.
 
-If omitted, outputs are written to the global `outputs/` directory in the
-project root, with all files dumped into `outputs/consensus/`,
-`outputs/transcripts/`, etc.
-
-Using `--output-dir` is recommended for batch operations to keep runs tidy.
-
-**Default:** `None` (global project outputs).
+**Default:** `None` (`outputs/jobs` in the project root).
 
 **Source:** CLI flag only.
 
-**Web UI equivalent:** None. The Web UI always writes to the global `outputs/`
-directory.
+**Web UI equivalent:** None. The Web UI writes to the same default
+`outputs/jobs` layout.
 
 **Example:**
 
@@ -705,9 +704,12 @@ python pipeline_runner.py recording.mp3 --language en
 Root directory for pipeline outputs. Creates `variants/`, `transcripts/`, and
 `consensus/` subdirectories inside.
 
-If omitted, outputs go to the global `outputs/` directory.
+If omitted, a per-job folder is created automatically under the default
+`outputs/jobs` root: `outputs/jobs/<stem>-<sha8>/<YYYYMMDD-HHMMSS>/`. Passing
+`--output-dir` explicitly is used as-is (no per-job folder is added beneath
+it) — it is for a caller that already wants full control of the path.
 
-**Default:** `None` (global project outputs).
+**Default:** `None` (auto-created job folder under `outputs/jobs`).
 
 **Example:**
 
@@ -812,7 +814,7 @@ Chorus batch — effective settings
 The batch processor writes a per-run log file and prints its path:
 
 ```
-  log file               outputs/consensus/batch_20250920T143022Z.log
+  log file               outputs/jobs/batch_20250920T143022Z.log
 ```
 
 Check the log if files fail silently or processing seems stuck.

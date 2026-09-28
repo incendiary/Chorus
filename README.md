@@ -116,7 +116,10 @@ Once the UI is open at [http://localhost:8501](http://localhost:8501), configura
 
 ### 3. Understanding the output
 
-Every run produces **three output files** — all written to `outputs/consensus/{stem}_*` — designed to be loadable directly into an AI assistant:
+Every run produces **three output files** — all written to that run's own
+`outputs/jobs/{stem}-{sha8}/{timestamp}/consensus/{stem}_*` folder, so
+re-running the same recording never overwrites a previous run — designed to
+be loadable directly into an AI assistant:
 
 #### 1. Clean Transcript
 **File:** `{stem}_best_guess.txt` — a fully human-readable plain-text transcript with no brackets, highlighting, or metadata. Every position is resolved to its single best-guess word, suitable for distribution to non-technical readers or downstream NLP processing.

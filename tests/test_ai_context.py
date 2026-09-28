@@ -594,35 +594,35 @@ class TestParsingGuideWrittenPerRun:
         assert guide.exists()
         assert "Chorus" in guide.read_text(encoding="utf-8")
 
-    def test_written_to_global_consensus_dir_when_output_dir_omitted(
+    def test_written_to_job_consensus_dir_when_output_dir_omitted(
         self, tmp_path, monkeypatch
     ):
-        """The default path (no output_dir) must still yield the guide."""
+        """The default path (no output_dir) must still yield the guide, now
+        inside the auto-created per-job folder rather than a flat, shared
+        consensus directory."""
         from unittest.mock import patch
 
         import config
-        import export_engine.exporter as exporter
         from tests.test_integration import (
             _generate_sine_wav,
             _mock_run_transcription_pass,
         )
 
-        redirected = tmp_path / "global_consensus"
-        monkeypatch.setattr(config, "CONSENSUS_DIR", redirected)
-        monkeypatch.setattr(exporter, "CONSENSUS_DIR", redirected)
-        # pipeline_runner imports CONSENSUS_DIR by name at module load
-        import pipeline_runner
+        jobs_root = tmp_path / "jobs"
+        monkeypatch.setattr(config, "JOBS_DIR", jobs_root)
 
-        monkeypatch.setattr(pipeline_runner, "CONSENSUS_DIR", redirected)
+        import pipeline_runner
 
         audio = _generate_sine_wav(tmp_path / "audio.wav")
         with patch(
             "pipeline_runner.run_transcription_pass",
             side_effect=_mock_run_transcription_pass,
         ):
-            pipeline_runner.run_pipeline(audio_path=audio, language="en")
+            results = pipeline_runner.run_pipeline(audio_path=audio, language="en")
 
-        assert (redirected / "HOW_TO_PARSE_CHORUS_OUTPUT.md").exists()
+        guide_path = results["consensus_path"].parent / "HOW_TO_PARSE_CHORUS_OUTPUT.md"
+        assert guide_path.exists()
+        assert guide_path.is_relative_to(jobs_root)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
