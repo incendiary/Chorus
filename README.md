@@ -555,4 +555,4 @@ A change is complete only when all of the following are true:
 ---
 
 **Author:** Manus AI
-**Licence:** [Prosperity Public License 4.0.0](LICENSE) — free for non-commercial use; a commercial licence must be arranged with the licensor for any commercial use.
+**Licence:** [PolyForm Noncommercial License 1.0.0](LICENSE). Free to use, study, modify, and share for any non-commercial purpose, including personal use and use by charities, schools, and public bodies. Keep the `Required Notice` line from `LICENSE` in any copy you distribute, which is how credit is given. Commercial use needs a separate licence: email a.horsewood@googlemail.com. Releases before v5.0.0 remain under the licence they shipped with.
