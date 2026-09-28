@@ -97,7 +97,8 @@ def execute_run(job: RunJob, manager: RunManager) -> None:
         "formats_to_export": list(job.formats_to_export),
     }
     write_state_atomic(state)
-    manager._results[job.run_id] = {}
+    with manager._results_lock:
+        manager._results[job.run_id] = {}
 
     logger.info(
         "Starting background run %s (%d file%s)",
@@ -160,7 +161,7 @@ def execute_run(job: RunJob, manager: RunManager) -> None:
                     event_callback=_event_cb,
                     **job.config,
                 )
-                manager._results[job.run_id][file_state["name"]] = results
+                manager.set_file_result(job.run_id, file_state["name"], results)
                 file_state["status"] = "done"
                 file_state["progress"] = 1.0
                 file_state["output_paths"] = {
