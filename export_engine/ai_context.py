@@ -33,14 +33,13 @@ import logging
 from datetime import UTC, datetime
 from pathlib import Path
 
+import config
 from config import (
     ALIGNMENT_STRATEGY,
     CONSENSUS_DIR,
     CONSENSUS_THRESHOLD,
-    NOISE_FLOOR_MODE,
     SIMILARITY_THRESHOLD,
     VARIANT_LABELS,
-    WHISPER_DEVICE,
     WHISPER_MODEL,
 )
 
@@ -132,6 +131,27 @@ def _build_uncertainty_table(votes: list, consensus_threshold: float) -> str:
         f"({len(uncertain) / max(len(votes), 1) * 100:.1f}%)"
     )
     return "\n".join(lines)
+
+
+def _device_summary(transcripts_meta: dict[str, dict], configured_device: str) -> str:
+    """Summarise the compute device(s) actually recorded on the transcripts.
+
+    Falls back to *configured_device* when no transcript carries a ``device``
+    key. When the actual device(s) differ from what was configured (a
+    mid-run fallback, or a device not present among the actual devices used),
+    the configured value is appended so the mismatch stays visible.
+    """
+    devices = sorted(
+        {meta["device"] for meta in transcripts_meta.values() if meta.get("device")}
+    )
+    if not devices:
+        return configured_device
+    actual = ", ".join(devices)
+    if len(devices) == 1 and devices[0] == configured_device:
+        return actual
+    if configured_device in devices:
+        return actual
+    return f"{actual} (configured: {configured_device})"
 
 
 def _build_clean_transcript(votes: list) -> str:
@@ -247,17 +267,18 @@ def generate_ai_context_pack(
     sections.append(_methodology_section(consensus_threshold))
 
     # ── Processing Metadata ──────────────────────────────────────────────────
+    device_summary = _device_summary(transcripts_meta, config.WHISPER_DEVICE)
     sections.append(f"""## Processing Configuration
 
 | Parameter | Value |
 |-----------|-------|
 | Whisper model | `{model}` |
 | Detected language | `{language}` |
-| Compute device | `{WHISPER_DEVICE}` |
+| Compute device | `{device_summary}` |
 | Alignment strategy | `{strategy}` |
 | Consensus threshold | {_format_pct(consensus_threshold)}% |
 | Similarity threshold | {sim_pct_str}% |
-| Noise floor mode | `{NOISE_FLOOR_MODE}` |
+| Noise floor mode | `{config.NOISE_FLOOR_MODE}` |
 | Transcription variants | {len(transcripts_meta)} |
 | Total consensus words | {len(votes)} |
 | Chorus version | `{chorus_version}` |

@@ -14,10 +14,10 @@ jobs:
     name: GitLeaks — Secret Detection
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
         with:
           fetch-depth: 0
-      - uses: gitleaks/gitleaks-action@v2
+      - uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7  # v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -27,9 +27,11 @@ jobs:
   dependency-check:
     name: Python Dependency Audit
     runs-on: ubuntu-latest
+    permissions:
+      issues: write
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7
         with:
           python-version: '3.11'
           cache: 'pip'
@@ -37,20 +39,64 @@ jobs:
       - name: Install dependencies
         run: |
           pip install --upgrade "setuptools>=83.0.0"
-          pip install -r requirements.txt .[dev] safety pip-audit
+          pip install -r requirements.txt .[dev] pip-audit
 
+      # A non-zero exit from safety/pip-audit means findings were reported, not
+      # that the scan crashed: `|| true` only masks that expected exit. The
+      # script below judges the report itself and fails if it is missing.
+      #
+      # safety runs from its own venv against a frozen list of the environment.
+      # Installed alongside the project it crashed on a clashing httpx, and the
+      # old `|| true` hid that, so the scan silently reported nothing.
       - name: Run safety check (EOL/vulnerable deps)
-        run: safety check --json || true
+        run: |
+          pip freeze --exclude-editable > installed.txt
+          python -m venv "$RUNNER_TEMP/safety-venv"
+          "$RUNNER_TEMP/safety-venv/bin/pip" install --quiet safety==3.8.1
+          "$RUNNER_TEMP/safety-venv/bin/safety" check -r installed.txt --json > safety.json || true
+
+      - name: Judge safety report
+        id: judge-safety
+        run: python scripts/dependency_audit.py safety safety.json
 
       - name: Run pip-audit
-        run: pip-audit --desc
+        run: pip-audit -f json -o pip-audit.json || true
+
+      - name: Judge pip-audit report
+        id: judge-pip-audit
+        run: python scripts/dependency_audit.py pip-audit pip-audit.json
+
+      - name: File or comment on new advisory issue
+        if: (steps.judge-safety.outputs.new == 'true' || steps.judge-pip-audit.outputs.new == 'true') && github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Match on a parenthesis-free phrase. GitHub's search parser treats
+          # "(s)" as syntax, so searching a title containing it can silently
+          # return nothing and let the guard below file a fresh duplicate
+          # every run (see the Ollama model tag check, which hit exactly this).
+          EXISTING=$(gh issue list \
+            --search '"New dependency advisory" in:title' \
+            --state open --json number --jq '.[0].number' || true)
+
+          BODY="A dependency scan on this run reported an advisory not yet recorded in .github/known-advisories.txt. See the job summary and log for $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID for details, then add it to the known list with a tracking issue or fix it."
+
+          if [ -z "$EXISTING" ]; then
+            gh issue create \
+              --title "New dependency advisory" \
+              --body "$BODY" \
+              --label "dependencies"
+          else
+            echo "Issue #${EXISTING} already open — adding a comment."
+            gh issue comment "$EXISTING" --body "$BODY"
+          fi
 
   bandit:
     name: Bandit — Python Security Analysis
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7
         with:
           python-version: '3.11'
 
@@ -62,7 +108,7 @@ jobs:
 
       - name: Upload bandit report
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
         with:
           name: bandit-report
           path: bandit-report.json
@@ -71,9 +117,9 @@ jobs:
     name: Pre-commit Hooks
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7
         with:
           python-version: '3.11'
 
-      - uses: pre-commit/action@v3.0.1
+      - uses: pre-commit/action@2c7b3805fd2a0fd8c1884dcaebf91fc102a13ecd  # v3.0.1

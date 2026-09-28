@@ -80,8 +80,12 @@ class TestTierAssignment:
             "d": "the slow brown fox",
         }
         result = align_transcripts(variants)
-        for vote in result:
-            assert 0.0 <= vote.confidence <= 1.0
+        assert [(v.word, v.count, v.confidence, v.tier) for v in result] == [
+            ("the", 3, 0.75, "HIGH"),
+            ("quick", 3, 0.75, "HIGH"),
+            ("brown", 4, 1.0, "HIGH"),
+            ("fox", 3, 0.75, "HIGH"),
+        ]
 
     def test_word_vote_fields_populated(self):
         result = align_transcripts({"a": "test phrase", "b": "test phrase"})
@@ -109,7 +113,17 @@ class TestFuzzyMatching:
         }
         result = align_transcripts(variants)
         assert len(result) == 1
-        assert result[0].tier in ("HIGH", "MEDIUM")
+        assert (
+            result[0].word,
+            result[0].count,
+            result[0].confidence,
+            result[0].tier,
+        ) == (
+            "colour",
+            4,
+            1.0,
+            "HIGH",
+        )
 
     def test_grouping_is_order_invariant_for_transitive_chain(self):
         """A~B and B~C must not produce completion-order-dependent votes."""
