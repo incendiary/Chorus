@@ -213,6 +213,38 @@ class TestRunBatch:
         assert len(call_log) == 3
         assert all(r.success for r in results)
 
+    def test_rerun_of_same_file_produces_two_run_dirs_nothing_overwritten(
+        self, tmp_path: Path
+    ) -> None:
+        """Batch-processing the same file twice must land in two distinct,
+        never-overwritten job folders, matching the per-job output layout."""
+        audio_path = _make_wav(tmp_path / "recording.wav")
+        out_root = tmp_path / "out"
+        captured_output_dirs: list[Path] = []
+
+        def _mock_pipeline(audio_path: Path, **kwargs) -> dict:
+            output_dir = kwargs.get("output_dir")
+            captured_output_dirs.append(output_dir)
+            return _fake_pipeline_result(audio_path, output_dir)
+
+        with (
+            patch("pipeline_runner.run_pipeline", side_effect=_mock_pipeline),
+            patch("batch_processor.batch_runner._write_batch_report"),
+        ):
+            run_batch(inputs=[audio_path], output_dir=out_root)
+            run_batch(inputs=[audio_path], output_dir=out_root)
+
+        assert len(captured_output_dirs) == 2
+        run_dir_1, run_dir_2 = captured_output_dirs
+        # Same project (same recording), distinct run folders.
+        assert run_dir_1.parent == run_dir_2.parent
+        assert run_dir_1 != run_dir_2
+        assert run_dir_1.is_dir()
+        assert run_dir_2.is_dir()
+        # The first run's own consensus.md is still there, untouched.
+        first_md = run_dir_1 / "consensus" / "recording_consensus.md"
+        assert first_md.exists()
+
     def test_diarisation_error_is_threaded_onto_the_result(
         self, tmp_path: Path
     ) -> None:
@@ -310,17 +342,19 @@ class TestRunBatch:
         assert captured["stem"] == "My_Recording__Jan_5"
 
     def test_per_file_output_isolation(self, tmp_path: Path) -> None:
-        """When output_dir is given, each file must write into its own <stem>/ subdir."""
+        """When output_dir is given, each file must write into its own
+        never-overwritten <stem>-<sha8>/<timestamp>/ job folder under it."""
         _make_wav(tmp_path / "interview.wav")
         _make_wav(tmp_path / "lecture.wav")
         out_root = tmp_path / "outputs"
 
         def _mock_pipeline(audio_path: Path, **kwargs) -> dict:
             file_out = kwargs.get("output_dir")
-            # The pipeline is passed an isolated subdir per file.
+            # The pipeline is passed an isolated job dir per file, rooted
+            # under out_root and named after the file's sanitised stem.
             assert file_out is not None
-            assert file_out.parent == out_root
-            assert file_out.name == audio_path.stem
+            assert file_out.parent.parent == out_root
+            assert file_out.parent.name.startswith(f"{audio_path.stem}-")
             return _fake_pipeline_result(audio_path, file_out)
 
         with (
@@ -330,7 +364,8 @@ class TestRunBatch:
             run_batch(inputs=[tmp_path], output_dir=out_root)
 
     def test_subdirs_are_stem_named(self, tmp_path: Path) -> None:
-        """output_dir/<stem>/ paths should match audio file stems."""
+        """output_dir/<stem>-<sha8>/<timestamp>/ paths should be named after
+        the audio file's sanitised stem, with a run timestamp beneath it."""
         _make_wav(tmp_path / "my_file.wav")
         out_root = tmp_path / "out"
         captured: list[Path] = []
@@ -346,7 +381,9 @@ class TestRunBatch:
             run_batch(inputs=[tmp_path], output_dir=out_root)
 
         assert len(captured) == 1
-        assert captured[0] == out_root / "my_file"
+        project_dir = captured[0].parent
+        assert project_dir.parent == out_root
+        assert project_dir.name.startswith("my_file-")
 
     def test_partial_failure_does_not_abort(self, tmp_path: Path) -> None:
         """A pipeline error on one file must not prevent the remaining files from running."""
@@ -445,14 +482,19 @@ class TestRunBatch:
 
         mock_report.assert_called_once()
 
-    def test_no_output_dir_uses_default_consensus(self, tmp_path: Path) -> None:
-        """When no output_dir is supplied, pipeline is called with output_dir=None."""
+    def test_no_output_dir_uses_default_jobs_root(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """When no output_dir is supplied, each file still gets its own job
+        folder, rooted under the default config.JOBS_DIR."""
+        jobs_root = tmp_path / "jobs"
+        monkeypatch.setattr("batch_processor.batch_runner.config.JOBS_DIR", jobs_root)
         _make_wav(tmp_path / "x.wav")
         captured: list[Path | None] = []
 
         def _mock_pipeline(audio_path: Path, **kwargs) -> dict:
             captured.append(kwargs.get("output_dir"))
-            return _fake_pipeline_result(audio_path)
+            return _fake_pipeline_result(audio_path, kwargs.get("output_dir"))
 
         with (
             patch("pipeline_runner.run_pipeline", side_effect=_mock_pipeline),
@@ -460,7 +502,9 @@ class TestRunBatch:
         ):
             run_batch(inputs=[tmp_path])
 
-        assert captured == [None]
+        assert len(captured) == 1
+        assert captured[0] is not None
+        assert captured[0].parent.parent == jobs_root
 
     def test_language_forwarded_to_pipeline(self, tmp_path: Path) -> None:
         """The language parameter should be forwarded to run_pipeline."""
@@ -469,7 +513,7 @@ class TestRunBatch:
 
         def _mock_pipeline(audio_path: Path, **kwargs) -> dict:
             captured.append(kwargs.get("language"))
-            return _fake_pipeline_result(audio_path)
+            return _fake_pipeline_result(audio_path, kwargs.get("output_dir"))
 
         with (
             patch("pipeline_runner.run_pipeline", side_effect=_mock_pipeline),
@@ -486,7 +530,7 @@ class TestRunBatch:
 
         def _mock_pipeline(audio_path: Path, **kwargs) -> dict:
             captured.update(kwargs)
-            return _fake_pipeline_result(audio_path)
+            return _fake_pipeline_result(audio_path, kwargs.get("output_dir"))
 
         with (
             patch("pipeline_runner.run_pipeline", side_effect=_mock_pipeline),
@@ -541,11 +585,11 @@ class TestWriteBatchReport:
     """Tests for the Markdown report writer."""
 
     def test_report_written_to_consensus_dir(self, tmp_path: Path, monkeypatch) -> None:
-        """The report should appear at CONSENSUS_DIR/batch_report.md."""
+        """The report should appear at JOBS_DIR/batch_report.md."""
         out_dir = tmp_path / "consensus"
         out_dir.mkdir(parents=True)
-        monkeypatch.setattr("config.CONSENSUS_DIR", out_dir)
-        monkeypatch.setattr("batch_processor.batch_runner.CONSENSUS_DIR", out_dir)
+        monkeypatch.setattr("config.JOBS_DIR", out_dir)
+        monkeypatch.setattr("batch_processor.batch_runner.config.JOBS_DIR", out_dir)
 
         r = BatchResult(Path("a.wav"))
         r.success = True
@@ -566,8 +610,8 @@ class TestWriteBatchReport:
         other's report."""
         default_dir = tmp_path / "default_consensus"
         default_dir.mkdir(parents=True)
-        monkeypatch.setattr("config.CONSENSUS_DIR", default_dir)
-        monkeypatch.setattr("batch_processor.batch_runner.CONSENSUS_DIR", default_dir)
+        monkeypatch.setattr("config.JOBS_DIR", default_dir)
+        monkeypatch.setattr("batch_processor.batch_runner.config.JOBS_DIR", default_dir)
 
         case_dir = tmp_path / "case-123"
 
@@ -586,8 +630,8 @@ class TestWriteBatchReport:
         """The report Markdown should record the correct success/failure tallies."""
         out_dir = tmp_path / "consensus"
         out_dir.mkdir(parents=True)
-        monkeypatch.setattr("config.CONSENSUS_DIR", out_dir)
-        monkeypatch.setattr("batch_processor.batch_runner.CONSENSUS_DIR", out_dir)
+        monkeypatch.setattr("config.JOBS_DIR", out_dir)
+        monkeypatch.setattr("batch_processor.batch_runner.config.JOBS_DIR", out_dir)
 
         r_ok = BatchResult(Path("good.wav"))
         r_ok.success = True
@@ -617,8 +661,8 @@ class TestWriteBatchReport:
         of the missing speaker labels."""
         out_dir = tmp_path / "consensus"
         out_dir.mkdir(parents=True)
-        monkeypatch.setattr("config.CONSENSUS_DIR", out_dir)
-        monkeypatch.setattr("batch_processor.batch_runner.CONSENSUS_DIR", out_dir)
+        monkeypatch.setattr("config.JOBS_DIR", out_dir)
+        monkeypatch.setattr("batch_processor.batch_runner.config.JOBS_DIR", out_dir)
 
         r = BatchResult(Path("call.wav"))
         r.success = True
@@ -642,8 +686,8 @@ class TestWriteBatchReport:
         success, matching how a diarisation failure is reported."""
         out_dir = tmp_path / "consensus"
         out_dir.mkdir(parents=True)
-        monkeypatch.setattr("config.CONSENSUS_DIR", out_dir)
-        monkeypatch.setattr("batch_processor.batch_runner.CONSENSUS_DIR", out_dir)
+        monkeypatch.setattr("config.JOBS_DIR", out_dir)
+        monkeypatch.setattr("batch_processor.batch_runner.config.JOBS_DIR", out_dir)
 
         r = BatchResult(Path("call.wav"))
         r.success = True

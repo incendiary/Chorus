@@ -156,6 +156,7 @@ def execute_run(job: RunJob, manager: RunManager) -> None:
             try:
                 results = pipeline_invocation.run_pipeline(
                     audio_path=spool_path,
+                    source_filename=file_state["name"],
                     progress_callback=_progress_cb,
                     event_callback=_event_cb,
                     **job.config,

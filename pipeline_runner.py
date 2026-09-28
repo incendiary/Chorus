@@ -24,7 +24,7 @@ import config
 from audio_processor.pipeline import process_audio
 from config import CONSENSUS_DIR, ensure_output_dirs
 from transcription_engine.orchestrator import run_transcription_pass
-from utils import sanitise_stem
+from utils import job_output_dir, sanitise_stem
 
 logging.basicConfig(
     level=logging.INFO,
@@ -122,6 +122,7 @@ def run_pipeline(
     output_dir: Path | None = None,
     keep_variant_wavs: bool | None = None,
     word_timestamps: bool | None = None,
+    source_filename: str | None = None,
 ) -> dict[str, Path]:
     """
     Execute the full Chorus pipeline on a single audio file.
@@ -170,6 +171,12 @@ def run_pipeline(
     word_timestamps : bool, optional
         Enable Whisper word-level timestamps. If None, the configured value
         applies. This is normally needed only for word-level SRT/VTT exports.
+    source_filename : str, optional
+        The recording's original filename, used to name its per-job output
+        folder (see ``utils.job_output_dir``) and for traceability. Pass
+        this when *audio_path* is a spool/temp file with a mangled name (as
+        the Streamlit UI's uploads are) — otherwise defaults to
+        ``audio_path.name``.
 
     Returns
     -------
@@ -192,20 +199,27 @@ def run_pipeline(
     ensure_output_dirs()
     stem = sanitise_stem(audio_path.stem, fallback="audio")
     source_filename = (
-        audio_path.name
+        source_filename if source_filename is not None else audio_path.name
     )  # Original filename with extension for traceability
     t_start = time.perf_counter()
 
-    # Derive per-stage output dirs from optional override
-    variants_dir: Path | None = None
-    transcripts_dir: Path | None = None
-    consensus_dir: Path | None = None
-    if output_dir is not None:
-        output_dir = Path(output_dir)
-        output_dir.mkdir(parents=True, exist_ok=True)
-        variants_dir = output_dir / "variants"
-        transcripts_dir = output_dir / "transcripts"
-        consensus_dir = output_dir / "consensus"
+    # Derive per-stage output dirs. An explicit output_dir is used as-is
+    # (unchanged, existing behaviour). Otherwise every run gets its own
+    # never-overwritten job folder — <root>/<stem>-<sha8>/<timestamp>/ — so
+    # re-running the same recording no longer collides with its own
+    # previous outputs. See utils.job_output_dir.
+    if output_dir is None:
+        output_dir = job_output_dir(audio_path, source_name=source_filename)
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    variants_dir = output_dir / "variants"
+    transcripts_dir = output_dir / "transcripts"
+    consensus_dir = output_dir / "consensus"
+    # Project-level directory (shared across every run of this recording):
+    # this is where state that should persist across re-runs — such as
+    # saved speaker names — lives, as opposed to consensus_dir which is
+    # specific to this one run.
+    project_dir = output_dir.parent
 
     stages = active_stages(
         enable_nlp=enable_nlp,
@@ -492,8 +506,10 @@ def run_pipeline(
             labelled = label_transcript(speaker_segs, transcripts["original"])
             speaker_labels = get_unique_speakers(labelled)
 
-            # Load any previously saved speaker names for this stem
-            speaker_map = load_speaker_names(stem, output_dir=consensus_dir)
+            # Load any previously saved speaker names for this stem. These
+            # persist at the project level (shared across every run of this
+            # recording), not inside this run's own consensus_dir.
+            speaker_map = load_speaker_names(stem, output_dir=project_dir)
 
             diarised_path = render_diarised_md(
                 labelled, stem, speaker_map=speaker_map, output_dir=consensus_dir

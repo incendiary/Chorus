@@ -70,6 +70,7 @@ def run_one_file(
 
     results = run_pipeline(
         audio_path=tmp_path,
+        source_filename=uf.name,
         language=config_obj.language,
         consensus_models=config_obj.consensus_models,
         enable_nlp=config_obj.enable_nlp,
