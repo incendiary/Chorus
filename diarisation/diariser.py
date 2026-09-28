@@ -35,6 +35,7 @@ import logging
 import os
 import threading
 import time
+from collections.abc import Callable
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -416,7 +417,9 @@ DIARISATION_HEARTBEAT_SECONDS = 60
 
 
 @contextmanager
-def _diarisation_heartbeat(audio_path: Path):
+def _diarisation_heartbeat(
+    audio_path: Path, heartbeat_callback: Callable[[float], None] | None = None
+):
     """Log elapsed time periodically while the pyannote pipeline call runs.
 
     ``pipeline(audio)`` gives no output at all until it either finishes or
@@ -427,6 +430,11 @@ def _diarisation_heartbeat(audio_path: Path):
     exposes no sub-step hook stable enough to build one on, and coupling to
     its internals has already broken twice in as many months (see the
     ``DiarizeOutput`` comment below).
+
+    ``heartbeat_callback``, when given, is called with the elapsed seconds
+    on every beat alongside the log line, so a caller (e.g. the batch CLI's
+    progress bars) can reflect that diarisation is still running without
+    scraping the log.
     """
     stop = threading.Event()
     start = time.monotonic()
@@ -439,6 +447,8 @@ def _diarisation_heartbeat(audio_path: Path):
                 audio_path.name,
                 elapsed,
             )
+            if heartbeat_callback is not None:
+                heartbeat_callback(elapsed)
 
     thread = threading.Thread(target=_beat, daemon=True)
     thread.start()
@@ -449,7 +459,11 @@ def _diarisation_heartbeat(audio_path: Path):
         thread.join(timeout=5)
 
 
-def diarise(audio_path: str | Path) -> list[SpeakerSegment]:
+def diarise(
+    audio_path: str | Path,
+    *,
+    heartbeat_callback: Callable[[float], None] | None = None,
+) -> list[SpeakerSegment]:
     """
     Run speaker diarisation on *audio_path*.
 
@@ -487,7 +501,7 @@ def diarise(audio_path: str | Path) -> list[SpeakerSegment]:
         )
 
     logger.info("Running diarisation on: %s", audio_path.name)
-    with _diarisation_heartbeat(audio_path):
+    with _diarisation_heartbeat(audio_path, heartbeat_callback=heartbeat_callback):
         diarization = pipeline(str(audio_path))
 
     # pyannote.audio 4.x's default (non-legacy) pipeline returns a

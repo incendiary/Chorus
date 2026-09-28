@@ -488,8 +488,18 @@ def run_pipeline(
                 stub_diarisation,
             )
 
+            def _diarisation_heartbeat(elapsed: float) -> None:
+                _emit_event(
+                    0.97,
+                    stage="diarisation",
+                    detail=f"{elapsed:.0f}s elapsed",
+                )
+
             try:
-                speaker_segs = diarise(variant_paths["original"])
+                speaker_segs = diarise(
+                    variant_paths["original"],
+                    heartbeat_callback=_diarisation_heartbeat,
+                )
             except DiarisationUnavailableError as exc:
                 # A stub claims the recording has exactly one speaker, which
                 # reads identically to a genuine single-speaker file. Only
