@@ -74,16 +74,22 @@ def _mock_whisper_result():
 
 
 class TestSRTExport:
-    def test_srt_file_is_created(self):
-        result = export_srt(_mock_whisper_result(), stem="test_srt")
+    def test_srt_file_is_created(self, tmp_path):
+        result = export_srt(
+            _mock_whisper_result(), stem="test_srt", output_dir=tmp_path
+        )
         assert result.exists()
 
-    def test_srt_file_has_correct_extension(self):
-        result = export_srt(_mock_whisper_result(), stem="test_srt_ext")
+    def test_srt_file_has_correct_extension(self, tmp_path):
+        result = export_srt(
+            _mock_whisper_result(), stem="test_srt_ext", output_dir=tmp_path
+        )
         assert result.suffix == ".srt"
 
-    def test_srt_has_valid_cue_structure(self):
-        result = export_srt(_mock_whisper_result(), stem="test_srt_seq")
+    def test_srt_has_valid_cue_structure(self, tmp_path):
+        result = export_srt(
+            _mock_whisper_result(), stem="test_srt_seq", output_dir=tmp_path
+        )
         content = result.read_text(encoding="utf-8").strip()
 
         cues = [block.splitlines() for block in content.split("\n\n") if block.strip()]
@@ -97,8 +103,10 @@ class TestSRTExport:
             assert ts_pattern.match(cue[1])
             assert cue[2].strip()
 
-    def test_srt_empty_segments_produces_empty_file(self):
-        result = export_srt({"segments": []}, stem="test_srt_empty")
+    def test_srt_empty_segments_produces_empty_file(self, tmp_path):
+        result = export_srt(
+            {"segments": []}, stem="test_srt_empty", output_dir=tmp_path
+        )
         content = result.read_text(encoding="utf-8")
         assert content.strip() == ""
 
@@ -109,17 +117,23 @@ class TestSRTExport:
 
 
 class TestVTTExport:
-    def test_vtt_file_is_created(self):
-        result = export_vtt(_mock_whisper_result(), stem="test_vtt")
+    def test_vtt_file_is_created(self, tmp_path):
+        result = export_vtt(
+            _mock_whisper_result(), stem="test_vtt", output_dir=tmp_path
+        )
         assert result.exists()
 
-    def test_vtt_starts_with_webvtt_header(self):
-        result = export_vtt(_mock_whisper_result(), stem="test_vtt_header")
+    def test_vtt_starts_with_webvtt_header(self, tmp_path):
+        result = export_vtt(
+            _mock_whisper_result(), stem="test_vtt_header", output_dir=tmp_path
+        )
         content = result.read_text(encoding="utf-8")
         assert content.startswith("WEBVTT")
 
-    def test_vtt_has_valid_header_and_cue_structure(self):
-        result = export_vtt(_mock_whisper_result(), stem="test_vtt_period")
+    def test_vtt_has_valid_header_and_cue_structure(self, tmp_path):
+        result = export_vtt(
+            _mock_whisper_result(), stem="test_vtt_period", output_dir=tmp_path
+        )
         content = result.read_text(encoding="utf-8")
 
         lines = content.splitlines()
@@ -136,8 +150,10 @@ class TestVTTExport:
 
         assert "\n\n" in content, "VTT cues should be separated by blank lines"
 
-    def test_vtt_contains_transcript_text(self):
-        result = export_vtt(_mock_whisper_result(), stem="test_vtt_text")
+    def test_vtt_contains_transcript_text(self, tmp_path):
+        result = export_vtt(
+            _mock_whisper_result(), stem="test_vtt_text", output_dir=tmp_path
+        )
         content = result.read_text(encoding="utf-8")
         # Case is preserved through export, so assert it exactly: the previous
         # `or ... .lower()` clause was implied by the first and never added cover.

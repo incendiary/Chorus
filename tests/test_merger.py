@@ -54,13 +54,15 @@ class TestMergeTranscriptsErrors:
 
 
 class TestMergeTranscriptsSuccess:
-    def test_single_variant_returns_path(self):
+    def test_single_variant_returns_path(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("consensus_merger.renderer.CONSENSUS_DIR", tmp_path)
         transcripts = {"original": _make_result("hello world")}
         out = merge_transcripts(transcripts, stem="test_single")
         assert isinstance(out, Path)
         assert out.exists()
 
-    def test_four_variants_returns_path(self):
+    def test_four_variants_returns_path(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("consensus_merger.renderer.CONSENSUS_DIR", tmp_path)
         transcripts = {
             "original": _make_result("the quick brown fox"),
             "highpass": _make_result("the quick brown fox"),
@@ -72,7 +74,8 @@ class TestMergeTranscriptsSuccess:
         assert out.exists()
         assert out.suffix == ".md"
 
-    def test_output_contains_consensus_content(self):
+    def test_output_contains_consensus_content(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("consensus_merger.renderer.CONSENSUS_DIR", tmp_path)
         transcripts = {
             "original": _make_result("coventry building society mortgage"),
             "highpass": _make_result("coventry building society mortgage"),
