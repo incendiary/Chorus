@@ -323,6 +323,18 @@ A final review pass found these; all fixed before the tag unless marked accepted
   documented in `SECURITY.md`; new ones raise a warning and a GitHub issue. The change
   exposed that `safety` had been crashing silently behind `|| true`; it now runs isolated.
 - [x] **CLI reference named the wrong PDF dependency** (v5.0.0) (#276).
+- [ ] **Bounded AMI multi-speaker benchmark** (issue #220) — **Accepted limitation at
+  v5.0.0, open for a future developer.** The only benchmark (RB-2) uses 15 short
+  single-speaker LibriSpeech clips, which say little about long multi-speaker calls, the
+  audio Chorus is actually used on. The proposal: three CC BY 4.0 AMI Meeting Corpus
+  meetings (`ES2004a`, `IS1009a`, `TS3003a` Mix-Headset, with AMI manual annotations
+  v1.6.2), a minimal NXT parser for reference words and speaker turns, documented
+  normalisation, identical settings on all three, and per-file WER, macro average,
+  timings, failures, and configuration. Never commit the audio; record source URLs,
+  hashes, and licence in a manifest; never read correctness into the agreement tiers.
+  Speaker-labelling accuracy (DER) waits on a fixed `lightning` release (issue #219).
+  Full specification in issue #220. Suggested model: opus for the design and write-up,
+  sonnet for the parser and harness. Effort: L.
 - [ ] **Multi-session UI setting race** — **Accepted limitation at v5.0.0:** the UI sets the
   device, parallelism, and noise-floor mode on the shared `config` module, so two browser
   sessions starting runs at the same moment on one server could swap settings. Chorus is a
