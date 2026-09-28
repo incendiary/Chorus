@@ -1,7 +1,27 @@
 # v5.0.0 Final Release — Triage of Open Items
 
-**Status:** for review. No code has been changed on the strength of this document.
-**Date:** 18 September 2026
+**Status:** closed. Every item below was either fixed before the v5.0.0 tag or shipped as
+an accepted limitation; see the outcome section immediately below.
+**Date:** 18 September 2026 (outcome recorded 29 September 2026)
+
+## Outcome
+
+The owner chose to fix rather than accept wherever that was possible, so most of the
+Tier 4 list below was fixed too, not shipped as-is.
+
+- **Tier 1 to Tier 3:** all fixed or documented. RD-18, listed in Tier 1 but missed in the
+  first pass, was fixed in #275.
+- **Tier 4:** fixed, except the items still marked accepted in `ROADMAP.md`: the exporter
+  split (RC-6), CI image builds on Dockerfile changes (RD-14), and the `large` versus
+  `large+medium` comparison.
+- **Found in the final review (29 September):** per-job output folders, duplicate upload
+  names, the inert processing-mode control, the log handler leak, the AI context pack's
+  device field, and the batch report location, all fixed. One more accepted limitation:
+  a settings race between simultaneous browser sessions on one server.
+- **Dependency advisories:** known ones are listed in `.github/known-advisories.txt` and
+  documented in `SECURITY.md`, and never fail CI. New ones raise a warning and an issue.
+
+The tiered analysis below is kept as the record of how each decision was reached.
 
 ## Why this exists
 
