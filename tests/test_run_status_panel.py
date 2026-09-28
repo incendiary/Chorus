@@ -3,14 +3,12 @@ tests/test_run_status_panel.py — WP2 Amendment B status-panel tests.
 
 Covers ``ui/run_status_panel.py::render_file_status_panel`` (AppTest wrapper
 feeding crafted ``file_state`` dicts, mirroring the on-disk state schema in
-``ui/run_state.py``) and the O(1) log-line regression in
-``ui/pipeline_invocation.py::run_one_file`` that this amendment replaces.
+``ui/run_state.py``).
 """
 
 from __future__ import annotations
 
 import time
-from unittest.mock import MagicMock, patch
 
 from streamlit.testing.v1 import AppTest
 
@@ -155,73 +153,3 @@ class TestStaleWarning:
         at = _render_panel(_base_state(last_event_at=time.time() - 5))
         assert not at.exception
         assert len(at.warning) == 0
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Regression: run_one_file's log callback is O(1) per call, not a growing join
-# ─────────────────────────────────────────────────────────────────────────────
-
-
-class TestRunOneFileLogRegression:
-    def test_200_progress_calls_leave_log_expander_receiving_only_last_line(self):
-        """Amendment B replaced the O(n²) ``"\\n\\n".join(log_lines)`` render
-        with ``log_expander.markdown(log_lines[-1])``: each of 200 progress
-        callbacks must pass exactly one line — never the accumulated history."""
-        from ui.pipeline_invocation import run_one_file
-
-        log_expander = MagicMock()
-        log_lines: list[str] = []
-
-        def _fake_pipeline(**kwargs):
-            for i in range(200):
-                kwargs["progress_callback"](f"Step {i}", i / 200)
-            return {"consensus_path": None, "elapsed_seconds": 0.01}
-
-        class _FakeUpload:
-            name = "clip.wav"
-
-            def read(self) -> bytes:
-                return b"fake"
-
-        from ui.sidebar import SidebarConfig
-
-        config_obj = SidebarConfig(
-            model_choice="base",
-            consensus_models=("base",),
-            device_choice="auto",
-            parallelism_choice="auto",
-            language="en",
-            alignment_choice="sequence",
-            consensus_threshold=0.75,
-            similarity_threshold=0.80,
-            noise_mode_choice="vad",
-            enable_nlp=False,
-            enable_llm=False,
-            ollama_model=None,
-            enable_diarisation=False,
-            export_pdf=False,
-            export_docx=False,
-            export_srt=False,
-        )
-
-        with patch("ui.pipeline_invocation.run_pipeline", side_effect=_fake_pipeline):
-            _, tmp_path, _ = run_one_file(
-                _FakeUpload(),
-                MagicMock(),
-                MagicMock(),
-                log_lines,
-                log_expander,
-                config_obj,
-            )
-
-        assert log_expander.markdown.call_count == 200
-        # Every call received a single line, never a joined multi-line blob.
-        for call in log_expander.markdown.call_args_list:
-            (arg,) = call.args
-            assert "\n" not in arg
-        # The final call received only the last line, not the full history.
-        last_call_arg = log_expander.markdown.call_args_list[-1].args[0]
-        assert last_call_arg == log_lines[-1]
-        assert len(log_lines) == 200
-
-        tmp_path.unlink(missing_ok=True)

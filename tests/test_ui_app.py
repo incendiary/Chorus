@@ -9,6 +9,7 @@ the Ollama/spaCy availability probes are mocked where determinism requires it.
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from unittest.mock import patch
 
@@ -237,6 +238,33 @@ class TestLanguageSelector:
 
         assert set(_LANGUAGE_CODES) <= set(LANGUAGES)
         assert _LANGUAGE_CODES[0] == "en"  # most common first
+
+
+class TestSessionLogHandlerRegistration:
+    """Streamlit re-executes ui/app.py's top-level code on every script
+    rerun. A bare ``addHandler()`` there attached a fresh
+    ``_SessionLogHandler`` each time, so a real log record landed in as
+    many buffers as there had been reruns, producing false "×N" repeat
+    counts on the Logs page."""
+
+    def test_calling_registration_twice_leaves_exactly_one_handler(self):
+        from ui import app as ui_app
+
+        root_logger = logging.getLogger()
+        try:
+            ui_app._register_session_log_handler()
+            ui_app._register_session_log_handler()
+
+            handlers = [
+                h
+                for h in root_logger.handlers
+                if isinstance(h, ui_app._SessionLogHandler)
+            ]
+            assert len(handlers) == 1
+        finally:
+            for h in list(root_logger.handlers):
+                if isinstance(h, ui_app._SessionLogHandler):
+                    root_logger.removeHandler(h)
 
 
 class TestBuildLabel:

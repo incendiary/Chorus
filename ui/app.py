@@ -58,9 +58,26 @@ class _SessionLogHandler(logging.Handler):
             pass  # log handler must never crash the UI
 
 
-_session_handler = _SessionLogHandler()
-_session_handler.setLevel(logging.INFO)
-logging.getLogger().addHandler(_session_handler)
+def _register_session_log_handler() -> None:
+    """Attach a single ``_SessionLogHandler`` to the root logger.
+
+    Streamlit re-executes this module's top-level code on every script
+    rerun, so a bare ``addHandler()`` here attached a fresh instance each
+    time: every log record then landed in as many buffers as there had
+    been reruns, producing false "×N" repeat counts on the Logs page.
+    Removing any existing instances first keeps this idempotent.
+    """
+    root_logger = logging.getLogger()
+    for handler in list(root_logger.handlers):
+        if isinstance(handler, _SessionLogHandler):
+            root_logger.removeHandler(handler)
+
+    session_handler = _SessionLogHandler()
+    session_handler.setLevel(logging.INFO)
+    root_logger.addHandler(session_handler)
+
+
+_register_session_log_handler()
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Page assembly
