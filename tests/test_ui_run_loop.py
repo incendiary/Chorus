@@ -1,12 +1,15 @@
 """
 tests/test_ui_run_loop.py — Execution tests for the UI run loop and results rendering.
 
-Covers ui/pipeline_invocation.py (run_one_file, render_run_section) and
-ui/results.py (render_file_results and its helpers), which previously had
-13 %/12 % coverage and had never been executed under test (REVIEW.md PF-4).
+Covers ui/pipeline_invocation.py (render_run_section and its kwarg
+forwarding to run_pipeline) and ui/results.py (render_file_results and its
+helpers), which previously had 13 %/12 % coverage and had never been
+executed under test (REVIEW.md PF-4).
 
 Three groups:
-  A. run_one_file unit tests — plain function, mocked run_pipeline.
+  A. Config kwarg forwarding — real production path (RunManager.start ->
+     run_worker.execute_run -> pipeline_invocation.run_pipeline(**job.config)),
+     driven via AppTest with a stubbed sidebar config.
   B. render_run_section via AppTest — mocked pipeline, real Streamlit run loop.
   C. render_file_results via AppTest.from_function — canned results, real files.
 
@@ -130,51 +133,46 @@ def canned_results(tmp_path, monkeypatch) -> dict:
     }
 
 
-class _FakeUpload:
-    """Stand-in for a Streamlit UploadedFile (Group A only)."""
-
-    def __init__(self, name: str, content: bytes = b"RIFF-fake-audio"):
-        self.name = name
-        self._content = content
-
-    def read(self) -> bytes:
-        return self._content
-
-
 def _download_button_ids_and_labels(at: AppTest) -> list[tuple[str, str]]:
     """Return (element id, label) for every download button in the app."""
     return [(el.proto.id, el.proto.label) for el in at.get("download_button")]
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Group A — run_one_file unit tests
+# Group A — config kwarg forwarding via the real production path
+# (RunManager.start -> run_worker.execute_run ->
+# pipeline_invocation.run_pipeline(**job.config))
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-class TestRunOneFile:
-    def test_success_forwards_config_kwargs(self, canned_results):
-        """run_one_file must forward every SidebarConfig field that
-        run_pipeline accepts, with the exact expected values."""
-        from ui.pipeline_invocation import run_one_file
-
-        upload = _FakeUpload("My Interview.wav", b"fake-bytes")
+class TestConfigKwargForwarding:
+    def test_sidebar_config_is_forwarded_to_run_pipeline(self, canned_results):
+        """Every SidebarConfig field that run_pipeline accepts must reach it,
+        with the exact expected values, via the real background-run path —
+        not a re-implementation of the kwarg list."""
         config_obj = _make_config()
         seen_audio_bytes = {}
 
         def _fake_pipeline(**kwargs):
-            # The temp file must exist and contain the upload bytes at call time.
+            # Read now: run_worker deletes the spool file once processing ends.
             seen_audio_bytes["data"] = Path(kwargs["audio_path"]).read_bytes()
             return canned_results
 
-        mock_pipeline = MagicMock(side_effect=_fake_pipeline)
-        with patch("ui.pipeline_invocation.run_pipeline", mock_pipeline):
-            results, tmp_path, stem = run_one_file(
-                upload, MagicMock(), MagicMock(), [], MagicMock(), config_obj
-            )
+        with patch("ui.sidebar.render_sidebar", return_value=config_obj):
+            mock_pipeline = MagicMock(side_effect=_fake_pipeline)
+            with patch("ui.pipeline_invocation.run_pipeline", mock_pipeline):
+                at = AppTest.from_file(APP_PATH, default_timeout=60)
+                at.run()
+                at.file_uploader[0].set_value(
+                    [("My Interview.wav", b"fake-bytes", "audio/wav")]
+                )
+                at.run()
+                run_btn = next(b for b in at.button if "Start Chorus" in b.label)
+                run_btn.set_value(True)
+                at.run()
 
-        assert results is canned_results
-        assert stem == "My_Interview"
-        assert seen_audio_bytes["data"] == b"fake-bytes"
+        assert not at.exception
+        assert mock_pipeline.call_count == 1
 
         kwargs = mock_pipeline.call_args.kwargs
         # The original upload name must be threaded through as
@@ -191,76 +189,21 @@ class TestRunOneFile:
         assert kwargs["consensus_threshold"] == 0.75
         assert kwargs["similarity_threshold"] == 0.80
         assert callable(kwargs["progress_callback"])
-        assert Path(kwargs["audio_path"]).suffix == ".wav"
-        assert Path(kwargs["audio_path"]).name.startswith("My_Interview_")
-
-        tmp_path.unlink(missing_ok=True)
-
-    def test_pipeline_error_propagates_to_caller(self):
-        """run_one_file itself does not swallow pipeline errors — per-file
-        capture is the caller's job (render_run_section)."""
-        from ui.pipeline_invocation import run_one_file
-
-        upload = _FakeUpload("bad.wav")
-        with patch(
-            "ui.pipeline_invocation.run_pipeline",
-            side_effect=RuntimeError("decoder exploded"),
-        ):
-            with pytest.raises(RuntimeError, match="decoder exploded"):
-                run_one_file(
-                    upload, MagicMock(), MagicMock(), [], MagicMock(), _make_config()
-                )
-
-    def test_progress_callback_drives_slots_and_log(self, canned_results):
-        """Calling the forwarded progress callback must update the progress
-        slot, the status slot, and the log-line buffer without crashing."""
-        from ui.pipeline_invocation import run_one_file
-
-        progress_slot = MagicMock()
-        status_slot = MagicMock()
-        log_expander = MagicMock()
-        log_lines: list[str] = []
-
-        def _fake_pipeline(**kwargs):
-            kwargs["progress_callback"]("Transcribing…", 0.5)
-            kwargs["progress_callback"]("Finalising…", 2.0)  # clamped to 1.0
-            return canned_results
-
-        with patch("ui.pipeline_invocation.run_pipeline", side_effect=_fake_pipeline):
-            _, tmp_path, _ = run_one_file(
-                _FakeUpload("clip.mp3"),
-                progress_slot,
-                status_slot,
-                log_lines,
-                log_expander,
-                _make_config(),
-            )
-
-        progress_slot.progress.assert_any_call(0.5, text="Transcribing…")
-        progress_slot.progress.assert_any_call(1.0, text="Finalising…")
-        status_slot.markdown.assert_any_call("**Status:** Transcribing…")
-        assert log_lines == ["`50%` — Transcribing…", "`200%` — Finalising…"]
-
-        tmp_path.unlink(missing_ok=True)
+        assert callable(kwargs["event_callback"])
+        assert seen_audio_bytes["data"] == b"fake-bytes"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Group B — render_run_section via AppTest
 # ─────────────────────────────────────────────────────────────────────────────
 
-_SEQUENTIAL = "Sequential — results appear per file"
-_ALL_AT_ONCE = "All at once — results shown at end"
 
-
-def _upload_and_run(files: list[tuple[str, bytes, str]], mode: str | None) -> AppTest:
-    """Upload files, optionally pick a processing mode, click Start Chorus."""
+def _upload_and_run(files: list[tuple[str, bytes, str]]) -> AppTest:
+    """Upload files and click Start Chorus."""
     at = AppTest.from_file(APP_PATH, default_timeout=60)
     at.run()
     at.file_uploader[0].set_value(files)
     at.run()
-    if mode is not None:
-        radio = next(r for r in at.radio if r.label == "Processing mode")
-        radio.set_value(mode)
     run_btn = next(b for b in at.button if "Start Chorus" in b.label)
     run_btn.set_value(True)
     at.run()
@@ -269,10 +212,10 @@ def _upload_and_run(files: list[tuple[str, bytes, str]], mode: str | None) -> Ap
 
 @pytest.fixture()
 def _deterministic_hw():
-    """Pin the hardware recommendation so the mode radio default is stable."""
+    """Pin the hardware recommendation so the caption text is stable."""
     with patch(
         "ui.pipeline_invocation.hw_recommendation",
-        return_value=(_SEQUENTIAL, "pinned for tests"),
+        return_value=("Sequential — results appear per file", "pinned for tests"),
     ):
         yield
 
@@ -307,8 +250,8 @@ class TestRenderRunSection:
     def test_sequential_two_files_renders_both_status_panels(
         self, canned_results, _deterministic_hw
     ):
-        """Two files, sequential mode: pipeline runs twice, a per-file panel
-        renders for each, and the forwarded progress callback works live."""
+        """Two files: pipeline runs twice, a per-file panel renders for each,
+        and the forwarded progress callback works live."""
 
         def _fake_pipeline(**kwargs):
             kwargs["progress_callback"]("Transcribing…", 0.4)
@@ -320,8 +263,7 @@ class TestRenderRunSection:
                 [
                     ("alpha.wav", b"a" * 16, "audio/wav"),
                     ("beta.wav", b"b" * 16, "audio/wav"),
-                ],
-                mode=_SEQUENTIAL,
+                ]
             )
 
         assert not at.exception
@@ -336,6 +278,27 @@ class TestRenderRunSection:
         failed = [m.value for m in at.metric if m.label == "Failed"]
         assert "2" in {str(v) for v in completed}
         assert {str(v) for v in failed} == {"0"}
+
+    def test_processing_mode_radio_is_not_rendered_for_two_files(
+        self, _deterministic_hw
+    ):
+        """The "Processing mode" radio was inert (its value was never read)
+        and its help text described per-file result display the
+        background-run design cannot do. With two files uploaded but not
+        yet started (the only case it used to appear for) it must not
+        render at all."""
+        at = AppTest.from_file(APP_PATH, default_timeout=60)
+        at.run()
+        at.file_uploader[0].set_value(
+            [
+                ("alpha.wav", b"a" * 16, "audio/wav"),
+                ("beta.wav", b"b" * 16, "audio/wav"),
+            ]
+        )
+        at.run()
+
+        assert not at.exception
+        assert not any(r.label == "Processing mode" for r in at.radio)
 
     def test_partial_failure_renders_error_and_other_results(
         self, canned_results, _deterministic_hw
@@ -355,8 +318,7 @@ class TestRenderRunSection:
                 [
                     ("bad.wav", b"x" * 16, "audio/wav"),
                     ("good.wav", b"y" * 16, "audio/wav"),
-                ],
-                mode=_SEQUENTIAL,
+                ]
             )
 
         assert not at.exception
@@ -381,9 +343,9 @@ class TestRenderRunSection:
     def test_all_at_once_three_files_runs_pipeline_three_times(
         self, canned_results, _deterministic_hw
     ):
-        """Three files auto-switch to batch (all-at-once) mode: the pipeline
-        runs once per file and results render after processing, with the
-        quick-navigation bar and results filter present."""
+        """Three files auto-switch to batch view: the pipeline runs once per
+        file and results render after processing, with the quick-navigation
+        bar and results filter present."""
         mock_pipeline = MagicMock(return_value=canned_results)
         with patch("ui.pipeline_invocation.run_pipeline", mock_pipeline):
             at = _upload_and_run(
@@ -391,8 +353,7 @@ class TestRenderRunSection:
                     ("one.wav", b"1" * 16, "audio/wav"),
                     ("two.wav", b"2" * 16, "audio/wav"),
                     ("three.wav", b"3" * 16, "audio/wav"),
-                ],
-                mode=None,  # 3+ files: mode radio is not shown, batch is forced
+                ]
             )
 
         assert not at.exception
@@ -409,23 +370,67 @@ class TestRenderRunSection:
         completed = {str(m.value) for m in at.metric if m.label == "Completed"}
         assert "3" in completed
 
-    def test_two_files_all_at_once_mode_toggle(self, canned_results, _deterministic_hw):
-        """With two files the mode radio is shown; choosing all-at-once still
-        executes the pipeline exactly twice and renders both results."""
-        mock_pipeline = MagicMock(return_value=canned_results)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Group B2 — duplicate upload filenames (severity 5, #run_worker._results keyed
+# by name / results_registry.get(name) collided, and render_file_results built
+# widget keys from the non-unique stem)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class TestDuplicateUploadNames:
+    def test_two_uploads_with_same_name_produce_distinct_results_and_render(
+        self, tmp_path, monkeypatch, _deterministic_hw
+    ):
+        """Two uploads both named 'recording.wav' must not collide: each
+        keeps its own results (the second must not overwrite the first in
+        the run's results registry) and the page must render both without
+        raising StreamlitDuplicateElementKey."""
+        out_dir = tmp_path / "consensus"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        monkeypatch.setattr("export_engine.exporter.CONSENSUS_DIR", out_dir)
+        monkeypatch.setattr("diarisation.diariser.CONSENSUS_DIR", out_dir)
+
+        def _fake_pipeline(**kwargs):
+            audio_bytes = Path(kwargs["audio_path"]).read_bytes()
+            tag = "first" if audio_bytes == b"a" * 16 else "second"
+            consensus_path = out_dir / f"{tag}_consensus.md"
+            consensus_path.write_text(CONSENSUS_MD, encoding="utf-8")
+            return {
+                "variant_paths": {},
+                "transcripts": _make_transcripts(),
+                "consensus_path": consensus_path,
+                "ai_context_path": None,
+                "bundle_path": None,
+                "best_guess_path": out_dir / f"{tag}_best_guess.txt",
+                "diarised_path": None,
+                "speaker_labels": [],
+                "elapsed_seconds": 1.0 if tag == "first" else 2.0,
+            }
+
+        mock_pipeline = MagicMock(side_effect=_fake_pipeline)
         with patch("ui.pipeline_invocation.run_pipeline", mock_pipeline):
             at = _upload_and_run(
                 [
-                    ("alpha.wav", b"a" * 16, "audio/wav"),
-                    ("beta.wav", b"b" * 16, "audio/wav"),
-                ],
-                mode=_ALL_AT_ONCE,
+                    ("recording.wav", b"a" * 16, "audio/wav"),
+                    ("recording.wav", b"b" * 16, "audio/wav"),
+                ]
             )
 
         assert not at.exception
         assert mock_pipeline.call_count == 2
-        completed = {str(m.value) for m in at.metric if m.label == "Completed"}
-        assert "2" in completed
+
+        # Both files rendered under distinct, disambiguated labels — no
+        # StreamlitDuplicateElementKey from two identical-stem widget keys.
+        expander_labels = [e.label for e in at.expander]
+        assert any("📄 recording.wav" == lbl for lbl in expander_labels)
+        assert any("📄 recording_2.wav" == lbl for lbl in expander_labels)
+
+        # Each upload's own elapsed time rendered — the second run's results
+        # did not overwrite the first's in the results registry.
+        success_values = [s.value for s in at.success]
+        assert any("1.0" in v for v in success_values)
+        assert any("2.0" in v for v in success_values)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

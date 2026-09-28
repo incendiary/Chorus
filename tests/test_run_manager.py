@@ -42,6 +42,7 @@ def isolated_paths(monkeypatch, tmp_path):
     monkeypatch.setattr(run_state_module, "ACTIVE_RUN_FILE", active_run_file)
     monkeypatch.setattr(run_state_module, "RUNS_DIR", runs_dir)
     monkeypatch.setattr(run_manager_module, "ACTIVE_RUN_FILE", active_run_file)
+    monkeypatch.setattr(run_manager_module, "RUNS_DIR", runs_dir)
     monkeypatch.setattr(run_worker_module, "RUNS_DIR", runs_dir)
     return active_run_file, runs_dir
 
@@ -166,7 +167,7 @@ def test_second_start_while_running_returns_false(tmp_path, monkeypatch):
     assert manager.start(job2) is False
 
     release.set()
-    manager._thread.join(timeout=5)
+    type(manager)._active_thread.join(timeout=5)
     assert manager.is_running() is False
 
 
@@ -195,7 +196,7 @@ def test_second_manager_cannot_overlap_live_run(tmp_path, monkeypatch):
     assert second.start(_make_job(tmp_path, run_id="run-2", names=("b.wav",))) is False
 
     release.set()
-    first._thread.join(timeout=5)
+    type(first)._active_thread.join(timeout=5)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -436,3 +437,180 @@ class TestScriptRunContextNoiseSuppression:
         assert observed["level"] == logging.ERROR
         # …and restored afterwards.
         assert ctx_logger.level == logging.WARNING
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# RD-24: Thread safety for _results and _active_thread
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def test_get_results_returns_a_copy(tmp_path, _sync_mode, monkeypatch):
+    """Mutating the returned dict must not affect the manager's internal state."""
+    monkeypatch.setattr(
+        "ui.pipeline_invocation.run_pipeline", _fake_run_pipeline_factory()
+    )
+
+    manager = RunManager()
+    job = _make_job(tmp_path, names=("a.wav",))
+    manager.start(job)
+
+    results = manager.get_results(job.run_id)
+    original_len = len(results)
+    results["fake_key"] = {"fake": "data"}
+
+    # Verify the mutation didn't affect the manager's internal state.
+    fresh_results = manager.get_results(job.run_id)
+    assert len(fresh_results) == original_len
+    assert "fake_key" not in fresh_results
+
+
+def test_set_file_result_stores_value(tmp_path, monkeypatch):
+    """set_file_result must store results in the manager."""
+    monkeypatch.setattr(
+        "ui.pipeline_invocation.run_pipeline", _fake_run_pipeline_factory()
+    )
+
+    manager = RunManager()
+    run_id = "test-run"
+    filename = "test.wav"
+    results = {"consensus_path": Path("test.md")}
+
+    manager.set_file_result(run_id, filename, results)
+
+    stored = manager.get_results(run_id)
+    assert filename in stored
+    assert stored[filename] == results
+
+
+def test_concurrent_writes_and_reads_no_exception(tmp_path, monkeypatch):
+    """Multiple threads calling set_file_result while get_results is called must finish with no exception."""
+    import time
+
+    manager = RunManager()
+    run_id = "concurrent-test"
+    errors: list[Exception] = []
+
+    def writer(index):
+        try:
+            for i in range(10):
+                manager.set_file_result(run_id, f"file{index}_{i}.wav", {"index": i})
+                time.sleep(0.001)
+        except Exception as exc:  # noqa: BLE001
+            errors.append(exc)
+
+    def reader():
+        end_time = time.monotonic() + 1.0
+        while time.monotonic() < end_time:
+            try:
+                results = manager.get_results(run_id)
+                # Just access the dict to trigger any lock-related errors.
+                _ = len(results)
+                time.sleep(0.001)
+            except Exception as exc:  # noqa: BLE001
+                errors.append(exc)
+
+    writers = [threading.Thread(target=writer, args=(i,)) for i in range(3)]
+    reader_thread = threading.Thread(target=reader)
+
+    for w in writers:
+        w.start()
+    reader_thread.start()
+
+    for w in writers:
+        w.join(timeout=5)
+    reader_thread.join(timeout=5)
+
+    assert not errors
+    # Verify all values are present.
+    results = manager.get_results(run_id)
+    assert len(results) == 30  # 3 writers * 10 files
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# RD-25: Leftover spool directory cleanup
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def test_leftover_spool_directory_from_dead_run_is_removed(
+    tmp_path, monkeypatch, isolated_paths
+):
+    """A spool directory from a dead run should be cleaned up when mark_interrupted_if_stale is called."""
+    _, runs_dir = isolated_paths
+
+    # Create a leftover directory from a dead run.
+    dead_run_dir = runs_dir / "dead-run-id"
+    dead_run_dir.mkdir(parents=True, exist_ok=True)
+    (dead_run_dir / "spool_file.wav").write_text("fake audio")
+
+    # Create a stale state file claiming that dead run is still running.
+    write_state_atomic(
+        {
+            "schema_version": 1,
+            "run_id": "dead-run-id",
+            "status": "running",
+            "boot_id": "some-other-process-boot-id",
+            "started_at": time.time(),
+            "finished_at": None,
+            "config": {},
+            "log_path": None,
+            "files": [],
+        }
+    )
+
+    # mark_interrupted_if_stale should delete the leftover directory.
+    RunManager()
+    assert not dead_run_dir.exists()
+
+
+def test_active_run_directory_is_kept(tmp_path, monkeypatch, isolated_paths):
+    """When a state file indicates an active run, its directory is not deleted."""
+    _, runs_dir = isolated_paths
+
+    # Create a manager to get this process's boot_id.
+    manager = RunManager()
+
+    # Create directories after the manager init (so they won't be deleted by init).
+    active_run_dir = runs_dir / "active-run-id"
+    active_run_dir.mkdir(parents=True, exist_ok=True)
+    (active_run_dir / "spool_file.wav").write_text("fake audio")
+
+    dead_run_dir = runs_dir / "dead-run-id"
+    dead_run_dir.mkdir(parents=True, exist_ok=True)
+    (dead_run_dir / "spool_file.wav").write_text("fake audio")
+
+    # Write a state file saying the active run is running with this boot_id.
+    write_state_atomic(
+        {
+            "schema_version": 1,
+            "run_id": "active-run-id",
+            "status": "running",
+            "boot_id": manager.boot_id,
+            "started_at": time.time(),
+            "finished_at": None,
+            "config": {},
+            "log_path": None,
+            "files": [],
+        }
+    )
+
+    # Call mark_interrupted_if_stale(). It should keep the active run's
+    # directory (because status=="running" and boot_id matches) and delete all others.
+    manager.mark_interrupted_if_stale()
+
+    assert active_run_dir.exists(), "Active run's directory should be kept"
+    assert not dead_run_dir.exists(), "Dead run's directory should be deleted"
+
+
+def test_missing_runs_dir_does_not_raise(tmp_path, monkeypatch, isolated_paths):
+    """If RUNS_DIR doesn't exist yet, mark_interrupted_if_stale should not raise."""
+    _, runs_dir = isolated_paths
+
+    # Ensure RUNS_DIR doesn't exist.
+    if runs_dir.exists():
+        import shutil
+
+        shutil.rmtree(runs_dir)
+
+    # This should not raise.
+    RunManager()
+    # mark_interrupted_if_stale is called in __init__, so if we get here, it worked.

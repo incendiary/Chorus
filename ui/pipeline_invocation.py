@@ -13,7 +13,11 @@ import streamlit as st
 
 import config
 from config import WHISPER_DEVICE
-from pipeline_runner import run_pipeline
+
+# ui.run_worker calls run_pipeline via attribute access on this module
+# (pipeline_invocation.run_pipeline), which is also the patch target tests
+# use; nothing in this module calls it directly.
+from pipeline_runner import run_pipeline  # noqa: F401
 from transcription_engine.orchestrator import load_transcripts_from_disk
 from ui.results import (
     build_file_anchors,
@@ -38,60 +42,12 @@ from utils import sanitise_stem
 logger = logging.getLogger(__name__)
 
 
-def run_one_file(
-    uf: object,
-    progress_slot: object,
-    status_slot: object,
-    log_lines: list[str],
-    log_expander: object,
-    config_obj: SidebarConfig,
-) -> tuple[dict, Path, str]:
-    """Process a single uploaded file.
-
-    Returns (results, tmp_path, original_stem).
-    """
-    original_stem = sanitise_stem(Path(uf.name).stem, fallback="upload")
-    suffix = Path(uf.name).suffix.lower()
-    # Secure temp file: unique path, exclusive creation, no race condition
-    tmp_fd = tempfile.NamedTemporaryFile(
-        suffix=suffix, prefix=f"{original_stem}_", delete=False
-    )
-    tmp_path = Path(tmp_fd.name)
-    tmp_fd.write(uf.read())
-    tmp_fd.close()
-
-    def _progress(label: str, frac: float) -> None:
-        progress_slot.progress(min(frac, 1.0), text=label)
-        status_slot.markdown(f"**Status:** {label}")
-        log_lines.append(f"`{frac * 100:.0f}%` — {label}")
-        # O(1): render only the latest line, not the whole joined history
-        # (a 197-segment file used to re-render ~19k cumulative lines).
-        log_expander.markdown(log_lines[-1])
-
-    results = run_pipeline(
-        audio_path=tmp_path,
-        source_filename=uf.name,
-        language=config_obj.language,
-        consensus_models=config_obj.consensus_models,
-        enable_nlp=config_obj.enable_nlp,
-        enable_llm=config_obj.enable_llm,
-        ollama_model=config_obj.ollama_model,
-        enable_diarisation=config_obj.enable_diarisation,
-        alignment_strategy=config_obj.alignment_choice,
-        consensus_threshold=config_obj.consensus_threshold,
-        similarity_threshold=config_obj.similarity_threshold,
-        progress_callback=_progress,
-    )
-    return results, tmp_path, original_stem
-
-
 def spool_upload(uf: object, dest_dir: Path) -> tuple[Path, str]:
     """Spool an uploaded file into *dest_dir*; return (path, sanitised stem).
 
-    Mirrors ``run_one_file``'s tempfile/sanitise logic, but writes into a
-    run-specific directory (rather than the system temp dir) so the file
-    survives on disk for the background thread to read after this script
-    run has ended.
+    Writes into a run-specific directory (rather than the system temp dir)
+    so the file survives on disk for the background thread to read after
+    this script run has ended.
     """
     dest_dir.mkdir(parents=True, exist_ok=True)
     stem = sanitise_stem(Path(uf.name).stem, fallback="upload")
@@ -145,12 +101,11 @@ def _render_idle_state(
     st.divider()
     st.subheader("2 · Run Pipeline")
 
-    # ── Processing mode (only shown for multiple files) ───────────────────────
+    # ── Hardware recommendation (only shown for multiple files) ───────────────
     # Background runs always process files one at a time (RunManager enforces
-    # a single active run and run_worker.execute_run loops sequentially); this
-    # choice is kept for preflight/expectation-setting parity but no longer
-    # branches execution.
-    rec_mode, rec_reason = hw_recommendation()
+    # a single active run and run_worker.execute_run loops sequentially), so
+    # only the informational reason is shown; there is no mode to choose.
+    _, rec_reason = hw_recommendation()
 
     if len(uploaded_files) > 1:
         # Auto-switch to batch view for 3+ files
@@ -159,24 +114,6 @@ def _render_idle_state(
                 f"📁 **Batch mode** — {len(uploaded_files)} files detected. "
                 "All files will be processed before results are displayed.",
                 icon="📁",
-            )
-        else:
-            st.radio(
-                "Processing mode",
-                options=[
-                    "Sequential — results appear per file",
-                    "All at once — results shown at end",
-                ],
-                index=0 if rec_mode.startswith("Sequential") else 1,
-                horizontal=True,
-                help=(
-                    "**Sequential:** each file is fully processed and its results shown "
-                    "before the next file starts. Lower peak memory — best for longer "
-                    "recordings or machines with less RAM.\n\n"
-                    "**All at once:** all files are processed back-to-back before any "
-                    "results are displayed. Processing is still single-threaded; the only "
-                    "difference is when results appear."
-                ),
             )
         st.caption(rec_reason)
 
@@ -258,15 +195,32 @@ def _render_idle_state(
     files: list[FileEntry] = []
     invalid_files: dict[str, str] = {}
 
+    seen_names: dict[str, int] = {}
     for uf in uploaded_files:
         validation_error = validate_upload(uf)
         if validation_error:
             invalid_files[str(uf.name)] = validation_error
             continue
 
+        original_name = str(uf.name)
+        occurrence = seen_names.get(original_name, 0) + 1
+        seen_names[original_name] = occurrence
+
         spool_path, stem = spool_upload(uf, run_dir)
+        if occurrence > 1:
+            # Duplicate upload filename in this batch: disambiguate the
+            # display name and stem so results, output files, and widget
+            # keys derived from them stay distinct (otherwise the second
+            # upload silently overwrites the first's results and Streamlit
+            # raises StreamlitDuplicateElementKey when rendering).
+            name_path = Path(original_name)
+            display_name = f"{name_path.stem}_{occurrence}{name_path.suffix}"
+            stem = f"{stem}_{occurrence}"
+        else:
+            display_name = original_name
+
         files.append(
-            FileEntry(name=str(uf.name), stem=stem, spool_path=str(spool_path))
+            FileEntry(name=display_name, stem=stem, spool_path=str(spool_path))
         )
 
     # Report validation errors for rejected files
