@@ -15,7 +15,7 @@ _ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from config import CONSENSUS_DIR  # noqa: E402
+from config import CONSENSUS_DIR, JOBS_DIR  # noqa: E402
 from ui.run_indicator import render_run_indicator  # noqa: E402
 
 st.set_page_config(
@@ -30,7 +30,9 @@ st.title("🗂 Past Jobs")
 st.caption("Browse completed transcription runs and re-download their outputs.")
 
 # ── File suffix metadata ──────────────────────────────────────────────────────
-# Each entry: (filename suffix, display label, MIME type)
+# Each entry: (filename suffix, display label, MIME type). Under the current
+# per-job layout, every file for a run shares the same stem and lives in
+# that run's own consensus/ directory, so no base-stem guessing is needed.
 _SUFFIX_META: list[tuple[str, str, str]] = [
     ("_consensus.md", "Consensus (Markdown)", "text/markdown"),
     ("_consensus.pdf", "PDF", "application/pdf"),
@@ -43,12 +45,14 @@ _SUFFIX_META: list[tuple[str, str, str]] = [
     ("_consensus.vtt", "VTT Subtitles", "text/plain"),
     ("_most_likely.txt", "Most Likely (Plain Text)", "text/plain"),
     ("_most_likely_clean.txt", "Most Likely (Clean)", "text/plain"),
+    ("_best_guess.txt", "Best Guess (Plain Text)", "text/plain"),
     ("_ai_context.md", "AI Context Pack", "text/markdown"),
     ("_bundle.json", "JSON Bundle", "application/json"),
     ("_diarised.md", "Diarised Transcript", "text/markdown"),
 ]
 
-# Suffixes whose files use the base stem (no run ID in the filename).
+# Suffixes whose files use the base stem (no run ID in the filename) — kept
+# for the legacy flat-layout section only.
 _BASE_STEM_SUFFIXES: frozenset[str] = frozenset(
     {
         "_consensus.pdf",
@@ -63,6 +67,184 @@ _BASE_STEM_SUFFIXES: frozenset[str] = frozenset(
 _SUFFIX_MIME: dict[str, str] = {s: m for s, _, m in _SUFFIX_META}
 
 
+def _make_zip(run_files: dict[str, Path]) -> bytes:
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for path in run_files.values():
+            zf.write(path, arcname=path.name)
+    return buf.getvalue()
+
+
+def _format_mtime(p: Path) -> str:
+    dt = datetime.fromtimestamp(p.stat().st_mtime)
+    return dt.strftime("%-d %B %Y at %H:%M")
+
+
+def _delete_run(run_files: dict[str, Path]) -> None:
+    """Delete all files associated with a run."""
+    for path in run_files.values():
+        path.unlink(missing_ok=True)
+
+
+def _format_date_heading(date_str: str) -> str:
+    """Convert YYYY-MM-DD to a human-readable heading."""
+    try:
+        dt = datetime.strptime(date_str, "%Y-%m-%d")
+        return dt.strftime("%-d %B %Y")
+    except ValueError:
+        return date_str
+
+
+def _render_run_expander(
+    *,
+    expander_label: str,
+    source_name: str,
+    mtime_display: str,
+    run_files: dict[str, Path],
+    zip_filename: str,
+    dedupe_key: str,
+) -> None:
+    """Render one run's expander: metadata, delete, and download controls.
+
+    Shared between the current-layout and legacy sections so both look and
+    behave identically to the user.
+    """
+    confirm_key = f"confirm_delete_{dedupe_key}"
+
+    with st.expander(expander_label, expanded=False):
+        meta_cols = st.columns([2, 2, 1])
+        with meta_cols[0]:
+            st.markdown(f"**Source:** {source_name or '—'}")
+        with meta_cols[1]:
+            st.markdown(f"**Completed:** {mtime_display}")
+        with meta_cols[2]:
+            if st.button(
+                "🗑 Delete", key=f"del_btn_{dedupe_key}", use_container_width=True
+            ):
+                st.session_state[confirm_key] = True
+
+        if st.session_state.get(confirm_key):
+            st.warning(
+                f"Delete **{len(run_files)} file{'s' if len(run_files) != 1 else ''}** "
+                "for this run? This cannot be undone."
+            )
+            col_yes, col_no, _ = st.columns([1, 1, 2])
+            with col_yes:
+                if st.button(
+                    "Yes, delete",
+                    key=f"confirm_yes_{dedupe_key}",
+                    type="primary",
+                    use_container_width=True,
+                ):
+                    _delete_run(run_files)
+                    st.session_state.pop(confirm_key, None)
+                    st.rerun()
+            with col_no:
+                if st.button(
+                    "Cancel",
+                    key=f"confirm_no_{dedupe_key}",
+                    use_container_width=True,
+                ):
+                    st.session_state.pop(confirm_key, None)
+                    st.rerun()
+            return
+
+        col_zip, _spacer = st.columns([1, 3])
+        with col_zip:
+            st.download_button(
+                "⬇ Download All (ZIP)",
+                data=_make_zip(run_files),
+                file_name=zip_filename,
+                mime="application/zip",
+                use_container_width=True,
+                key=f"zip_{dedupe_key}",
+            )
+
+        st.markdown("---")
+
+        items = list(run_files.items())
+        for row_start in range(0, len(items), 3):
+            cols = st.columns(3)
+            for col_idx, (file_label, file_path) in enumerate(
+                items[row_start : row_start + 3]
+            ):
+                mime = "application/octet-stream"
+                for suffix, m in _SUFFIX_MIME.items():
+                    if file_path.name.endswith(suffix):
+                        mime = m
+                        break
+                with cols[col_idx]:
+                    st.download_button(
+                        f"⬇ {file_label}",
+                        data=file_path.read_bytes(),
+                        file_name=file_path.name,
+                        mime=mime,
+                        use_container_width=True,
+                        key=f"dl_{dedupe_key}_{file_path.name}",
+                    )
+
+
+# ── Current layout: JOBS_DIR/<stem>-<sha8>/<timestamp>/consensus/ ─────────────
+# Each run's own consensus/ directory holds every file for that run under one
+# shared stem, so there is no base-stem guessing to do: just glob it.
+
+
+class _Run:
+    __slots__ = ("project_name", "run_stamp", "anchor", "files", "mtime")
+
+    def __init__(self, project_name: str, run_stamp: str, anchor: Path):
+        self.project_name = project_name
+        self.run_stamp = run_stamp
+        self.anchor = anchor
+        self.files: dict[str, Path] = {}
+        self.mtime = anchor.stat().st_mtime
+
+
+def _collect_current_layout_runs() -> list[_Run]:
+    runs: list[_Run] = []
+    if not JOBS_DIR.exists():
+        return runs
+
+    for project_dir in JOBS_DIR.iterdir():
+        if not project_dir.is_dir():
+            continue
+        for run_dir in project_dir.iterdir():
+            if not run_dir.is_dir():
+                continue
+            consensus_subdir = run_dir / "consensus"
+            anchors = sorted(consensus_subdir.glob("*_consensus.md"))
+            if not anchors:
+                continue
+            anchor = anchors[0]
+            full_stem = anchor.name[: -len("_consensus.md")]
+            run = _Run(project_dir.name, run_dir.name, anchor)
+            run.files["Consensus (Markdown)"] = anchor
+            for suffix, label, _ in _SUFFIX_META:
+                if suffix == "_consensus.md":
+                    continue
+                candidate = consensus_subdir / f"{full_stem}{suffix}"
+                if candidate.exists():
+                    run.files[label] = candidate
+            runs.append(run)
+
+    runs.sort(key=lambda r: r.mtime, reverse=True)
+    return runs
+
+
+def _run_source_name(run: _Run) -> str:
+    """Derive a human-readable source name from the project directory name
+    (``<stem>-<sha8>``), stripping the trailing ``-<sha8>`` suffix."""
+    name = run.project_name
+    if "-" in name and len(name.rsplit("-", 1)[1]) == 8:
+        name = name.rsplit("-", 1)[0]
+    return name.replace("_", " ")
+
+
+current_runs = _collect_current_layout_runs()
+
+# ── Legacy layout: flat CONSENSUS_DIR/*_consensus.md ───────────────────────
+
+
 def _find_base_stem(anchor: Path, full_stem: str) -> str | None:
     """Return the base stem (without run ID) by checking for known export files."""
     for suffix in _BASE_STEM_SUFFIXES:
@@ -73,8 +255,8 @@ def _find_base_stem(anchor: Path, full_stem: str) -> str | None:
     return None
 
 
-def _collect_run_files(anchor: Path) -> dict[str, Path]:
-    """Return all on-disk files for this run, keyed by display label."""
+def _collect_legacy_run_files(anchor: Path) -> dict[str, Path]:
+    """Return all on-disk files for this legacy flat-layout run."""
     full_stem = anchor.name[: -len("_consensus.md")]
     base_stem = _find_base_stem(anchor, full_stem)
 
@@ -93,20 +275,9 @@ def _collect_run_files(anchor: Path) -> dict[str, Path]:
     return found
 
 
-def _make_zip(run_files: dict[str, Path]) -> bytes:
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        for path in run_files.values():
-            zf.write(path, arcname=path.name)
-    return buf.getvalue()
-
-
-def _format_mtime(p: Path) -> str:
-    dt = datetime.fromtimestamp(p.stat().st_mtime)
-    return dt.strftime("%-d %B %Y at %H:%M")
-
-
-def _parse_run_meta(full_stem: str, base_stem: str | None) -> tuple[str, str, str]:
+def _parse_legacy_run_meta(
+    full_stem: str, base_stem: str | None
+) -> tuple[str, str, str]:
     """Return (source_name, date_str, time_str) parsed from the stem."""
     parts = full_stem.split("_", 2)
     if (
@@ -128,42 +299,25 @@ def _parse_run_meta(full_stem: str, base_stem: str | None) -> tuple[str, str, st
     return full_stem.replace("_", " "), "", ""
 
 
-def _delete_run(run_files: dict[str, Path]) -> None:
-    """Delete all files associated with a run."""
-    for path in run_files.values():
-        path.unlink(missing_ok=True)
-
-
-def _format_date_heading(date_str: str) -> str:
-    """Convert YYYY-MM-DD to a human-readable heading."""
-    try:
-        dt = datetime.strptime(date_str, "%Y-%m-%d")
-        return dt.strftime("%-d %B %Y")
-    except ValueError:
-        return date_str
-
-
-# ── Main render ───────────────────────────────────────────────────────────────
-if not CONSENSUS_DIR.exists():
-    st.info(
-        "No completed runs found yet. Run a transcription from the main page first."
+legacy_anchors = (
+    sorted(
+        CONSENSUS_DIR.glob("*_consensus.md"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
     )
-    st.stop()
-
-anchors = sorted(
-    CONSENSUS_DIR.glob("*_consensus.md"),
-    key=lambda p: p.stat().st_mtime,
-    reverse=True,
+    if CONSENSUS_DIR.exists()
+    else []
 )
 
-if not anchors:
+# ── Main render ───────────────────────────────────────────────────────────────
+if not current_runs and not legacy_anchors:
     st.info(
         "No completed runs found yet. Run a transcription from the main page first."
     )
     st.stop()
 
-run_count = len(anchors)
-st.markdown(f"**{run_count} completed run{'s' if run_count != 1 else ''} found.**")
+total_count = len(current_runs) + len(legacy_anchors)
+st.markdown(f"**{total_count} completed run{'s' if total_count != 1 else ''} found.**")
 st.divider()
 
 # Show in-progress banner if a run is active
@@ -173,23 +327,46 @@ _state = load_state()
 if _state and _state.get("status") == "running":
     st.info("🔄 1 run in progress — updates appear below as it completes.", icon="🔄")
 
-# ── Group anchors by date ─────────────────────────────────────────────────────
-by_date: dict[str, list[Path]] = defaultdict(list)
-for anchor in anchors:
-    full_stem = anchor.name[: -len("_consensus.md")]
-    _, date_str, _ = _parse_run_meta(full_stem, _find_base_stem(anchor, full_stem))
-    by_date[date_str if date_str else "Unknown Date"].append(anchor)
+# ── Group current-layout runs by date ───────────────────────────────────────
+by_date: dict[str, list[_Run]] = defaultdict(list)
+for run in current_runs:
+    date_str = datetime.fromtimestamp(run.mtime).strftime("%Y-%m-%d")
+    by_date[date_str].append(run)
 
-# Render date groups in reverse-chronological order (newest first).
 for date_key in sorted(by_date.keys(), reverse=True):
-    heading = _format_date_heading(date_key) if date_key != "Unknown Date" else date_key
-    st.subheader(heading)
+    st.subheader(_format_date_heading(date_key))
 
-    for anchor in by_date[date_key]:
+    for run in by_date[date_key]:
+        source_name = _run_source_name(run)
+        time_str = datetime.fromtimestamp(run.mtime).strftime("%H:%M")
+        expander_label = f"**{source_name}** — {time_str}"
+        dedupe_key = f"{run.project_name}_{run.run_stamp}"
+
+        _render_run_expander(
+            expander_label=expander_label,
+            source_name=source_name,
+            mtime_display=_format_mtime(run.anchor),
+            run_files=run.files,
+            zip_filename=f"{run.project_name}_{run.run_stamp}.zip",
+            dedupe_key=dedupe_key,
+        )
+
+    st.divider()
+
+# ── Legacy section (flat outputs/consensus/, pre-v5.0.0) ───────────────────
+if legacy_anchors:
+    st.subheader("Legacy (before v5.0.0)")
+    st.caption(
+        "Runs from before per-job output folders. Files live in the shared "
+        "outputs/consensus/ directory and are listed here so existing "
+        "casework stays reachable."
+    )
+
+    for anchor in legacy_anchors:
         full_stem = anchor.name[: -len("_consensus.md")]
         base_stem = _find_base_stem(anchor, full_stem)
-        run_files = _collect_run_files(anchor)
-        source_name, _, time_str = _parse_run_meta(full_stem, base_stem)
+        run_files = _collect_legacy_run_files(anchor)
+        source_name, _, time_str = _parse_legacy_run_meta(full_stem, base_stem)
         mtime = _format_mtime(anchor)
 
         if source_name and time_str:
@@ -197,80 +374,13 @@ for date_key in sorted(by_date.keys(), reverse=True):
         else:
             expander_label = f"**{full_stem}**"
 
-        confirm_key = f"confirm_delete_{full_stem}"
-
-        with st.expander(expander_label, expanded=False):
-            meta_cols = st.columns([2, 2, 1])
-            with meta_cols[0]:
-                st.markdown(f"**Source:** {source_name or '—'}")
-            with meta_cols[1]:
-                st.markdown(f"**Completed:** {mtime}")
-            with meta_cols[2]:
-                if st.button(
-                    "🗑 Delete", key=f"del_btn_{full_stem}", use_container_width=True
-                ):
-                    st.session_state[confirm_key] = True
-
-            # Inline delete confirmation.
-            if st.session_state.get(confirm_key):
-                st.warning(
-                    f"Delete **{len(run_files)} file{'s' if len(run_files) != 1 else ''}** "
-                    "for this run? This cannot be undone."
-                )
-                col_yes, col_no, _ = st.columns([1, 1, 2])
-                with col_yes:
-                    if st.button(
-                        "Yes, delete",
-                        key=f"confirm_yes_{full_stem}",
-                        type="primary",
-                        use_container_width=True,
-                    ):
-                        _delete_run(run_files)
-                        st.session_state.pop(confirm_key, None)
-                        st.rerun()
-                with col_no:
-                    if st.button(
-                        "Cancel",
-                        key=f"confirm_no_{full_stem}",
-                        use_container_width=True,
-                    ):
-                        st.session_state.pop(confirm_key, None)
-                        st.rerun()
-            else:
-                col_zip, _spacer = st.columns([1, 3])
-                with col_zip:
-                    st.download_button(
-                        "⬇ Download All (ZIP)",
-                        data=_make_zip(run_files),
-                        file_name=f"{full_stem}.zip",
-                        mime="application/zip",
-                        use_container_width=True,
-                        key=f"zip_{full_stem}",
-                    )
-
-                st.markdown("---")
-
-                items = list(run_files.items())
-                for row_start in range(0, len(items), 3):
-                    cols = st.columns(3)
-                    for col_idx, (file_label, file_path) in enumerate(
-                        items[row_start : row_start + 3]
-                    ):
-                        mime = "application/octet-stream"
-                        for suffix, m in _SUFFIX_MIME.items():
-                            if file_path.name.endswith(suffix):
-                                mime = m
-                                break
-                        with cols[col_idx]:
-                            st.download_button(
-                                f"⬇ {file_label}",
-                                data=file_path.read_bytes(),
-                                file_name=file_path.name,
-                                mime=mime,
-                                use_container_width=True,
-                                # full_stem makes the key unique across runs that share
-                                # the same base-stem filename (e.g. repeated recordings).
-                                key=f"dl_{full_stem}_{file_path.name}",
-                            )
+        _render_run_expander(
+            expander_label=expander_label,
+            source_name=source_name,
+            mtime_display=mtime,
+            run_files=run_files,
+            zip_filename=f"{full_stem}.zip",
+            dedupe_key=f"legacy_{full_stem}",
+        )
 
     st.divider()

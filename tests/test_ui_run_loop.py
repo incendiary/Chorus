@@ -175,6 +175,10 @@ class TestConfigKwargForwarding:
         assert mock_pipeline.call_count == 1
 
         kwargs = mock_pipeline.call_args.kwargs
+        # The original upload name must be threaded through as
+        # source_filename, not left to default to the mangled spool/temp
+        # filename (audio_path's own name carries a random suffix).
+        assert kwargs["source_filename"] == "My Interview.wav"
         assert kwargs["language"] == "en"
         assert kwargs["consensus_models"] == ("base", "small")
         assert kwargs["enable_nlp"] is False
