@@ -633,6 +633,7 @@ def run_batch(
     keep_variant_wavs: bool | None = None,
     word_timestamps: bool | None = None,
     progress_callback: Callable[[int, int, str], None] | None = None,
+    show_progress: bool = True,
 ) -> list[BatchResult]:
     """
     Process multiple audio files through the full Chorus pipeline.
@@ -677,12 +678,18 @@ def run_batch(
     progress_callback : callable, optional
         Called as ``progress_callback(current_index, total, filename)``
         after each file completes.
+    show_progress : bool
+        Render the CURRENT TASK/OVERALL terminal progress bars while the
+        batch runs (see ``batch_processor.progress_display``). Bars only
+        actually draw when stderr is a TTY; this flag is the CLI's
+        ``--no-progress`` switch to disable them outright.
 
     Returns
     -------
     list[BatchResult]
         One result object per discovered audio file.
     """
+    from batch_processor.progress_display import BatchProgressBars
     from pipeline_runner import run_pipeline
 
     audio_files = discover_audio_files(inputs, recursive=recursive)
@@ -693,71 +700,84 @@ def run_batch(
     total = len(audio_files)
     results: list[BatchResult] = []
 
-    for idx, audio_path in enumerate(audio_files, start=1):
-        result = BatchResult(audio_path)
-        logger.info("[%d/%d] Processing: %s", idx, total, audio_path.name)
-        t0 = time.perf_counter()
+    bars = BatchProgressBars(total, enabled=show_progress and sys.stderr.isatty())
+    try:
+        for idx, audio_path in enumerate(audio_files, start=1):
+            result = BatchResult(audio_path)
+            logger.info("[%d/%d] Processing: %s", idx, total, audio_path.name)
+            t0 = time.perf_counter()
+            bars.start_file(idx, total, audio_path.name)
 
-        try:
-            # ── Core pipeline ─────────────────────────────────────────────
-            # Every file gets its own never-overwritten job folder; -o DIR
-            # (output_dir) replaces the default outputs/jobs root, it does
-            # not disable per-job isolation.
-            file_output_dir = job_output_dir(audio_path, root=output_dir)
-            pipeline_out = run_pipeline(
-                audio_path,
-                language=language,
-                consensus_models=consensus_models,
-                alignment_strategy=alignment_strategy,
-                enable_nlp=enable_nlp,
-                enable_llm=enable_llm,
-                ollama_model=ollama_model,
-                enable_diarisation=enable_diarisation,
-                allow_diarisation_stub=allow_diarisation_stub,
-                output_dir=file_output_dir,
-                consensus_threshold=consensus_threshold,
-                similarity_threshold=similarity_threshold,
-                keep_variant_wavs=keep_variant_wavs,
-                word_timestamps=word_timestamps,
-            )
-            result.consensus_path = pipeline_out["consensus_path"]
-            result.export_paths = pipeline_out.get("export_paths", {})
-            result.diarisation_error = pipeline_out.get("diarisation_error")
-            result.reconstruction_warning = _reconstruction_warning(pipeline_out)
+            def _event_cb(event: dict, _bars: BatchProgressBars = bars) -> None:
+                _bars.on_event(event)
 
-            # ── Optional: Export additional formats ────────────────────────
-            # (pipeline handles NLP, LLM, and diarisation; export_all used here
-            #  only for additional formats beyond those auto-generated)
-            if export_formats and result.consensus_path:
-                from export_engine.exporter import export_all
-                from utils import sanitise_stem
-
-                result.export_paths.update(
-                    export_all(
-                        consensus_md_path=result.consensus_path,
-                        whisper_result=pipeline_out["transcripts"]["original"],
-                        stem=sanitise_stem(audio_path.stem, fallback="audio"),
-                        formats=export_formats,
-                        output_dir=file_output_dir / "consensus",
-                    )
-                    or {}
+            try:
+                # ── Core pipeline ─────────────────────────────────────────
+                # Every file gets its own never-overwritten job folder; -o
+                # DIR (output_dir) replaces the default outputs/jobs root,
+                # it does not disable per-job isolation.
+                file_output_dir = job_output_dir(audio_path, root=output_dir)
+                pipeline_out = run_pipeline(
+                    audio_path,
+                    language=language,
+                    consensus_models=consensus_models,
+                    alignment_strategy=alignment_strategy,
+                    enable_nlp=enable_nlp,
+                    enable_llm=enable_llm,
+                    ollama_model=ollama_model,
+                    enable_diarisation=enable_diarisation,
+                    allow_diarisation_stub=allow_diarisation_stub,
+                    output_dir=file_output_dir,
+                    consensus_threshold=consensus_threshold,
+                    similarity_threshold=similarity_threshold,
+                    keep_variant_wavs=keep_variant_wavs,
+                    word_timestamps=word_timestamps,
+                    event_callback=_event_cb,
                 )
-                # export_all logs and returns None for a format that raised.
-                failed = [f for f in export_formats if not result.export_paths.get(f)]
-                if failed:
-                    result.export_error = f"export failed: {', '.join(failed)}"
+                result.consensus_path = pipeline_out["consensus_path"]
+                result.export_paths = pipeline_out.get("export_paths", {})
+                result.diarisation_error = pipeline_out.get("diarisation_error")
+                result.reconstruction_warning = _reconstruction_warning(pipeline_out)
 
-            result.success = True
+                # ── Optional: Export additional formats ─────────────────────
+                # (pipeline handles NLP, LLM, and diarisation; export_all used
+                #  here only for additional formats beyond those auto-generated)
+                if export_formats and result.consensus_path:
+                    from export_engine.exporter import export_all
+                    from utils import sanitise_stem
 
-        except Exception as exc:
-            logger.error("Failed to process '%s': %s", audio_path.name, exc)
-            result.error = str(exc)
+                    result.export_paths.update(
+                        export_all(
+                            consensus_md_path=result.consensus_path,
+                            whisper_result=pipeline_out["transcripts"]["original"],
+                            stem=sanitise_stem(audio_path.stem, fallback="audio"),
+                            formats=export_formats,
+                            output_dir=file_output_dir / "consensus",
+                        )
+                        or {}
+                    )
+                    # export_all logs and returns None for a format that raised.
+                    failed = [
+                        f for f in export_formats if not result.export_paths.get(f)
+                    ]
+                    if failed:
+                        result.export_error = f"export failed: {', '.join(failed)}"
 
-        result.elapsed_seconds = round(time.perf_counter() - t0, 2)
-        results.append(result)
+                result.success = True
 
-        if progress_callback:
-            progress_callback(idx, total, audio_path.name)
+            except Exception as exc:
+                logger.error("Failed to process '%s': %s", audio_path.name, exc)
+                result.error = str(exc)
+            finally:
+                bars.finish_file()
+
+            result.elapsed_seconds = round(time.perf_counter() - t0, 2)
+            results.append(result)
+
+            if progress_callback:
+                progress_callback(idx, total, audio_path.name)
+    finally:
+        bars.close()
 
     # ── Write batch summary report ────────────────────────────────────────────
     _write_batch_report(results, output_dir)
@@ -994,6 +1014,13 @@ Examples:
         help="Root output directory, replacing the default outputs/jobs. Each "
         "file gets its own <DIR>/<stem>-<sha8>/<timestamp>/ job folder.",
     )
+    parser.add_argument(
+        "--no-progress",
+        action="store_true",
+        help="Disable the CURRENT TASK/OVERALL terminal progress bars. Bars "
+        "only draw when stderr is a TTY regardless of this flag; use it to "
+        "suppress them outright (e.g. when redirecting stderr yourself).",
+    )
     return parser
 
 
@@ -1072,6 +1099,7 @@ def main(argv: list[str] | None = None) -> int:
             similarity_threshold=settings["similarity threshold"][0],
             keep_variant_wavs=settings["keep variant WAVs"][0],
             word_timestamps=settings["word timestamps"][0],
+            show_progress=not args.no_progress,
         )
     finally:
         logging.getLogger().removeHandler(handler)

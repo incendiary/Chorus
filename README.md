@@ -406,6 +406,12 @@ python -m batch_processor.batch_runner recordings/ --recursive \
   --alignment-strategy sequence --consensus-threshold 0.78
 ```
 
+While a batch runs, two progress bars are pinned at the bottom of the
+terminal (a CURRENT TASK bar for the active pipeline stage, an OVERALL bar
+across the batch), so a long file no longer sits with no visible progress
+between log lines. They render only when stderr is a TTY; pass
+`--no-progress` to disable them outright.
+
 For a complete reference covering every command-line flag, their defaults, environment variable sources, and Web UI equivalents, see [docs/CLI_REFERENCE.md](docs/CLI_REFERENCE.md).
 
 For a temporary hardware-tuned model/device/parallelism choice, add

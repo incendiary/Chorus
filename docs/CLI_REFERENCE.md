@@ -664,6 +664,29 @@ python -m batch_processor.batch_runner /audio/ \
 python -m batch_processor.batch_runner /audio/ -o ./batch-results
 ```
 
+### Terminal Progress
+
+#### `--no-progress`
+
+Disable the two terminal progress bars (a CURRENT TASK bar for the active
+pipeline stage and an OVERALL bar across the batch) that otherwise render
+pinned at the bottom of the terminal while a batch runs. The bars only draw
+when stderr is a TTY in the first place, so a redirected or piped run, CI,
+and the log file are already unaffected; this flag suppresses them outright
+even on a real terminal. Log lines remain visible above the bars either way.
+
+**Default:** off (bars render whenever stderr is a TTY).
+
+**Source:** CLI flag only.
+
+**Web UI equivalent:** None; the Web UI has its own progress display.
+
+**Example:**
+
+```bash
+python -m batch_processor.batch_runner /audio/ --no-progress
+```
+
 ## Pipeline Runner: `python pipeline_runner.py`
 
 The pipeline runner is a simpler interface for processing a single audio file.

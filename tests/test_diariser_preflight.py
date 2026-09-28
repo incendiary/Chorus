@@ -385,6 +385,25 @@ class TestDiarisationHeartbeat:
     for the duration of that call.
     """
 
+    def test_a_failing_callback_does_not_stop_the_heartbeat(self, monkeypatch, caplog):
+        """The callback drives the terminal progress bar; a display error in
+        it must not silence the heartbeat log line for the rest of the run."""
+        from diarisation import diariser
+
+        monkeypatch.setattr(diariser, "DIARISATION_HEARTBEAT_SECONDS", 0.05)
+
+        def _broken(_elapsed):
+            raise RuntimeError("terminal gone")
+
+        with caplog.at_level("INFO", logger="diarisation.diariser"):
+            with diariser._diarisation_heartbeat(
+                Path("sample.wav"), heartbeat_callback=_broken
+            ):
+                time.sleep(0.3)
+
+        heartbeats = [r for r in caplog.records if "still running" in r.message]
+        assert len(heartbeats) >= 2
+
     def test_heartbeat_logs_while_the_call_is_running(self, monkeypatch, caplog):
         from diarisation import diariser
 
