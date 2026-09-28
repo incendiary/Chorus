@@ -448,7 +448,11 @@ def _diarisation_heartbeat(
                 elapsed,
             )
             if heartbeat_callback is not None:
-                heartbeat_callback(elapsed)
+                # A display error must never stop the heartbeat log line.
+                try:
+                    heartbeat_callback(elapsed)
+                except Exception:
+                    logger.debug("Diarisation heartbeat callback failed", exc_info=True)
 
     thread = threading.Thread(target=_beat, daemon=True)
     thread.start()
