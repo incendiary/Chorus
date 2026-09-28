@@ -26,6 +26,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+import config
 from batch_processor.batch_runner import (
     BatchResult,
     _build_parser,
@@ -277,6 +278,37 @@ class TestRunBatch:
 
         assert results[0].export_error is None
 
+    def test_extra_export_uses_the_sanitised_stem(self, tmp_path: Path) -> None:
+        """The --export call must use the same sanitised stem run_pipeline
+        uses, not the raw filename stem. run_pipeline's return dict has no
+        "stem" key, so falling back to pipeline_out.get("stem", ...) always
+        hits the raw audio_path.stem, giving extra-format exports a
+        different (unsanitised) filename to every other output from the
+        same run."""
+        from utils import sanitise_stem
+
+        audio_path = tmp_path / "My Recording (Jan 5).wav"
+        _make_wav(audio_path)
+
+        def _mock_pipeline(audio_path: Path, **kwargs) -> dict:
+            return _fake_pipeline_result(audio_path, kwargs.get("output_dir"))
+
+        captured: dict = {}
+
+        def _mock_export_all(**kwargs):
+            captured.update(kwargs)
+            return {"pdf": tmp_path / "out.pdf"}
+
+        with (
+            patch("pipeline_runner.run_pipeline", side_effect=_mock_pipeline),
+            patch("export_engine.exporter.export_all", side_effect=_mock_export_all),
+            patch("batch_processor.batch_runner._write_batch_report"),
+        ):
+            run_batch(inputs=[tmp_path], export_formats=["pdf"])
+
+        assert captured["stem"] == sanitise_stem(audio_path.stem, fallback="audio")
+        assert captured["stem"] == "My_Recording__Jan_5"
+
     def test_per_file_output_isolation(self, tmp_path: Path) -> None:
         """When output_dir is given, each file must write into its own <stem>/ subdir."""
         _make_wav(tmp_path / "interview.wav")
@@ -473,6 +505,32 @@ class TestRunBatch:
         assert captured["keep_variant_wavs"] is True
         assert captured["word_timestamps"] is True
 
+    def test_run_batch_passes_output_dir_to_report_writer(self, tmp_path: Path) -> None:
+        """run_batch must forward its own output_dir to _write_batch_report
+        rather than letting the report fall back to CONSENSUS_DIR."""
+        _make_wav(tmp_path / "x.wav")
+        out_root = tmp_path / "case-123"
+
+        def _mock_pipeline(audio_path: Path, **kwargs) -> dict:
+            return _fake_pipeline_result(audio_path, kwargs.get("output_dir"))
+
+        mock_report = MagicMock()
+        with (
+            patch("pipeline_runner.run_pipeline", side_effect=_mock_pipeline),
+            patch("batch_processor.batch_runner._write_batch_report", mock_report),
+        ):
+            run_batch(inputs=[tmp_path], output_dir=out_root)
+
+        mock_report.assert_called_once()
+        _, kwargs = mock_report.call_args
+        args = mock_report.call_args.args
+        passed_output_dir = (
+            kwargs.get("output_dir")
+            if "output_dir" in kwargs
+            else (args[1] if len(args) > 1 else None)
+        )
+        assert passed_output_dir == out_root
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # _write_batch_report
@@ -496,6 +554,31 @@ class TestWriteBatchReport:
         path = _write_batch_report([r])
         assert path == out_dir / "batch_report.md"
         assert path.exists()
+
+    def test_report_written_under_output_dir_when_given(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """When a run's output_dir is supplied, the report must be written
+        there rather than the install's outputs/consensus/ — otherwise a run
+        started with ``-o /data/case-123`` writes its report to the wrong
+        place, and two concurrent batches with different --output-dir (the
+        lock is per output_dir, so this is a supported case) overwrite each
+        other's report."""
+        default_dir = tmp_path / "default_consensus"
+        default_dir.mkdir(parents=True)
+        monkeypatch.setattr("config.CONSENSUS_DIR", default_dir)
+        monkeypatch.setattr("batch_processor.batch_runner.CONSENSUS_DIR", default_dir)
+
+        case_dir = tmp_path / "case-123"
+
+        r = BatchResult(Path("a.wav"))
+        r.success = True
+        r.elapsed_seconds = 1.5
+
+        path = _write_batch_report([r], output_dir=case_dir)
+        assert path == case_dir / "batch_report.md"
+        assert path.exists()
+        assert not (default_dir / "batch_report.md").exists()
 
     def test_report_counts_successes_and_failures(
         self, tmp_path: Path, monkeypatch
@@ -637,9 +720,46 @@ class TestBuildParser:
         assert settings["noise floor"] == ("fixed", "CLI (--noise-floor-mode)")
         assert settings["keep variant WAVs"] == (
             False,
-            "CLI (--keep-variant-wavs)",
+            "CLI (--no-keep-variant-wavs)",
         )
         assert settings["Ollama timeout"] == (7.5, "CLI (--ollama-timeout)")
+
+
+class TestBooleanFlagProvenance:
+    """The settings table's source column must name the flag actually
+    passed. Both --word-timestamps/--no-word-timestamps and
+    --keep-variant-wavs/--no-keep-variant-wavs resolve to a dest name that
+    only spells the positive flag, so a naive ``--{dest}`` label always read
+    'CLI (--word-timestamps)' or 'CLI (--keep-variant-wavs)' even when the
+    negative flag was the one supplied. The stored value was always
+    correct; only the label was wrong."""
+
+    def test_word_timestamps_positive_flag_labelled_correctly(self) -> None:
+        parser = _build_parser()
+        args = parser.parse_args(["a.mp3", "--word-timestamps"])
+        settings = _resolve_cli_settings(args)
+        assert settings["word timestamps"] == (True, "CLI (--word-timestamps)")
+
+    def test_word_timestamps_negative_flag_labelled_correctly(self) -> None:
+        parser = _build_parser()
+        args = parser.parse_args(["a.mp3", "--no-word-timestamps"])
+        settings = _resolve_cli_settings(args)
+        assert settings["word timestamps"] == (False, "CLI (--no-word-timestamps)")
+
+    def test_keep_variant_wavs_positive_flag_labelled_correctly(self) -> None:
+        parser = _build_parser()
+        args = parser.parse_args(["a.mp3", "--keep-variant-wavs"])
+        settings = _resolve_cli_settings(args)
+        assert settings["keep variant WAVs"] == (True, "CLI (--keep-variant-wavs)")
+
+    def test_keep_variant_wavs_negative_flag_labelled_correctly(self) -> None:
+        parser = _build_parser()
+        args = parser.parse_args(["a.mp3", "--no-keep-variant-wavs"])
+        settings = _resolve_cli_settings(args)
+        assert settings["keep variant WAVs"] == (
+            False,
+            "CLI (--no-keep-variant-wavs)",
+        )
 
     def test_language_auto_clears_configured_hint(self) -> None:
         parser = _build_parser()
@@ -888,6 +1008,23 @@ class TestBatchLock:
         ):
             main([str(audio), "--output-dir", str(out_dir)])
         assert not lock_path.exists()
+
+    def test_main_prints_the_actual_report_path_under_output_dir(
+        self, tmp_path: Path, capsys
+    ) -> None:
+        """The final CLI summary's 'Report:' line must name the report's
+        real location under --output-dir, not the install's default
+        outputs/consensus/ (which is what _write_batch_report actually
+        writes to when output_dir is threaded through correctly)."""
+        audio = tmp_path / "a.wav"
+        audio.write_bytes(b"fake")
+        out_dir = tmp_path / "out"
+        out_dir.mkdir()
+        with patch("batch_processor.batch_runner.run_batch", return_value=[]):
+            main([str(audio), "--output-dir", str(out_dir)])
+        out = capsys.readouterr().out
+        assert str(out_dir / "batch_report.md") in out
+        assert str(config.CONSENSUS_DIR / "batch_report.md") not in out
 
 
 class TestBatchLockIsAtomic:

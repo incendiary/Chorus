@@ -536,11 +536,25 @@ def main(argv: list[str] | None = None) -> None:
         metavar="N",
         help="Limit to the first N selected utterances, for a smoke run.",
     )
+    parser.add_argument(
+        "--update-tracked-results",
+        action="store_true",
+        help=(
+            "Write to the committed benchmarks/RESULTS.md. By default results go "
+            "to the gitignored benchmarks/results/RESULTS.md, so a run does not "
+            "leave uncommitted changes."
+        ),
+    )
     args = parser.parse_args(argv)
 
     n_files = args.limit if args.limit is not None else DEFAULT_N_FILES
     results = run_benchmark(n_files=n_files)
-    output_path = write_results_md(results)
+    if args.update_tracked_results:
+        output_path = BENCHMARKS_DIR / "RESULTS.md"
+    else:
+        output_path = BENCHMARKS_DIR / "results" / "RESULTS.md"
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path = write_results_md(results, output_path)
     logger.info("Results written to %s", output_path)
 
 
