@@ -61,6 +61,26 @@ which need a regression test proving behaviour is unchanged.
   in the same change, or Streamlit falls back to a polling watcher that costs more CPU.
   Files: `requirements.txt`, `pyproject.toml`, `.streamlit/config.toml`. (haiku, XS)
 
+From a `/ponytail-review` of #288 (per-job output folders), about 35 more lines:
+
+- [ ] **Delete `ensure_output_dirs()`** — since #288 every write goes to a job folder or a
+  report directory that is already created, so its two calls only make three empty
+  legacy `outputs/{variants,transcripts,consensus}` directories on every run. Files:
+  `config.py`, `pipeline_runner.py`, `batch_processor/batch_runner.py`. (haiku, XS)
+- [ ] **Simplify Past Jobs' helpers** — group runs on `date` objects instead of a string
+  that `_format_date_heading` parses back (delete it); `@dataclass(slots=True)` for
+  `_Run`; a one-line `next(...)` MIME lookup; `rsplit("-", 1)[0]` in
+  `_run_source_name`. File: `ui/pages/3_Past_Jobs.py`. (haiku, S)
+- [ ] **Use `hashlib.file_digest` in `_sha256_8`** instead of the hand-rolled chunk loop.
+  File: `utils.py`. (haiku, XS)
+- [ ] **Resolve the batch output root once** — `output_dir if output_dir is not None else
+  config.JOBS_DIR` is repeated four times. File: `batch_processor/batch_runner.py`.
+  (haiku, XS)
+- [ ] **Bugs found alongside the review** — `job_output_dir`'s docstring claims a renamed
+  recording maps to the same project folder, but the folder name includes the stem;
+  Past Jobs' *Delete* removes a run's files but leaves its folder (`variants/`,
+  `transcripts/`) on disk. (sonnet, S)
+
 Checked and deliberately kept: the hand-written Levenshtein (`difflib` computes a
 different metric and would move the 0.8 fuzzy threshold), the `chorus` public-API
 facade, `ui/build_info.py`, and the long straight-line functions (a maintainability
