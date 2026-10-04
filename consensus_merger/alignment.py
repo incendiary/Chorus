@@ -108,23 +108,6 @@ def _normalised_similarity(a: str, b: str) -> float:
     return 1.0 - dist / max_len
 
 
-def _best_fuzzy_match(
-    word: str,
-    candidates: Sequence[str],
-) -> tuple[str, float]:
-    """
-    Return the best fuzzy match for *word* from *candidates* and its score.
-    """
-    best_word = word
-    best_score = 0.0
-    for candidate in candidates:
-        score = _normalised_similarity(word, candidate)
-        if score > best_score:
-            best_score = score
-            best_word = candidate
-    return best_word, best_score
-
-
 def _group_fuzzy_tokens(
     tokens: Sequence[str], similarity_threshold: float
 ) -> list[tuple[str, list[str]]]:
