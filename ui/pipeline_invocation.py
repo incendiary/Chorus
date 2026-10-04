@@ -203,12 +203,13 @@ def _render_idle_state(
             continue
 
         original_name = str(uf.name)
-        occurrence = seen_names.get(original_name, 0) + 1
-        seen_names[original_name] = occurrence
-
         spool_path, stem = spool_upload(uf, run_dir)
+        # Key on the sanitised stem, not the name: "a b.wav" and "a_b.wav"
+        # differ as names but share the stem "a_b", which the widget keys use.
+        occurrence = seen_names.get(stem, 0) + 1
+        seen_names[stem] = occurrence
         if occurrence > 1:
-            # Duplicate upload filename in this batch: disambiguate the
+            # Duplicate upload stem in this batch: disambiguate the
             # display name and stem so results, output files, and widget
             # keys derived from them stay distinct (otherwise the second
             # upload silently overwrites the first's results and Streamlit
