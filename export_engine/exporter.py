@@ -687,34 +687,21 @@ def export_zip(
         if consensus_md_path.exists():
             zf.write(consensus_md_path, consensus_md_path.name)
 
-        # Speaker names sidecar — included if it exists
-        # (per-job runs keep it at <project>/<stem>_speakers.json, two levels
-        # above the consensus folder)
+        # Sidecars — each included if it exists. Per-job runs keep the speaker
+        # names at <project>/<stem>_speakers.json, two levels above the
+        # consensus folder, so fall back to that.
         speaker_names_path = target_dir / f"{stem}_speakers.json"
         if not speaker_names_path.exists():
             speaker_names_path = target_dir.parent.parent / f"{stem}_speakers.json"
-        if speaker_names_path.exists():
-            zf.write(speaker_names_path, speaker_names_path.name)
-
-        # AI context pack — included if it exists
-        ai_context_path = target_dir / f"{stem}_ai_context.md"
-        if ai_context_path.exists():
-            zf.write(ai_context_path, ai_context_path.name)
-
-        # Machine-readable transcript bundle — included if it exists
-        bundle_path = target_dir / f"{stem}_bundle.json"
-        if bundle_path.exists():
-            zf.write(bundle_path, bundle_path.name)
-
-        # AI-facing file and formatting guide — included if it exists
-        parsing_guide_path = target_dir / "HOW_TO_PARSE_CHORUS_OUTPUT.md"
-        if parsing_guide_path.exists():
-            zf.write(parsing_guide_path, parsing_guide_path.name)
-
-        # Diarised transcript — included if it exists
-        diarised_path = target_dir / f"{stem}_diarised.md"
-        if diarised_path.exists():
-            zf.write(diarised_path, diarised_path.name)
+        for path in (
+            speaker_names_path,
+            target_dir / f"{stem}_ai_context.md",
+            target_dir / f"{stem}_bundle.json",
+            target_dir / "HOW_TO_PARSE_CHORUS_OUTPUT.md",
+            target_dir / f"{stem}_diarised.md",
+        ):
+            if path.exists():
+                zf.write(path, path.name)
 
         # Additional format exports
         if include_formats:
