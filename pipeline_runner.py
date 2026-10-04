@@ -425,7 +425,7 @@ def run_pipeline(
     from export_engine.ai_context import generate_ai_context_pack
     from export_engine.exporter import (
         BUNDLE_SCHEMA_VERSION,
-        export_best_guess,
+        export_plain_text,
         export_transcript_bundle,
     )
 
@@ -450,10 +450,11 @@ def run_pipeline(
         output_dir=consensus_dir,
     )
 
-    best_guess_path = export_best_guess(
+    best_guess_path = export_plain_text(
         consensus_path,
         stem,
         output_dir=consensus_dir,
+        low="keep",
     )
 
     # ── Copy parsing guide to output directory ───────────────────────────────
