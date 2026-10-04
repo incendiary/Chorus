@@ -94,10 +94,15 @@ def _delete_run(run_files: dict[str, Path], run_dir: Path | None = None) -> None
         for path in run_files.values():
             path.unlink(missing_ok=True)
         return
-    shutil.rmtree(run_dir, ignore_errors=True)
+    # Recursive delete on casework data: refuse anything that is not exactly
+    # JOBS_DIR/<project>/<run>, and let a failure surface rather than leave a
+    # silently half-deleted run.
+    if run_dir.resolve().parent.parent != JOBS_DIR.resolve():
+        raise ValueError(f"Refusing to delete {run_dir}: not a run folder.")
+    shutil.rmtree(run_dir)
     project_dir = run_dir.parent
     if not any(p.is_dir() for p in project_dir.iterdir()):
-        shutil.rmtree(project_dir, ignore_errors=True)
+        shutil.rmtree(project_dir)
 
 
 def _render_run_expander(
