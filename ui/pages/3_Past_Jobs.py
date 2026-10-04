@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import io
+import shutil
 import sys
 import zipfile
 from collections import defaultdict
-from datetime import datetime
+from dataclasses import dataclass, field
+from datetime import date, datetime
 from pathlib import Path
 
 import streamlit as st
@@ -80,19 +82,22 @@ def _format_mtime(p: Path) -> str:
     return dt.strftime("%-d %B %Y at %H:%M")
 
 
-def _delete_run(run_files: dict[str, Path]) -> None:
-    """Delete all files associated with a run."""
-    for path in run_files.values():
-        path.unlink(missing_ok=True)
+def _delete_run(run_files: dict[str, Path], run_dir: Path | None = None) -> None:
+    """Delete a run.
 
-
-def _format_date_heading(date_str: str) -> str:
-    """Convert YYYY-MM-DD to a human-readable heading."""
-    try:
-        dt = datetime.strptime(date_str, "%Y-%m-%d")
-        return dt.strftime("%-d %B %Y")
-    except ValueError:
-        return date_str
+    A current-layout run (*run_dir* given) loses its whole directory, including
+    variants/ and transcripts/; its project directory goes too once no other
+    run remains, taking the project-level speaker names sidecar with it. A
+    legacy flat-layout run (no *run_dir*) loses only its own files.
+    """
+    if run_dir is None:
+        for path in run_files.values():
+            path.unlink(missing_ok=True)
+        return
+    shutil.rmtree(run_dir, ignore_errors=True)
+    project_dir = run_dir.parent
+    if not any(p.is_dir() for p in project_dir.iterdir()):
+        shutil.rmtree(project_dir, ignore_errors=True)
 
 
 def _render_run_expander(
@@ -103,6 +108,7 @@ def _render_run_expander(
     run_files: dict[str, Path],
     zip_filename: str,
     dedupe_key: str,
+    run_dir: Path | None = None,
 ) -> None:
     """Render one run's expander: metadata, delete, and download controls.
 
@@ -136,7 +142,7 @@ def _render_run_expander(
                     type="primary",
                     use_container_width=True,
                 ):
-                    _delete_run(run_files)
+                    _delete_run(run_files, run_dir)
                     st.session_state.pop(confirm_key, None)
                     st.rerun()
             with col_no:
@@ -168,11 +174,10 @@ def _render_run_expander(
             for col_idx, (file_label, file_path) in enumerate(
                 items[row_start : row_start + 3]
             ):
-                mime = "application/octet-stream"
-                for suffix, m in _SUFFIX_MIME.items():
-                    if file_path.name.endswith(suffix):
-                        mime = m
-                        break
+                mime = next(
+                    (m for s, m in _SUFFIX_MIME.items() if file_path.name.endswith(s)),
+                    "application/octet-stream",
+                )
                 with cols[col_idx]:
                     st.download_button(
                         f"⬇ {file_label}",
@@ -189,15 +194,16 @@ def _render_run_expander(
 # shared stem, so there is no base-stem guessing to do: just glob it.
 
 
+@dataclass(slots=True)
 class _Run:
-    __slots__ = ("project_name", "run_stamp", "anchor", "files", "mtime")
+    project_name: str
+    run_stamp: str
+    anchor: Path
+    files: dict[str, Path] = field(default_factory=dict)
+    mtime: float = field(init=False)
 
-    def __init__(self, project_name: str, run_stamp: str, anchor: Path):
-        self.project_name = project_name
-        self.run_stamp = run_stamp
-        self.anchor = anchor
-        self.files: dict[str, Path] = {}
-        self.mtime = anchor.stat().st_mtime
+    def __post_init__(self) -> None:
+        self.mtime = self.anchor.stat().st_mtime
 
 
 def _collect_current_layout_runs() -> list[_Run]:
@@ -234,10 +240,7 @@ def _collect_current_layout_runs() -> list[_Run]:
 def _run_source_name(run: _Run) -> str:
     """Derive a human-readable source name from the project directory name
     (``<stem>-<sha8>``), stripping the trailing ``-<sha8>`` suffix."""
-    name = run.project_name
-    if "-" in name and len(name.rsplit("-", 1)[1]) == 8:
-        name = name.rsplit("-", 1)[0]
-    return name.replace("_", " ")
+    return run.project_name.rsplit("-", 1)[0].replace("_", " ")
 
 
 current_runs = _collect_current_layout_runs()
@@ -328,13 +331,12 @@ if _state and _state.get("status") == "running":
     st.info("🔄 1 run in progress — updates appear below as it completes.", icon="🔄")
 
 # ── Group current-layout runs by date ───────────────────────────────────────
-by_date: dict[str, list[_Run]] = defaultdict(list)
+by_date: dict[date, list[_Run]] = defaultdict(list)
 for run in current_runs:
-    date_str = datetime.fromtimestamp(run.mtime).strftime("%Y-%m-%d")
-    by_date[date_str].append(run)
+    by_date[datetime.fromtimestamp(run.mtime).date()].append(run)
 
-for date_key in sorted(by_date.keys(), reverse=True):
-    st.subheader(_format_date_heading(date_key))
+for date_key in sorted(by_date, reverse=True):
+    st.subheader(date_key.strftime("%-d %B %Y"))
 
     for run in by_date[date_key]:
         source_name = _run_source_name(run)
@@ -349,6 +351,7 @@ for date_key in sorted(by_date.keys(), reverse=True):
             run_files=run.files,
             zip_filename=f"{run.project_name}_{run.run_stamp}.zip",
             dedupe_key=dedupe_key,
+            run_dir=run.anchor.parent.parent,
         )
 
     st.divider()
