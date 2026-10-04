@@ -42,7 +42,7 @@ environment yourself.
 2. **Clone the repository at the current release:**
 
    ```bash
-   git clone -b v5.0.0 https://github.com/incendiary/Chorus.git
+   git clone -b v6.0.0 https://github.com/incendiary/Chorus.git
    cd Chorus
    ```
 
@@ -321,7 +321,7 @@ Prefer an isolated environment over managing a Python venv? See
 (Linux and Windows/WSL2), and GHCR pre-built image instructions.
 
 ```bash
-git clone -b v5.0.0 https://github.com/incendiary/Chorus.git
+git clone -b v6.0.0 https://github.com/incendiary/Chorus.git
 cd Chorus
 docker-compose up --build
 ```
