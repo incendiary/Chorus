@@ -42,6 +42,7 @@ from config import (
     VARIANT_LABELS,
     WHISPER_MODEL,
 )
+from consensus_merger.renderer import _format_pct
 
 logger = logging.getLogger(__name__)
 
@@ -58,11 +59,6 @@ def _read_version() -> str:
 # ─────────────────────────────────────────────────────────────────────────────
 # Helpers
 # ─────────────────────────────────────────────────────────────────────────────
-
-
-def _format_pct(threshold: float) -> str:
-    """Format a fractional threshold as a percentage string without trailing zeros."""
-    return f"{threshold * 100:g}"
 
 
 def _methodology_section(consensus_threshold: float) -> str:
