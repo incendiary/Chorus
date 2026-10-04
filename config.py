@@ -66,12 +66,6 @@ CONSENSUS_DIR = OUTPUTS_DIR / "consensus"
 JOBS_DIR = OUTPUTS_DIR / "jobs"
 
 
-def ensure_output_dirs() -> None:
-    """Create output directories if they do not already exist."""
-    for out_dir in (VARIANTS_DIR, TRANSCRIPTS_DIR, CONSENSUS_DIR):
-        out_dir.mkdir(parents=True, exist_ok=True)
-
-
 # ─────────────────────────────────────────────
 # Whisper Model Configuration
 # ─────────────────────────────────────────────

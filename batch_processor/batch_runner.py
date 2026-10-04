@@ -43,7 +43,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import config
-from config import SUPPORTED_AUDIO_EXTENSIONS, ensure_output_dirs
+from config import SUPPORTED_AUDIO_EXTENSIONS
 from utils import job_output_dir
 
 logger = logging.getLogger(__name__)
@@ -755,8 +755,6 @@ def _write_batch_report(
     output-dir-or-JOBS_DIR fallback, so the report lands next to the
     rest of a run's outputs instead of always landing in the install's
     outputs/consensus/."""
-    ensure_output_dirs()
-
     now = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
     total = len(results)
     success = sum(1 for r in results if r.success)
