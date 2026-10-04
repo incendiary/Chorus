@@ -58,6 +58,9 @@ def _read_version() -> str:
 
 def _seconds_to_srt_ts(seconds: float) -> str:
     """Format seconds as SRT timestamp: HH:MM:SS,mmm"""
+    # Round to the microsecond first, as timedelta did, so float noise such
+    # as 12684.0999997 still renders as ,100 rather than ,099.
+    seconds = round(seconds, 6)
     total_s = int(seconds)
     ms = int((seconds - total_s) * 1000)
     h, rem = divmod(total_s, 3600)
