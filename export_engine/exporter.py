@@ -29,7 +29,6 @@ import io
 import logging
 import re
 import zipfile
-from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
@@ -59,9 +58,8 @@ def _read_version() -> str:
 
 def _seconds_to_srt_ts(seconds: float) -> str:
     """Format seconds as SRT timestamp: HH:MM:SS,mmm"""
-    td = timedelta(seconds=seconds)
-    total_s = int(td.total_seconds())
-    ms = int((td.total_seconds() - total_s) * 1000)
+    total_s = int(seconds)
+    ms = int((seconds - total_s) * 1000)
     h, rem = divmod(total_s, 3600)
     m, s = divmod(rem, 60)
     return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
