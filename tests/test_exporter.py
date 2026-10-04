@@ -400,12 +400,14 @@ class TestExportBestGuess:
     def test_best_guess_contains_high_agreement_word_no_markup(self, tmp_path):
         """Best-guess file must contain the winning word at every tier, with
         no brackets, confidence annotations, or statistics lines."""
-        from export_engine.exporter import export_best_guess
+        from export_engine.exporter import export_plain_text
 
         votes = self._make_mixed_tier_votes()
         consensus_path = self._render(votes, tmp_path)
 
-        out_path = export_best_guess(consensus_path, "test", output_dir=tmp_path)
+        out_path = export_plain_text(
+            consensus_path, "test", output_dir=tmp_path, low="keep"
+        )
         content = out_path.read_text(encoding="utf-8")
 
         assert out_path.name == "test_best_guess.txt"
@@ -425,24 +427,28 @@ class TestExportBestGuess:
 
     def test_best_guess_empty_transcript_produces_empty_file(self, tmp_path):
         """Silence (no votes) must produce an empty file, not raise."""
-        from export_engine.exporter import export_best_guess
+        from export_engine.exporter import export_plain_text
 
         consensus_path = self._render([], tmp_path)
-        out_path = export_best_guess(consensus_path, "silent", output_dir=tmp_path)
+        out_path = export_plain_text(
+            consensus_path, "silent", output_dir=tmp_path, low="keep"
+        )
 
         assert out_path.exists()
         assert out_path.read_text(encoding="utf-8") == ""
 
     def test_best_guess_honours_output_dir(self, tmp_path):
         """File must land under the supplied output_dir, not the global dir."""
-        from export_engine.exporter import export_best_guess
+        from export_engine.exporter import export_plain_text
 
         votes = self._make_mixed_tier_votes()
         isolated_dir = tmp_path / "isolated"
         isolated_dir.mkdir()
         consensus_path = self._render(votes, isolated_dir)
 
-        out_path = export_best_guess(consensus_path, "test", output_dir=isolated_dir)
+        out_path = export_plain_text(
+            consensus_path, "test", output_dir=isolated_dir, low="keep"
+        )
 
         assert out_path.parent == isolated_dir
 

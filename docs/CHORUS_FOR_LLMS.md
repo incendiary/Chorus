@@ -44,9 +44,9 @@ source recording. A typical run produces:
 | `{stem}_consensus.md` | `consensus_merger/renderer.py` | The primary, annotated transcript. Confidence tiers are shown inline via Markdown decorators (see §3). |
 | `{stem}_bundle.json` | `export_engine/exporter.py::export_transcript_bundle` | Structured, machine-readable version of the same data: every variant's raw text, the full word-vote sequence, and aggregate statistics. **Prefer this file for programmatic extraction.** |
 | `{stem}_ai_context.md` | `export_engine/ai_context.py::generate_ai_context_pack` | A document written specifically to accompany an LLM prompt: methodology, processing configuration, confidence statistics, the clean transcript, an uncertainty table, and usage guidance. Always generated. |
-| `{stem}_best_guess.txt` | `export_engine/exporter.py::export_best_guess` | The cleanest possible plain-text transcript: every position resolved to its single highest-agreement word, with **no** brackets, confidence markers, or statistics. Always generated. |
-| `{stem}_most_likely.txt` | `export_engine/exporter.py::export_plain_text` (`include_low=True`) | Plain transcript with LOW-confidence words shown as `[word?]`. |
-| `{stem}_most_likely_clean.txt` | `export_engine/exporter.py::export_plain_text` (`include_low=False`) | Plain transcript with LOW-confidence words omitted entirely. |
+| `{stem}_best_guess.txt` | `export_engine/exporter.py::export_plain_text` (`low="keep"`) | The cleanest possible plain-text transcript: every position resolved to its single highest-agreement word, with **no** brackets, confidence markers, or statistics. Always generated. |
+| `{stem}_most_likely.txt` | `export_engine/exporter.py::export_plain_text` (`low="bracket"`) | Plain transcript with LOW-confidence words shown as `[word?]`. |
+| `{stem}_most_likely_clean.txt` | `export_engine/exporter.py::export_plain_text` (`low="omit"`) | Plain transcript with LOW-confidence words omitted entirely. |
 | `{stem}_diarised.md` | `diarisation/diariser.py::render_diarised_md` | Speaker-labelled transcript (only produced when diarisation is enabled). |
 | `{stem}_speakers.json` | `diarisation/diariser.py` | Sidecar mapping speaker labels (e.g. `SPEAKER_00`) to human-assigned names, if any were set in the UI. |
 | `{stem}_consensus.pdf` / `.docx` | `export_engine/exporter.py` | Formatted renderings of the consensus document with confidence highlighting preserved. |

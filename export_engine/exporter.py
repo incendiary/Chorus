@@ -500,7 +500,7 @@ def export_all(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Plain-text "most likely" transcript
+# Plain-text transcripts (most likely, clean, best guess)
 # ─────────────────────────────────────────────────────────────────────────────
 
 
@@ -508,7 +508,7 @@ def export_plain_text(
     consensus_md_path: Path,
     stem: str,
     output_dir: Path | None = None,
-    include_low: bool = True,
+    low: str = "bracket",
 ) -> Path:
     """
     Strip Chorus confidence markup from the consensus document and write a
@@ -518,8 +518,7 @@ def export_plain_text(
     is extracted, then confidence decorators are removed:
 
     - MEDIUM (``==word==``) → ``word``
-    - LOW (``**~~word~~**[^…]``) → ``[word?]`` when *include_low* is True,
-      or omitted entirely when False
+    - LOW (``**~~word~~**[^…]``) → depends on *low* (see below)
     - HIGH words are already plain text — no change needed
 
     Parameters
@@ -528,15 +527,27 @@ def export_plain_text(
         Path to the consensus ``.md`` file.
     stem : str
         Base filename stem.
-    include_low : bool
-        When True, LOW-confidence words appear as ``[word?]``.
-        When False, they are omitted entirely.
+    low : {"bracket", "omit", "keep"}
+        How LOW-confidence words render:
+
+        - ``"bracket"``: ``[word?]``, written to ``{stem}_most_likely.txt``.
+        - ``"omit"``: dropped entirely, written to
+          ``{stem}_most_likely_clean.txt``.
+        - ``"keep"``: the best guess, the word that already won the consensus
+          vote at that position, with no brackets or annotation, written to
+          ``{stem}_best_guess.txt``. No alignment is recomputed here; the
+          winning word is read back out of the rendered document.
 
     Returns
     -------
     Path
         Path to the written ``.txt`` file.
     """
+    filenames = {
+        "bracket": f"{stem}_most_likely.txt",
+        "omit": f"{stem}_most_likely_clean.txt",
+        "keep": f"{stem}_best_guess.txt",
+    }
     text = consensus_md_path.read_text(encoding="utf-8")
 
     # Extract the transcript body between the heading and the next divider
@@ -550,87 +561,18 @@ def export_plain_text(
     # MEDIUM: ==word== → word
     body = re.sub(r"==([^=]+)==", r"\1", body)
 
-    # LOW: **~~word~~**[^…] → [word?] or omit
-    if include_low:
-        body = re.sub(r"\*\*~~([^~]+)~~\*\*\[.*?\]", r"[\1?]", body)
-    else:
-        body = re.sub(r"\*\*~~[^~]+~~\*\*\[.*?\]", "", body)
+    # LOW: **~~word~~**[^…] → [word?], omitted, or the bare word
+    replacement = {"bracket": r"[\1?]", "omit": "", "keep": r"\1"}[low]
+    body = re.sub(r"\*\*~~([^~]+)~~\*\*\[.*?\]", replacement, body)
 
-    # Collapse multiple spaces left by omissions
+    # Collapse multiple spaces left by omissions or decorator removal
     body = re.sub(r" {2,}", " ", body).strip()
 
-    filename = (
-        f"{stem}_most_likely.txt" if include_low else f"{stem}_most_likely_clean.txt"
-    )
     target_dir = output_dir or CONSENSUS_DIR
     target_dir.mkdir(parents=True, exist_ok=True)
-    out_path = target_dir / filename
+    out_path = target_dir / filenames[low]
     out_path.write_text(body, encoding="utf-8")
     logger.info("Plain-text export written → %s", out_path)
-    return out_path
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Best-guess plain-text transcript
-# ─────────────────────────────────────────────────────────────────────────────
-
-
-def export_best_guess(
-    consensus_md_path: Path,
-    stem: str,
-    *,
-    output_dir: Path | None = None,
-) -> Path:
-    """
-    Write a clean, fully human-readable "best guess" transcript.
-
-    Unlike :func:`export_plain_text`, this export carries no brackets,
-    confidence annotations, or statistics at all. HIGH-confidence words are
-    included verbatim; MEDIUM- and LOW-confidence positions are resolved to
-    their single best-guess word — the candidate that already won the
-    consensus vote at that position (the word rendered into the Markdown
-    body, which the alignment stage selected for its highest agreement
-    across variants). No alignment is recomputed here; the winning word is
-    simply read back out of the rendered document.
-
-    Parameters
-    ----------
-    consensus_md_path : Path
-        Path to the consensus ``.md`` file.
-    stem : str
-        Base filename stem.
-    output_dir : Path, optional
-        Directory to write the output. Defaults to ``CONSENSUS_DIR``.
-
-    Returns
-    -------
-    Path
-        Path to the written ``{stem}_best_guess.txt`` file.
-    """
-    text = consensus_md_path.read_text(encoding="utf-8")
-
-    # Extract the transcript body between the heading and the next divider
-    match = re.search(
-        r"## Consensus Transcript\s*\n\n(.*?)(?=^---)",
-        text,
-        re.DOTALL | re.MULTILINE,
-    )
-    body = match.group(1).strip() if match else text
-
-    # MEDIUM: ==word== → word
-    body = re.sub(r"==([^=]+)==", r"\1", body)
-
-    # LOW: **~~word~~**[^…] → word (no brackets, no annotation)
-    body = re.sub(r"\*\*~~([^~]+)~~\*\*\[.*?\]", r"\1", body)
-
-    # Collapse incidental multiple spaces left by decorator removal
-    body = re.sub(r" {2,}", " ", body).strip()
-
-    target_dir = output_dir or CONSENSUS_DIR
-    target_dir.mkdir(parents=True, exist_ok=True)
-    out_path = target_dir / f"{stem}_best_guess.txt"
-    out_path.write_text(body, encoding="utf-8")
-    logger.info("Best-guess export written → %s", out_path)
     return out_path
 
 
@@ -715,18 +657,13 @@ def export_zip(
                 if path and path.exists():
                     zf.write(path, path.name)
 
-        # Both plain-text variants — always included
-        for include_low in (True, False):
+        # Plain-text variants (bracketed, omitted, best guess) — always included
+        for low in ("bracket", "omit", "keep"):
             plain = export_plain_text(
-                consensus_md_path, stem, include_low=include_low, output_dir=output_dir
+                consensus_md_path, stem, low=low, output_dir=output_dir
             )
             if plain.exists():
                 zf.write(plain, plain.name)
-
-        # Best-guess transcript — always included
-        best_guess = export_best_guess(consensus_md_path, stem, output_dir=output_dir)
-        if best_guess.exists():
-            zf.write(best_guess, best_guess.name)
 
     buf.seek(0)
     return buf.read()
