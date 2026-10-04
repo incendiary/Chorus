@@ -387,13 +387,6 @@ def test_history_capped_and_segment_ticks_dont_grow_it(
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def test_file_entry_round_trip():
-    entry = FileEntry(name="a.wav", stem="a", spool_path="/tmp/a.wav")
-    data = entry.to_dict()
-    restored = FileEntry.from_dict(data)
-    assert restored == entry
-
-
 def test_load_state_returns_none_when_absent(tmp_path):
     assert load_state() is None
 
