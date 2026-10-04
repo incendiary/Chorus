@@ -379,6 +379,23 @@ class TestRenderRunSection:
 
 
 class TestDuplicateUploadNames:
+    def test_different_names_with_the_same_sanitised_stem_render(
+        self, tmp_path, monkeypatch, canned_results, _deterministic_hw
+    ):
+        """ "a b.wav" and "a_b.wav" are different names but share the stem
+        "a_b", which the results widget keys are built from."""
+        mock_pipeline = MagicMock(return_value=canned_results)
+        with patch("ui.pipeline_invocation.run_pipeline", mock_pipeline):
+            at = _upload_and_run(
+                [
+                    ("a b.wav", b"a" * 16, "audio/wav"),
+                    ("a_b.wav", b"b" * 16, "audio/wav"),
+                ]
+            )
+
+        assert not at.exception
+        assert mock_pipeline.call_count == 2
+
     def test_two_uploads_with_same_name_produce_distinct_results_and_render(
         self, tmp_path, monkeypatch, _deterministic_hw
     ):
