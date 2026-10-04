@@ -9,12 +9,7 @@ from pathlib import Path
 import streamlit as st
 
 from config import VARIANT_LABELS
-from export_engine.exporter import (
-    export_all,
-    export_best_guess,
-    export_plain_text,
-    export_zip,
-)
+from export_engine.exporter import export_all, export_plain_text, export_zip
 from utils import sanitise_stem
 
 SUMMARY_SUCCESS_MSG = (
@@ -396,7 +391,7 @@ def render_file_results(
     plain_path = export_plain_text(
         consensus_path,
         original_stem,
-        include_low=show_low,
+        low="bracket" if show_low else "omit",
         output_dir=consensus_path.parent,
     )
     st.download_button(
@@ -408,8 +403,8 @@ def render_file_results(
         use_container_width=True,
     )
 
-    best_guess_path = export_best_guess(
-        consensus_path, original_stem, output_dir=consensus_path.parent
+    best_guess_path = export_plain_text(
+        consensus_path, original_stem, output_dir=consensus_path.parent, low="keep"
     )
     st.download_button(
         label="⬇️ Download Best-Guess Transcript (.txt)",
