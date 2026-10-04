@@ -688,7 +688,11 @@ def export_zip(
             zf.write(consensus_md_path, consensus_md_path.name)
 
         # Speaker names sidecar — included if it exists
+        # (per-job runs keep it at <project>/<stem>_speakers.json, two levels
+        # above the consensus folder)
         speaker_names_path = target_dir / f"{stem}_speakers.json"
+        if not speaker_names_path.exists():
+            speaker_names_path = target_dir.parent.parent / f"{stem}_speakers.json"
         if speaker_names_path.exists():
             zf.write(speaker_names_path, speaker_names_path.name)
 

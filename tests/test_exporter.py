@@ -755,6 +755,25 @@ class TestZipExportOutputDirIsolation:
             "language": "en",
         }
 
+    def test_zip_includes_project_level_speakers_file(self, tmp_path):
+        """Per-job layout: speakers live at <project>/<stem>_speakers.json."""
+        consensus_dir = tmp_path / "project" / "20260101-000000" / "consensus"
+        consensus_dir.mkdir(parents=True)
+        consensus_path = consensus_dir / "test_consensus.md"
+        consensus_path.write_text("# Test Consensus\n\nHello world.\n")
+        speakers = tmp_path / "project" / "test_speakers.json"
+        speakers.write_text('{"SPEAKER_00": "Alice"}')
+
+        zip_bytes = export_zip(
+            consensus_md_path=consensus_path,
+            whisper_result=self._make_mock_whisper_result(),
+            stem="test",
+            output_dir=consensus_dir,
+        )
+
+        zf = zipfile.ZipFile(io.BytesIO(zip_bytes))
+        assert zf.read("test_speakers.json") == speakers.read_bytes()
+
     def test_zip_reads_sidecars_from_output_dir(self, tmp_path):
         """ZIP should include sidecars written to the specified output_dir."""
         # Create a consensus markdown in output_dir
