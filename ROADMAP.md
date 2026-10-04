@@ -2,89 +2,13 @@
 
 Tracked improvements identified during the June 2026 repository assessment.
 
-> **v5.0.0 is the final release.** There is no release after it. Every item below is
+> **v6.0.0 is the final release.** There is no release after it. (v5.0.0 was first
+> planned as final; a Ponytail over-engineering audit followed, and its fixes shipped
+> as v6.0.0.) Every item below is
 > either shipped (ticked, with its version and pull request) or recorded as an
 > **accepted limitation** with the reason it was not fixed. Sections titled *Closed at
 > v5.0.0* were planning sections before the final-release decision. Rationale for every
 > decision: [FINAL_RELEASE_TRIAGE.md](docs/FINAL_RELEASE_TRIAGE.md).
-
----
-
-## Planned — v5.0.1 (Ponytail over-engineering audit, 4 October 2026)
-
-Found by a whole-repository `/ponytail-audit` of the v5.0.0 tag, then checked by hand
-against every reference in the tree, tests and docs included. Net: about 200 lines and one
-dependency removable. Model guidance: **haiku** for the `delete` items (each is a pure
-deletion, and the full suite is the gate); **sonnet** for the `shrink`/`reuse` items,
-which need a regression test proving behaviour is unchanged.
-
-- [ ] **Speaker names are missing from the download zip** (bug, not over-engineering) —
-  since the per-job output folders (#288), speaker names are saved at the project level
-  (`<project>/<stem>_speakers.json`), but `export_zip` still looks in the run's
-  `consensus/` folder, so the zip never includes them. Look one level up, and add a test
-  that fails today. Files: `export_engine/exporter.py`, `ui/results.py`. (sonnet, S)
-- [ ] **Merge `export_best_guess` into `export_plain_text`** — same extraction, same
-  regexes; the only difference is how LOW words render. One function with
-  `low="bracket"|"omit"|"keep"`, keeping the existing output filenames. Files:
-  `export_engine/exporter.py` and its callers. (sonnet, S)
-- [ ] **Delete `check_batch_lock()`** — no production caller since the atomic lock
-  (#266) replaced check-then-acquire; only three tests call it. Files:
-  `batch_processor/batch_runner.py`, `tests/test_batch_runner.py`. (haiku, XS)
-- [ ] **Keep the `reconstruct(strategy=...)` dispatcher** — **Accepted limitation:** the owner chose to keep it as the documented single entry point. Original finding: its only caller,
-  `consensus_merger/merger.py`, already branches on `enable_nlp`/`enable_llm` and then
-  passes a string to branch again. Calling the two strategy functions directly removes a
-  layer, but `CLAUDE.md` documents `reconstruct()` as the single entry point, so this is
-  a design decision, not a free deletion. If dropped, update `CLAUDE.md` and trim the
-  unused `__all__` re-exports. (owner decision, then sonnet, S)
-- [ ] **Delete `get_audio_info()`** — zero references anywhere. File:
-  `audio_processor/pipeline.py`. (haiku, XS)
-- [ ] **Collapse `export_zip`'s six `if exists: write` blocks into one loop** over a
-  tuple of sidecar names. File: `export_engine/exporter.py`. (haiku, XS)
-- [ ] **Delete `_best_fuzzy_match()`** — zero references anywhere. File:
-  `consensus_merger/alignment.py`. (haiku, XS)
-- [ ] **Reuse the VTT timestamp formatter in the diariser** — `diariser._format_timestamp`
-  re-implements `exporter._seconds_to_vtt_ts`. Note the diariser rounds milliseconds
-  while the VTT helper truncates, so diarised timestamps may shift by 1 ms; accept or
-  keep rounding deliberately. (sonnet, XS)
-- [ ] **One `_env_flag()` helper in `config.py`** for `WORD_TIMESTAMPS` and
-  `KEEP_VARIANT_WAVS`, which repeat the same inline `{"1","true","yes"}` parse. Leave
-  `security/exposure.py`'s stricter parser alone: it rejects ambiguous values on purpose.
-  (haiku, XS)
-- [ ] **Define `_format_pct` once** — identical copies in
-  `consensus_merger/renderer.py` and `export_engine/ai_context.py`. (haiku, XS)
-- [ ] **Delete `FileEntry.from_dict`** — only a test calls it; nothing deserialises a
-  `FileEntry`. File: `ui/run_state.py`. (haiku, XS)
-- [ ] **Drop the `timedelta` round-trip in `_seconds_to_srt_ts`** —
-  `total_s = int(seconds)` gives the same result. (haiku, XS)
-- [ ] **Drop the `watchdog` dependency** — nothing imports it; Streamlit uses it only to
-  reload code live. Set `server.fileWatcherType = "none"` in `.streamlit/config.toml`
-  in the same change, or Streamlit falls back to a polling watcher that costs more CPU.
-  Files: `requirements.txt`, `pyproject.toml`, `.streamlit/config.toml`. (haiku, XS)
-
-From a `/ponytail-review` of #288 (per-job output folders), about 35 more lines:
-
-- [ ] **Delete `ensure_output_dirs()`** — since #288 every write goes to a job folder or a
-  report directory that is already created, so its two calls only make three empty
-  legacy `outputs/{variants,transcripts,consensus}` directories on every run. Files:
-  `config.py`, `pipeline_runner.py`, `batch_processor/batch_runner.py`. (haiku, XS)
-- [ ] **Simplify Past Jobs' helpers** — group runs on `date` objects instead of a string
-  that `_format_date_heading` parses back (delete it); `@dataclass(slots=True)` for
-  `_Run`; a one-line `next(...)` MIME lookup; `rsplit("-", 1)[0]` in
-  `_run_source_name`. File: `ui/pages/3_Past_Jobs.py`. (haiku, S)
-- [ ] **Use `hashlib.file_digest` in `_sha256_8`** instead of the hand-rolled chunk loop.
-  File: `utils.py`. (haiku, XS)
-- [ ] **Resolve the batch output root once** — `output_dir if output_dir is not None else
-  config.JOBS_DIR` is repeated four times. File: `batch_processor/batch_runner.py`.
-  (haiku, XS)
-- [ ] **Bugs found alongside the review** — `job_output_dir`'s docstring claims a renamed
-  recording maps to the same project folder, but the folder name includes the stem;
-  Past Jobs' *Delete* removes a run's files but leaves its folder (`variants/`,
-  `transcripts/`) on disk. (sonnet, S)
-
-Checked and deliberately kept: the hand-written Levenshtein (`difflib` computes a
-different metric and would move the 0.8 fuzzy threshold), the `chorus` public-API
-facade, `ui/build_info.py`, and the long straight-line functions (a maintainability
-question, outside this audit's scope).
 
 ---
 
@@ -860,6 +784,87 @@ plausible-looking result and no signal to the caller.
   drift out of step with the real call site unnoticed. Remove it and update the tests to
   exercise the real path. Files: `ui/pipeline_invocation.py`, `tests/test_run_status_panel.py`,
   `tests/test_ui_run_loop.py`. (Effort: S)
+
+---
+
+## Completed — v6.0.0 Ponytail audit and final release (4 October 2026)
+
+Found by a whole-repository `/ponytail-audit` of the v5.0.0 tag, then checked by hand
+against every reference in the tree, tests and docs included. Net: about 200 lines and one
+dependency removable. Model guidance used: **haiku** for the `delete` items (each is a pure
+deletion, and the full suite is the gate); **sonnet** for the `shrink`/`reuse` items,
+which need a regression test proving behaviour is unchanged.
+
+- [x] **Speaker names are missing from the download zip** (v6.0.0) (#297) (bug, not over-engineering) —
+  since the per-job output folders (#288), speaker names are saved at the project level
+  (`<project>/<stem>_speakers.json`), but `export_zip` still looks in the run's
+  `consensus/` folder, so the zip never includes them. Look one level up, and add a test
+  that fails today. Files: `export_engine/exporter.py`, `ui/results.py`. (sonnet, S)
+- [x] **Merge `export_best_guess` into `export_plain_text`** (v6.0.0) (#297) — same extraction, same
+  regexes; the only difference is how LOW words render. One function with
+  `low="bracket"|"omit"|"keep"`, keeping the existing output filenames. Files:
+  `export_engine/exporter.py` and its callers. (sonnet, S)
+- [x] **Delete `check_batch_lock()`** (v6.0.0) (#299) — no production caller since the atomic lock
+  (#266) replaced check-then-acquire; only three tests call it. Files:
+  `batch_processor/batch_runner.py`, `tests/test_batch_runner.py`. (haiku, XS)
+- [ ] **Keep the `reconstruct(strategy=...)` dispatcher** — **Accepted limitation:** the owner chose to keep it as the documented single entry point. Original finding: its only caller,
+  `consensus_merger/merger.py`, already branches on `enable_nlp`/`enable_llm` and then
+  passes a string to branch again. Calling the two strategy functions directly removes a
+  layer, but `CLAUDE.md` documents `reconstruct()` as the single entry point, so this is
+  a design decision, not a free deletion. If dropped, update `CLAUDE.md` and trim the
+  unused `__all__` re-exports. (owner decision, then sonnet, S)
+- [x] **Delete `get_audio_info()`** (v6.0.0) (#299) — zero references anywhere. File:
+  `audio_processor/pipeline.py`. (haiku, XS)
+- [x] **Collapse `export_zip`'s six `if exists: write` blocks into one loop** (v6.0.0) (#297) over a
+  tuple of sidecar names. File: `export_engine/exporter.py`. (haiku, XS)
+- [x] **Delete `_best_fuzzy_match()`** (v6.0.0) (#299) — zero references anywhere. File:
+  `consensus_merger/alignment.py`. (haiku, XS)
+- [ ] **Reuse the VTT timestamp formatter in the diariser** — **Accepted limitation:** not done, because the two formatters round differently and merging them would change diarised timestamps. Original finding: — `diariser._format_timestamp`
+  re-implements `exporter._seconds_to_vtt_ts`. Note the diariser rounds milliseconds
+  while the VTT helper truncates, so diarised timestamps may shift by 1 ms; accept or
+  keep rounding deliberately. (sonnet, XS)
+- [x] **One `_env_flag()` helper in `config.py`** (v6.0.0) (#299) for `WORD_TIMESTAMPS` and
+  `KEEP_VARIANT_WAVS`, which repeat the same inline `{"1","true","yes"}` parse. Leave
+  `security/exposure.py`'s stricter parser alone: it rejects ambiguous values on purpose.
+  (haiku, XS)
+- [x] **Define `_format_pct` once** (v6.0.0) (#299) — identical copies in
+  `consensus_merger/renderer.py` and `export_engine/ai_context.py`. (haiku, XS)
+- [x] **Delete `FileEntry.from_dict`** (v6.0.0) (#299) — only a test calls it; nothing deserialises a
+  `FileEntry`. File: `ui/run_state.py`. (haiku, XS)
+- [x] **Drop the `timedelta` round-trip in `_seconds_to_srt_ts`** (v6.0.0) (#297) —
+  `total_s = int(seconds)` gives the same result. (haiku, XS)
+- [x] **Drop the `watchdog` dependency** (v6.0.0) (#299) — nothing imports it; Streamlit uses it only to
+  reload code live. Set `server.fileWatcherType = "none"` in `.streamlit/config.toml`
+  in the same change, or Streamlit falls back to a polling watcher that costs more CPU.
+  Files: `requirements.txt`, `pyproject.toml`, `.streamlit/config.toml`. (haiku, XS)
+
+From a `/ponytail-review` of #288 (per-job output folders), about 35 more lines:
+
+- [x] **Delete `ensure_output_dirs()`** (v6.0.0) (#299) — since #288 every write goes to a job folder or a
+  report directory that is already created, so its two calls only make three empty
+  legacy `outputs/{variants,transcripts,consensus}` directories on every run. Files:
+  `config.py`, `pipeline_runner.py`, `batch_processor/batch_runner.py`. (haiku, XS)
+- [x] **Simplify Past Jobs' helpers** (v6.0.0) (#296) — group runs on `date` objects instead of a string
+  that `_format_date_heading` parses back (delete it); `@dataclass(slots=True)` for
+  `_Run`; a one-line `next(...)` MIME lookup; `rsplit("-", 1)[0]` in
+  `_run_source_name`. File: `ui/pages/3_Past_Jobs.py`. (haiku, S)
+- [x] **Use `hashlib.file_digest` in `_sha256_8`** (v6.0.0) (#296) instead of the hand-rolled chunk loop.
+  File: `utils.py`. (haiku, XS)
+- [x] **Resolve the batch output root once** (v6.0.0) (#299) — `output_dir if output_dir is not None else
+  config.JOBS_DIR` is repeated four times. File: `batch_processor/batch_runner.py`.
+  (haiku, XS)
+- [x] **Bugs found alongside the review** (v6.0.0) (#296) — `job_output_dir`'s docstring claims a renamed
+  recording maps to the same project folder, but the folder name includes the stem;
+  Past Jobs' *Delete* removes a run's files but leaves its folder (`variants/`,
+  `transcripts/`) on disk. (sonnet, S)
+
+Checked and deliberately kept: the hand-written Levenshtein (`difflib` computes a
+different metric and would move the 0.8 fuzzy threshold), the `chorus` public-API
+facade, `ui/build_info.py`, and the long straight-line functions (a maintainability
+question, outside this audit's scope).
+- [x] **The audit's first new-advisory issue was the accepted `nltk` advisory** (v6.0.0) (#298) — safety reports it as `SFTY-20260902-58666` / `CVE-2026-81726` now that it runs in isolation; both IDs are recorded as known.
+- [x] **Advisory Ponytail review on every pull request** (v6.0.0) (#295) — `CLAUDE.md` asks for an over-engineering review after each PR is opened; it never applies changes without asking.
+- [x] **Docker images published again** (v6.0.0) — the v5.0.0 release skipped them by choice; v6.0.0 publishes CPU and GPU images to GHCR.
 
 ---
 

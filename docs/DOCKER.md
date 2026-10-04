@@ -99,22 +99,18 @@ See the README's "Local LLM Integration with Ollama" section for model recommend
 Pre-built images are published to [GitHub Container Registry](https://ghcr.io/incendiary/chorus)
 on every tagged release — no local build step required.
 
-> **Not published for v5.0.0.** Images were not pushed to GHCR for this release; build
-> locally with the instructions above. The commands below apply only if publishing is
-> re-enabled in `.github/workflows/release.yml`.
-
 **CPU:**
 
 ```bash
-docker pull ghcr.io/incendiary/chorus:v5.0.0
-docker run --rm -p 8501:8501 ghcr.io/incendiary/chorus:v5.0.0
+docker pull ghcr.io/incendiary/chorus:v6.0.0
+docker run --rm -p 8501:8501 ghcr.io/incendiary/chorus:v6.0.0
 ```
 
 **GPU (NVIDIA CUDA):**
 
 ```bash
-docker pull ghcr.io/incendiary/chorus:v5.0.0-gpu
-docker run --rm -p 8501:8501 --gpus all ghcr.io/incendiary/chorus:v5.0.0-gpu
+docker pull ghcr.io/incendiary/chorus:v6.0.0-gpu
+docker run --rm -p 8501:8501 --gpus all ghcr.io/incendiary/chorus:v6.0.0-gpu
 ```
 
 Access the UI at [http://localhost:8501](http://localhost:8501).
