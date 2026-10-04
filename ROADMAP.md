@@ -30,7 +30,7 @@ which need a regression test proving behaviour is unchanged.
 - [ ] **Delete `check_batch_lock()`** — no production caller since the atomic lock
   (#266) replaced check-then-acquire; only three tests call it. Files:
   `batch_processor/batch_runner.py`, `tests/test_batch_runner.py`. (haiku, XS)
-- [ ] **Decide: drop the `reconstruct(strategy=...)` dispatcher?** — its only caller,
+- [ ] **Keep the `reconstruct(strategy=...)` dispatcher** — **Accepted limitation:** the owner chose to keep it as the documented single entry point. Original finding: its only caller,
   `consensus_merger/merger.py`, already branches on `enable_nlp`/`enable_llm` and then
   passes a string to branch again. Calling the two strategy functions directly removes a
   layer, but `CLAUDE.md` documents `reconstruct()` as the single entry point, so this is
