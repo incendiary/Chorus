@@ -316,49 +316,6 @@ def _lock_owner_is_alive(pid: int, host: str, started: float) -> bool:
     return abs(current_start - started) < 1.0
 
 
-def check_batch_lock(output_dir: Path | None) -> tuple[bool, str]:
-    """Check whether another batch is already running against this output
-    directory.
-
-    Two overlapping ``batch_runner`` invocations against the same
-    ``--output-dir`` collided on real casework audio: both processes hit the
-    same file and the same variant seconds apart, one process's RC-1 WAV
-    cleanup deleted a file the other was still reading for diarisation, and
-    the two then deadlocked for over ten hours before being killed by hand.
-    The Web UI's ``RunManager.start()`` already refuses a second concurrent
-    run; the CLI had no equivalent.
-
-    Returns ``(True, "")`` when it's safe to proceed, or ``(False, reason)``
-    naming the PID and how to resolve it. A lock file naming a PID that is no
-    longer running is stale (most likely a prior run that crashed before
-    reaching its cleanup) and is treated as safe to proceed, not as a
-    blocker — see ``acquire_batch_lock``, which reclaims it.
-    """
-    lock_path = _lock_path(output_dir)
-    if not lock_path.exists():
-        return True, ""
-    existing = _read_lock(lock_path)
-    if existing is None:
-        return False, (
-            f"The batch lock at {lock_path} exists but could not be read, so it "
-            "is not safe to assume no other run is active. Confirm no other "
-            "batch is running against this output directory, then delete that "
-            "file, or use a different --output-dir."
-        )
-    if _lock_owner_is_alive(*existing):
-        return False, (
-            f"Another batch is already running against this output directory "
-            f"(PID {existing[0]} on {existing[1] or 'this host'}).\n\n"
-            "Two overlapping batches against the same output directory "
-            "previously collided, both processing the same file at the same "
-            "time, and deadlocked for over ten hours on real casework audio "
-            "before being killed manually. Wait for the other run to finish, "
-            "confirm it has actually stopped and remove "
-            f"{lock_path} if it hasn't, or use a different --output-dir."
-        )
-    return True, ""
-
-
 def _read_lock(lock_path: Path) -> tuple[int, str, float] | None:
     """Parse an existing lock file, or None when it cannot be understood."""
     try:
