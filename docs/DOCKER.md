@@ -99,6 +99,10 @@ See the README's "Local LLM Integration with Ollama" section for model recommend
 Pre-built images are published to [GitHub Container Registry](https://ghcr.io/incendiary/chorus)
 on every tagged release — no local build step required.
 
+> **Not published for v5.0.0.** Images were not pushed to GHCR for this release; build
+> locally with the instructions above. The commands below apply only if publishing is
+> re-enabled in `.github/workflows/release.yml`.
+
 **CPU:**
 
 ```bash
