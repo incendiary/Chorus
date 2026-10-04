@@ -400,12 +400,14 @@ class TestExportBestGuess:
     def test_best_guess_contains_high_agreement_word_no_markup(self, tmp_path):
         """Best-guess file must contain the winning word at every tier, with
         no brackets, confidence annotations, or statistics lines."""
-        from export_engine.exporter import export_best_guess
+        from export_engine.exporter import export_plain_text
 
         votes = self._make_mixed_tier_votes()
         consensus_path = self._render(votes, tmp_path)
 
-        out_path = export_best_guess(consensus_path, "test", output_dir=tmp_path)
+        out_path = export_plain_text(
+            consensus_path, "test", output_dir=tmp_path, low="keep"
+        )
         content = out_path.read_text(encoding="utf-8")
 
         assert out_path.name == "test_best_guess.txt"
@@ -425,24 +427,28 @@ class TestExportBestGuess:
 
     def test_best_guess_empty_transcript_produces_empty_file(self, tmp_path):
         """Silence (no votes) must produce an empty file, not raise."""
-        from export_engine.exporter import export_best_guess
+        from export_engine.exporter import export_plain_text
 
         consensus_path = self._render([], tmp_path)
-        out_path = export_best_guess(consensus_path, "silent", output_dir=tmp_path)
+        out_path = export_plain_text(
+            consensus_path, "silent", output_dir=tmp_path, low="keep"
+        )
 
         assert out_path.exists()
         assert out_path.read_text(encoding="utf-8") == ""
 
     def test_best_guess_honours_output_dir(self, tmp_path):
         """File must land under the supplied output_dir, not the global dir."""
-        from export_engine.exporter import export_best_guess
+        from export_engine.exporter import export_plain_text
 
         votes = self._make_mixed_tier_votes()
         isolated_dir = tmp_path / "isolated"
         isolated_dir.mkdir()
         consensus_path = self._render(votes, isolated_dir)
 
-        out_path = export_best_guess(consensus_path, "test", output_dir=isolated_dir)
+        out_path = export_plain_text(
+            consensus_path, "test", output_dir=isolated_dir, low="keep"
+        )
 
         assert out_path.parent == isolated_dir
 
@@ -754,6 +760,25 @@ class TestZipExportOutputDirIsolation:
             "segments": [{"start": 0.0, "end": 1.0, "text": " test recording"}],
             "language": "en",
         }
+
+    def test_zip_includes_project_level_speakers_file(self, tmp_path):
+        """Per-job layout: speakers live at <project>/<stem>_speakers.json."""
+        consensus_dir = tmp_path / "project" / "20260101-000000" / "consensus"
+        consensus_dir.mkdir(parents=True)
+        consensus_path = consensus_dir / "test_consensus.md"
+        consensus_path.write_text("# Test Consensus\n\nHello world.\n")
+        speakers = tmp_path / "project" / "test_speakers.json"
+        speakers.write_text('{"SPEAKER_00": "Alice"}')
+
+        zip_bytes = export_zip(
+            consensus_md_path=consensus_path,
+            whisper_result=self._make_mock_whisper_result(),
+            stem="test",
+            output_dir=consensus_dir,
+        )
+
+        zf = zipfile.ZipFile(io.BytesIO(zip_bytes))
+        assert zf.read("test_speakers.json") == speakers.read_bytes()
 
     def test_zip_reads_sidecars_from_output_dir(self, tmp_path):
         """ZIP should include sidecars written to the specified output_dir."""

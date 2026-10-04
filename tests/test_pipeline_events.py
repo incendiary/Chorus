@@ -110,7 +110,7 @@ def _mock_pipeline_stages(monkeypatch, tmp_path):
         "export_engine.ai_context.generate_ai_context_pack", _fake_ai_context
     )
     monkeypatch.setattr("export_engine.exporter.export_transcript_bundle", _fake_bundle)
-    monkeypatch.setattr("export_engine.exporter.export_best_guess", _fake_best_guess)
+    monkeypatch.setattr("export_engine.exporter.export_plain_text", _fake_best_guess)
     monkeypatch.setattr(orchestrator, "_resolve_parallelism", lambda total: 1)
 
 

@@ -646,8 +646,9 @@ gets its own never-overwritten job folder,
 `<DIR>/<stem>-<sha8>/<YYYYMMDD-HHMMSS>/`, so re-running the same recording
 never collides with a previous run's outputs. `<stem>` is the sanitised
 filename stem; `<sha8>` is the first 8 hex characters of the audio's SHA-256,
-so the same recording (even renamed) always lands in the same project
-folder, while two different files that happen to share a name never do.
+so the same recording under the same name always lands in the same project
+folder, while two different files that happen to share a name never do (a
+renamed copy gets its own project folder).
 
 **Default:** `None` (`outputs/jobs` in the project root).
 
