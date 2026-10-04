@@ -108,3 +108,67 @@ class TestPastJobsBothLayouts:
         assert "interview" in text
         assert "Legacy (before v5.0.0)" in text
         assert "old recording" in text
+
+
+def _delete_via_ui(at: AppTest, key_suffix: str) -> AppTest:
+    at.button(key=f"del_btn_{key_suffix}").click().run()
+    at.button(key=f"confirm_yes_{key_suffix}").click().run()
+    return at
+
+
+class TestPastJobsDelete:
+    def test_current_layout_delete_removes_whole_run_dir_and_empty_project(
+        self, tmp_path: Path
+    ) -> None:
+        jobs_dir = tmp_path / "jobs"
+        consensus_subdir = _make_current_layout_run(jobs_dir, "interview")
+        run_dir = consensus_subdir.parent
+        (run_dir / "variants").mkdir()
+        (run_dir / "variants" / "original.wav").write_bytes(b"x")
+        (run_dir / "transcripts").mkdir()
+        (run_dir / "transcripts" / "original.json").write_text("{}")
+        project_dir = run_dir.parent
+        (project_dir / "interview_speakers.json").write_text("{}")
+
+        at = _run_page(jobs_dir, tmp_path / "consensus_empty")
+        _delete_via_ui(at, "interview-abcd1234_20260101-120000")
+
+        assert not at.exception
+        assert not run_dir.exists()
+        assert not project_dir.exists()
+
+    def test_current_layout_delete_keeps_project_sidecar_while_other_run_remains(
+        self, tmp_path: Path
+    ) -> None:
+        jobs_dir = tmp_path / "jobs"
+        consensus_subdir = _make_current_layout_run(jobs_dir, "interview")
+        run_dir = consensus_subdir.parent
+        project_dir = run_dir.parent
+        other = project_dir / "20260102-120000" / "consensus"
+        other.mkdir(parents=True)
+        (other / "interview_consensus.md").write_text("# Other")
+        sidecar = project_dir / "interview_speakers.json"
+        sidecar.write_text("{}")
+
+        at = _run_page(jobs_dir, tmp_path / "consensus_empty")
+        _delete_via_ui(at, "interview-abcd1234_20260101-120000")
+
+        assert not at.exception
+        assert not run_dir.exists()
+        assert (other / "interview_consensus.md").exists()
+        assert sidecar.exists()
+
+    def test_legacy_delete_removes_only_its_own_files(self, tmp_path: Path) -> None:
+        consensus_dir = tmp_path / "consensus"
+        stem = "2024-01-01_10-00-00_old_recording"
+        anchor = _make_legacy_run(consensus_dir, stem)
+        bystander = consensus_dir / "2024-02-02_10-00-00_other_consensus.md"
+        bystander.write_text("# Other")
+
+        at = _run_page(tmp_path / "jobs_empty", consensus_dir)
+        _delete_via_ui(at, f"legacy_{stem}")
+
+        assert not at.exception
+        assert not anchor.exists()
+        assert bystander.exists()
+        assert consensus_dir.exists()
