@@ -43,6 +43,7 @@ When maintaining, refactoring, or extending this codebase, Claude Code must adhe
 - **Documentation Parity**: You must maintain project documentation during any refactoring. If a module's public API or behaviour changes, update the docstrings, `README.md`, and this file accordingly.
 - **Surgical Changes**: Touch only what you must. Do not introduce speculative abstractions or wrapper functions that add no logic.
 - **Formatting**: Adhere to the established `black`, `ruff`, and `isort` configurations.
+- **Over-engineering review**: After opening a pull request, run `/ponytail:ponytail-review` on its diff and report the findings alongside it. The review is advisory: never apply its suggestions without asking, and never treat it as a substitute for correctness review, which it deliberately ignores.
 
 ---
 
