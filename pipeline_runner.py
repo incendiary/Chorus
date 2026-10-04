@@ -22,7 +22,7 @@ from pathlib import Path
 
 import config
 from audio_processor.pipeline import process_audio
-from config import CONSENSUS_DIR, ensure_output_dirs
+from config import CONSENSUS_DIR
 from transcription_engine.orchestrator import run_transcription_pass
 from utils import job_output_dir, sanitise_stem
 
@@ -196,7 +196,6 @@ def run_pipeline(
         If *audio_path* does not exist.
     """
     audio_path = Path(audio_path)
-    ensure_output_dirs()
     stem = sanitise_stem(audio_path.stem, fallback="audio")
     source_filename = (
         source_filename if source_filename is not None else audio_path.name

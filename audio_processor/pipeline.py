@@ -182,27 +182,3 @@ def process_audio(
     logger.info("Audio arrays released — variants persisted to disk.")
 
     return output_paths
-
-
-def get_audio_info(input_path: str | Path) -> dict:
-    """
-    Return basic metadata about an audio file without full processing.
-
-    Parameters
-    ----------
-    input_path : str | Path
-        Path to the audio file.
-
-    Returns
-    -------
-    dict
-        Keys: duration_seconds, sample_rate, channels, format.
-    """
-    input_path = Path(input_path)
-    info = sf.info(str(input_path))
-    return {
-        "duration_seconds": info.duration,
-        "sample_rate": info.samplerate,
-        "channels": info.channels,
-        "format": info.format,
-    }

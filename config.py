@@ -52,6 +52,11 @@ def config_value_source(env_key: str) -> str:
     return "default"
 
 
+def _env_flag(name: str) -> bool:
+    """Parse an environment variable as a boolean flag."""
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes"}
+
+
 # ─────────────────────────────────────────────
 # Output Directories
 # ─────────────────────────────────────────────
@@ -64,12 +69,6 @@ CONSENSUS_DIR = OUTPUTS_DIR / "consensus"
 # recording gets its own ``<stem>-<sha8>/<timestamp>/`` directory here, so
 # re-running the same file never overwrites a previous run's outputs.
 JOBS_DIR = OUTPUTS_DIR / "jobs"
-
-
-def ensure_output_dirs() -> None:
-    """Create output directories if they do not already exist."""
-    for out_dir in (VARIANTS_DIR, TRANSCRIPTS_DIR, CONSENSUS_DIR):
-        out_dir.mkdir(parents=True, exist_ok=True)
 
 
 # ─────────────────────────────────────────────
@@ -141,11 +140,7 @@ WHISPER_DEVICE: str = _env_device if _env_device else _detect_device()
 # 1,643 words with this off and 137 words with it on (47 % of them a single
 # repeated phrase). They are only needed for word-level SRT/VTT subtitles, so
 # they are enabled per run when that granularity is requested.
-WORD_TIMESTAMPS = os.environ.get("WORD_TIMESTAMPS", "").strip().lower() in {
-    "1",
-    "true",
-    "yes",
-}
+WORD_TIMESTAMPS = _env_flag("WORD_TIMESTAMPS")
 
 # Language hint (None = auto-detect)
 WHISPER_LANGUAGE = os.environ.get("WHISPER_LANGUAGE", None)
@@ -201,11 +196,7 @@ SUPPORTED_AUDIO_EXTENSIONS = frozenset(
 # maintainer's machine before this was reclaimed). They are deleted by default
 # once every stage that reads them has finished. Set KEEP_VARIANT_WAVS=1 to
 # retain them for debugging the cleaning filters.
-KEEP_VARIANT_WAVS = os.environ.get("KEEP_VARIANT_WAVS", "").strip().lower() in {
-    "1",
-    "true",
-    "yes",
-}
+KEEP_VARIANT_WAVS = _env_flag("KEEP_VARIANT_WAVS")
 
 # Sample rate used throughout the pipeline (Hz)
 TARGET_SAMPLE_RATE = 16_000

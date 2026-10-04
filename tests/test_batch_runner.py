@@ -35,7 +35,6 @@ from batch_processor.batch_runner import (
     _resolve_cli_settings,
     _write_batch_report,
     acquire_batch_lock,
-    check_batch_lock,
     discover_audio_files,
     main,
     release_batch_lock,
@@ -965,33 +964,6 @@ class TestBatchLock:
     being killed manually. The lock must block a genuinely live run, ignore
     a stale leftover PID file, and always clean up after itself."""
 
-    def test_live_pid_blocks_a_second_run(self, tmp_path) -> None:
-        lock_path = tmp_path / ".chorus-batch.lock"
-        lock_path.write_text(
-            f"{os.getpid()}\n{socket.gethostname()}\n"
-            f"{_process_start_time(os.getpid()) or 0.0}\n",
-            encoding="utf-8",
-        )
-        ready, reason = check_batch_lock(tmp_path)
-        assert ready is False
-        assert str(os.getpid()) in reason
-        assert "--output-dir" in reason
-
-    def test_stale_pid_does_not_block(self, tmp_path) -> None:
-        lock_path = tmp_path / ".chorus-batch.lock"
-        # PIDs this large are never actually assigned by the OS.
-        lock_path.write_text(
-            "999999999\n" + socket.gethostname() + "\n0.0\n", encoding="utf-8"
-        )
-        ready, reason = check_batch_lock(tmp_path)
-        assert ready is True
-        assert reason == ""
-
-    def test_no_lock_file_is_ready(self, tmp_path) -> None:
-        ready, reason = check_batch_lock(tmp_path)
-        assert ready is True
-        assert reason == ""
-
     def test_acquire_writes_this_process_identity(self, tmp_path) -> None:
         lock_path, reason = acquire_batch_lock(tmp_path)
         assert reason == ""
@@ -1074,11 +1046,9 @@ class TestBatchLock:
 class TestBatchLockIsAtomic:
     """Acquisition must be a single atomic step, and must fail closed.
 
-    The previous scheme called check_batch_lock() and then, as a separate
-    unsynchronised step, acquire_batch_lock(), which unconditionally
-    overwrote whatever was there. Two batches started close together could
-    both see no lock and both proceed. The collision this guards against
-    deadlocked a real casework run for over ten hours.
+    Separate check and acquire steps would allow two batches started close
+    together to both see no lock and both proceed. The collision this guards
+    against deadlocked a real casework run for over ten hours.
     """
 
     def test_second_acquisition_is_refused_while_the_first_is_held(self, tmp_path):
