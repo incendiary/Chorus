@@ -20,11 +20,8 @@ def sanitise_stem(raw: str, fallback: str = "audio") -> str:
 def _sha256_8(path: Path) -> str:
     """Return the first 8 hex characters of *path*'s SHA-256, streamed in
     chunks so large recordings never need to be held in memory whole."""
-    digest = hashlib.sha256()
     with open(path, "rb") as fh:
-        for chunk in iter(lambda: fh.read(1 << 20), b""):
-            digest.update(chunk)
-    return digest.hexdigest()[:8]
+        return hashlib.file_digest(fh, "sha256").hexdigest()[:8]
 
 
 def job_output_dir(
@@ -42,9 +39,10 @@ def job_output_dir(
     project directory is named after the recording, not the temp file.
 
     ``sha8`` is the first 8 hex characters of the SHA-256 of the audio
-    bytes: the same recording, even renamed, always maps to the same
+    bytes: the same name and the same bytes always map to the same
     ``<stem>-<sha8>`` project directory, while two different files that
-    happen to share a name never collide.
+    happen to share a name never collide. A renamed copy of a recording gets
+    a different ``stem`` and so a different project directory.
 
     The timestamp directory is UTC and gets a ``-2``, ``-3``, … suffix if it
     already exists (two calls within the same second), so a run is never

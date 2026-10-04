@@ -58,7 +58,7 @@ If you cannot use GitHub's private reporting for any reason, open a regular issu
   [Lightning-AI/pytorch-lightning#21832](https://github.com/Lightning-AI/pytorch-lightning/pull/21832)
   for release status before assuming a new dependency audit finding is this one.
 
-- **`nltk` — `PYSEC-2026-3740`** (file sandbox bypass: several model-persistence
+- **`nltk` — `PYSEC-2026-3740` / `CVE-2026-81726` / `SFTY-20260902-58666`** (file sandbox bypass: several model-persistence
   APIs, including `TransitionParser.train`, `AveragedPerceptron.save`, and
   `PerceptronTagger.save_to_json`, use built-in `open()` on caller-controlled paths
   instead of the `pathsec`-aware helpers, so they read and write outside the
