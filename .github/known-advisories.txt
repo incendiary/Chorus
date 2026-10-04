@@ -13,5 +13,7 @@ PYSEC-2026-3624       # lightning, issue #219
 CVE-2026-58659         # lightning, issue #219
 SFTY-20260715-05023    # lightning, issue #219
 PYSEC-2026-3740        # nltk, issue #244
+CVE-2026-81726         # nltk, issue #244 (same advisory)
+SFTY-20260902-58666    # nltk, issue #244 (safety's ID for it)
 CVE-2025-33228         # cuda-toolkit
 SFTY-20260120-40557    # cuda-toolkit
