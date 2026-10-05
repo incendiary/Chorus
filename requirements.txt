@@ -27,7 +27,7 @@ pyannote-audio==4.0.7
 # 0.14.0 only shipped decoder support for ffmpeg 4-8 and failed to decode audio
 # at all on a host with ffmpeg 9 installed, silently degrading diarisation to
 # no speaker labels. 0.16.0 fixed the decode failure.
-torchcodec==0.16.0
+torchcodec==0.17.0
 # Pinned explicitly (otherwise resolved transitively via pyannote-audio):
 # pytorch-lightning 2.6.5 carries PYSEC-2026-3967, which 2.6.6 fixes. These are two
 # separate distributions, and `lightning` depends on `pytorch-lightning` with no
