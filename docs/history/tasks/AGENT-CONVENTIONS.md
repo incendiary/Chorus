@@ -1,6 +1,6 @@
 # Agent conventions for RB-* tasks (read before starting any task)
 
-Shared rules for every `docs/tasks/RB-*.md` execution plan. Each task file assumes
+Shared rules for every `docs/history/tasks/RB-*.md` execution plan. Each task file assumes
 you have read this once.
 
 ## 1. Validate against CI locally BEFORE committing (shift left)

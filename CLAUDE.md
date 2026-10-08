@@ -7,7 +7,7 @@ The **Chorus Engine** is a local, containerised Python application that automate
 ### Core Modules
 1. **`audio_processor/`**: Ingests raw audio and applies three distinct cleaning filters via `pydub`/`librosa` (High-Pass Focus, Dynamic Range Normalization, Denoise Filter).
 2. **`transcription_engine/`**: Wraps a local instance of OpenAI's Whisper model. Orchestrates sequential transcription over the original audio and the three cleaned variants.
-3. **`consensus_merger/`**: Performs a word-for-word sliding-window consensus analysis across the four transcript variants. Calculates confidence weights and renders a unified Markdown document with tier-based highlighting.
+3. **`consensus_merger/`**: Performs word-level consensus analysis, aligning the variants with sequence alignment by default (positional alignment is available as an option) across the four transcript variants. Calculates confidence weights and renders a unified Markdown document with tier-based highlighting.
 4. **`diarisation/`**: Integrates `pyannote.audio` to identify and separate multiple speakers, fusing them with Whisper segment timestamps.
 5. **`reconstruction/`**: Reconstructs LOW-confidence tokens through one of two interchangeable strategies, selected via a single `reconstruct(votes, *, strategy)` entry point: `"nlp"` uses `spaCy` grammatical and semantic analysis, and `"llm"` uses a local Ollama model.
 6. **`export_engine/`**: Converts the consensus Markdown into PDF, DOCX, SRT, and VTT formats.
@@ -43,7 +43,6 @@ When maintaining, refactoring, or extending this codebase, Claude Code must adhe
 - **Documentation Parity**: You must maintain project documentation during any refactoring. If a module's public API or behaviour changes, update the docstrings, `README.md`, and this file accordingly.
 - **Surgical Changes**: Touch only what you must. Do not introduce speculative abstractions or wrapper functions that add no logic.
 - **Formatting**: Adhere to the established `black`, `ruff`, and `isort` configurations.
-- **Over-engineering review**: After opening a pull request, run `/ponytail:ponytail-review` on its diff and report the findings alongside it. The review is advisory: never apply its suggestions without asking, and never treat it as a substitute for correctness review, which it deliberately ignores.
 
 ---
 
@@ -63,7 +62,7 @@ Before pushing any code to the repository, you must execute and pass the followi
 
 3. **Performance Benchmarks**:
    - Verify that the `audio_processor` cleaning filters process a standard 5-minute audio file within acceptable memory limits (under 500MB peak RAM).
-   - Ensure the `consensus_merger` sliding-window alignment logic completes in under 2 seconds for a 10,000-word transcript.
+   - Ensure the `consensus_merger` positional alignment logic completes in under 2 seconds for a 10,000-word transcript.
 
 4. **Security & Secrets**:
    - Run `pre-commit run --all-files` to verify no secrets, API keys, or sensitive tokens are present in the working tree.

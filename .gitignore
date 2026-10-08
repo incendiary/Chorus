@@ -135,3 +135,6 @@ gh_init.sh
 benchmarks/data/
 benchmarks/results/
 .agents/
+
+# Claude Code per-user state (local settings, agent worktrees, skills)
+.claude/
