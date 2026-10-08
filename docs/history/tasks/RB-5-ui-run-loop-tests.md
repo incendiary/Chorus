@@ -2,7 +2,7 @@
 
 **Model tier:** Sonnet · **Effort:** M · **Branch:** `test/rb5-ui-run-loop-coverage`
 
-> Read `docs/tasks/AGENT-CONVENTIONS.md` first.
+> Read `docs/history/tasks/AGENT-CONVENTIONS.md` first.
 
 ## Context
 

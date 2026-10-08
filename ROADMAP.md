@@ -8,7 +8,7 @@ Tracked improvements identified during the June 2026 repository assessment.
 > either shipped (ticked, with its version and pull request) or recorded as an
 > **accepted limitation** with the reason it was not fixed. Sections titled *Closed at
 > v5.0.0* were planning sections before the final-release decision. Rationale for every
-> decision: [FINAL_RELEASE_TRIAGE.md](docs/FINAL_RELEASE_TRIAGE.md).
+> decision: [FINAL_RELEASE_TRIAGE.md](docs/history/FINAL_RELEASE_TRIAGE.md).
 
 ---
 
@@ -213,11 +213,11 @@ recorded under each item below).
   - **Files changed:** `pyproject.toml`
 - [x] **Restructure README native-first, split Docker into `docs/DOCKER.md`** (v4.0.1) — native installation is now the primary path (required for Apple Silicon MPS); removed a large stale/duplicate Ollama recommendations section; fixed a real bug in `docs/DOCKER.md` (invalid `docker-compose -f Dockerfile.gpu` syntax) and several stale defaults.
   - **Files changed:** `README.md`, `docs/DOCKER.md`, `tests/test_version_sync.py`, `tests/version_consistency_test.sh`
-- [x] **Fresh holistic codebase review** (v4.0.1) — see `REVIEW.md` for full findings; added RA-1 through RA-9 below.
+- [x] **Fresh holistic codebase review** (v4.0.1) — see `docs/history/REVIEW.md` for full findings; added RA-1 through RA-9 below.
 
 ### From the 12 July 2026 holistic review
 
-Full findings, risk scoring, and predicted failure scenarios in `REVIEW.md`.
+Full findings, risk scoring, and predicted failure scenarios in `docs/history/REVIEW.md`.
 
 - [x] **RA-1: Prevent pyproject.toml / requirements.txt drift** (v4.0.1) — automated CI check added to `check_dependency_drift.sh`; fails if any shared dependency has mismatched versions between the two files. (Effort: S)
 - [x] **RA-2: Make pip-audit cover pyproject.toml's dependency list** (v4.0.1) — `security.yml`'s `pip-audit` step now installs both `requirements.txt` and `.[dev]` extras before scanning, ensuring vulnerabilities in `pyproject.toml` are visible to CI. (Effort: S)
@@ -234,8 +234,8 @@ Full findings, risk scoring, and predicted failure scenarios in `REVIEW.md`.
 ## Completed — v4.1.0 Wrap-up (from the 15 July 2026 holistic review)
 
 The final bounded work package before the project moved to maintenance. Full findings
-in `REVIEW.md`; per-task execution plans (written for delegated agents) in
-`docs/tasks/RB-*.md`.
+in `docs/history/REVIEW.md`; per-task execution plans (written for delegated agents) in
+`docs/history/tasks/RB-*.md`.
 
 - [x] **RB-1: Fix release.yml skip-cascade for patch releases** (v4.1.0) — `github-release` now needs `[test, docker-publish]` with an `if:` that accepts a skipped `docker-publish`, `post-release-consistency` follows the same pattern, and the release-creation step is idempotent (skips creation when the release already exists). (Effort: XS, Haiku)
 - [x] **RB-2: WER + agreement-tier benchmark** (v4.1.0) — `benchmarks/run_benchmark.py` + sanity-gate tests; 15 LibriSpeech utterances, clean and SNR 5 dB conditions, single-pass vs consensus with Whisper `base`. Result (`benchmarks/RESULTS.md`): consensus did **not** beat single-pass on noisy audio (WER 0.1095 vs 0.1024) and edged it on clean (0.0288 vs 0.0314); HIGH-tier precision was 0.92–0.98, while all nine MEDIUM/LOW noisy words were wrong. The small, homogeneous sample supports agreement tiers as review signals, but does not establish general calibration or error-detection reliability. (Effort: L, Sonnet)
@@ -249,7 +249,7 @@ in `REVIEW.md`; per-task execution plans (written for delegated agents) in
 ## Closed at v5.0.0 — from the 28 July 2026 holistic review
 
 Third review, run at v4.1.0 with the background-run feature live. Full findings in
-`REVIEW.md`. The two headline items were both found by *running* the software, not
+`docs/history/REVIEW.md`. The two headline items were both found by *running* the software, not
 reading it.
 
 - [x] **RC-1: Reclaim intermediate variant WAVs** (v4.1.1) (fixed) — `outputs/variants/` had reached 21 GB across 232 files. The four WAVs per recording are Whisper inputs only and are deleted once every stage that reads them has finished, which must stay after diarisation because it re-opens the original variant. Opt out with `KEEP_VARIANT_WAVS=1`.
@@ -475,7 +475,7 @@ roughly 6 of 22 flags).
 
 ### From the 6 September 2026 holistic review (RD series)
 
-Full findings in [REVIEW-RD.md](REVIEW-RD.md). The four items below were treated as
+Full findings in [REVIEW-RD.md](docs/history/REVIEW-RD.md). The four items below were treated as
 release blockers and are fixed; the rest are deferred below.
 
 - [x] **RD-1 — Exclude repetition-looped variants from the consensus vote pool** (v5.0.0)
@@ -581,7 +581,7 @@ surfacing) shipped.
 
 ## Closed at v5.0.0 — deferred from the 6 September 2026 holistic review
 
-Full context and predictive failure scenarios in [REVIEW-RD.md](REVIEW-RD.md). Each item
+Full context and predictive failure scenarios in [REVIEW-RD.md](docs/history/REVIEW-RD.md). Each item
 is written to be executable without reading the review.
 
 - [x] **RD-5 — Restore signal to the dependency audit** (v5.0.0) — **fixed (#281).** Original finding: — the audit fails on every run
@@ -663,7 +663,7 @@ is written to be executable without reading the review.
 
 Second review pass, covering `ui/`, `audio_processor/`, `export_engine/`, `reconstruction/`,
 and `benchmarks/`, none of which had been adversarially reviewed before. Full context in
-[REVIEW-RD.md](REVIEW-RD.md). Each item is written to be executable without reading the
+[REVIEW-RD.md](docs/history/REVIEW-RD.md). Each item is written to be executable without reading the
 review.
 
 ### Release-blocking

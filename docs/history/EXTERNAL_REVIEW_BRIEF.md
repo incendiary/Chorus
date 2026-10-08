@@ -627,12 +627,14 @@ sound, or whether the pattern behind three diarisation bugs in three weeks (§6,
    `ROADMAP.md`'s existing "Planned" sections are structured, not as a vague caveat.
 
 **Done when:**
-- [ ] A tag/no-tag recommendation has been given, with reasoning grounded in this
+- [x] A tag/no-tag recommendation has been given, with reasoning grounded in this
       review's findings, not just repeated from this brief
-- [ ] If tagging: `VERSION`, git tag, and GitHub release all agree, and issue #242 is
+- [x] If tagging: `VERSION`, git tag, and GitHub release all agree, and issue #242 is
       closed
-- [ ] `ROADMAP.md` has no open item that is actually complete
-- [ ] CI green on `main` (aside from the accepted `lightning` CVE)
+- [x] `ROADMAP.md` has no open item that is actually complete
+- [x] CI green on `main` (aside from the accepted `lightning` CVE)
+
+Closed at the v6.0.0 release: all four conditions were met.
 
 **Return signal:** report the recommendation and, if a tag was cut, its URL and exactly
 what the release notes do and do not claim (§2 still applies — no unevidenced accuracy
