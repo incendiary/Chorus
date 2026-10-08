@@ -10,6 +10,23 @@ Tracked improvements identified during the June 2026 repository assessment.
 > v5.0.0* were planning sections before the final-release decision. Rationale for every
 > decision: [FINAL_RELEASE_TRIAGE.md](docs/history/FINAL_RELEASE_TRIAGE.md).
 
+## Start here
+
+Chorus is complete at v6.0.0. Nothing is scheduled. The only open items are accepted
+limitations, each recorded below with the reason it was not done:
+
+- RC-6: `export_engine/exporter.py` was not split into per-format modules.
+- The bounded AMI multi-speaker benchmark (issue #220) was not built.
+- Two browser sessions on one server can race on device, parallelism, and noise-floor settings.
+- The `large` versus `large+medium` consensus comparison was not run.
+- RD-14: CI does not build the Docker images on Dockerfile changes.
+- The `reconstruct(strategy=...)` dispatcher is kept as the documented entry point.
+- The diariser keeps its own timestamp formatter, because the shared one rounds differently.
+
+Upstream security advisories that cannot be fixed in Chorus are listed in
+[SECURITY.md](SECURITY.md) and tracked in issues #219 and #244. The history of how the
+project got here is in [docs/history/](docs/history/README.md).
+
 ---
 
 ## Architecture & Code Quality
