@@ -1,5 +1,9 @@
 version: 2
 
+# v6.0.0 is the final release, so routine version-bump PRs are switched off
+# (limit 0). GitHub security alerts and security-update PRs are configured
+# separately and keep running.
+
 updates:
   # Python package updates
   - package-ecosystem: "pip"
@@ -9,7 +13,7 @@ updates:
       day: "monday"
       time: "09:00"
       timezone: "Europe/London"
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 0
     labels:
       - "dependencies"
       - "python"
@@ -22,7 +26,7 @@ updates:
       day: "monday"
       time: "09:00"
       timezone: "Europe/London"
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 0
     labels:
       - "dependencies"
       - "github-actions"
