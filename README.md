@@ -11,6 +11,15 @@ reports word-level agreement tiers. These tiers identify where variants agree or
 disagree, but they are not calibrated error probabilities and cannot guarantee
 that an agreed word is correct. Use them to prioritise human or downstream review.
 
+## Project status
+
+**v6.0.0 is the final release.** The author does not intend to develop Chorus further,
+and hopes it proves useful to others. Issues and pull requests may not receive a
+response. You are welcome to fork it and build on it under the terms of the
+[licence](LICENSE): free for non-commercial use with credit, while commercial use needs
+a separate licence from the author. Known limitations are listed at the top of
+[ROADMAP.md](ROADMAP.md).
+
 ---
 
 ## Prerequisites
