@@ -2,7 +2,7 @@
 
 **Model tier:** Haiku · **Effort:** S · **Branch:** `fix/rb3-pdf-low-strikethrough`
 
-> Read `docs/tasks/AGENT-CONVENTIONS.md` first.
+> Read `docs/history/tasks/AGENT-CONVENTIONS.md` first.
 
 ## Context
 

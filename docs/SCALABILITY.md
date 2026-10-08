@@ -108,7 +108,7 @@ docker stats chorus-engine --no-stream
 ### Batch Report
 
 ```bash
-cat outputs/consensus/batch_report.md
+cat outputs/jobs/batch_report.md
 ```
 
 Shows per-file timing and success/failure status.

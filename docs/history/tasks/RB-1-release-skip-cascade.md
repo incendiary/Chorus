@@ -2,7 +2,7 @@
 
 **Model tier:** Haiku · **Effort:** XS · **Branch:** `ci/rb1-release-skip-cascade`
 
-> Read `docs/tasks/AGENT-CONVENTIONS.md` first — it covers local CI validation
+> Read `docs/history/tasks/AGENT-CONVENTIONS.md` first — it covers local CI validation
 > (shift-left), known false-positive patterns, and the PR flow.
 
 ## Context (read this first)
