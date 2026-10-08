@@ -2,7 +2,7 @@
 
 **Model tier:** Sonnet · **Effort:** L · **Branch:** `feat/rb2-wer-benchmark`
 
-> Read `docs/tasks/AGENT-CONVENTIONS.md` first — it covers local CI validation
+> Read `docs/history/tasks/AGENT-CONVENTIONS.md` first — it covers local CI validation
 > (shift-left), known false-positive patterns, and the PR flow.
 
 ## Why this task exists (read carefully — this is the project's exam)

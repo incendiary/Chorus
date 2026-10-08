@@ -2,7 +2,7 @@
 
 **Model tier:** Haiku · **Effort:** S · **Branch:** `feat/rb4-bundle-schema-contract`
 
-> Read `docs/tasks/AGENT-CONVENTIONS.md` first.
+> Read `docs/history/tasks/AGENT-CONVENTIONS.md` first.
 
 ## Context
 

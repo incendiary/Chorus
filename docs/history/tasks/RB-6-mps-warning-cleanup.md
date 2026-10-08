@@ -2,7 +2,7 @@
 
 **Model tier:** Haiku · **Effort:** XS · **Branch:** `fix/rb6-mps-warning`
 
-> Read `docs/tasks/AGENT-CONVENTIONS.md` first. This task is OPTIONAL — lowest
+> Read `docs/history/tasks/AGENT-CONVENTIONS.md` first. This task is OPTIONAL — lowest
 > priority in the wrap-up push; do it last or not at all.
 
 ## Context
