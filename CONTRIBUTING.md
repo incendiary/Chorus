@@ -237,8 +237,8 @@ print(results.keys())  # ['variant_paths', 'transcripts', 'consensus_path', ...]
 
 ```bash
 ls -lh outputs/jobs/*/*/consensus/   # Final transcripts, one folder per run
-ls -lh outputs/transcripts/       # Raw Whisper outputs
-ls -lh outputs/variants/          # Cleaned audio
+ls -lh outputs/jobs/*/*/transcripts/ # Raw Whisper outputs
+ls -lh outputs/jobs/*/*/variants/    # Cleaned audio (kept only with KEEP_VARIANT_WAVS=1)
 ```
 
 ---

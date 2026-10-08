@@ -10,7 +10,7 @@ Supports:
 Each file is processed sequentially through the full Chorus pipeline
 (audio cleaning → transcription → consensus merge → optional export).
 A summary report is written to batch_report.md under --output-dir when
-given, or outputs/consensus/batch_report.md otherwise, upon completion.
+given, or outputs/jobs/batch_report.md otherwise, upon completion.
 
 CLI Usage
 ─────────
