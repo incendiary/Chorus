@@ -4,7 +4,7 @@ tests/test_ui_run_loop.py — Execution tests for the UI run loop and results re
 Covers ui/pipeline_invocation.py (render_run_section and its kwarg
 forwarding to run_pipeline) and ui/results.py (render_file_results and its
 helpers), which previously had 13 %/12 % coverage and had never been
-executed under test (REVIEW.md PF-4).
+executed under test (docs/history/REVIEW.md PF-4).
 
 Three groups:
   A. Config kwarg forwarding — real production path (RunManager.start ->
